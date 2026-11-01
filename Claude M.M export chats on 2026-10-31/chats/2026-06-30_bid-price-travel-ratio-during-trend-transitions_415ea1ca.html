@@ -1,0 +1,107 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bid price travel ratio during trend transitions</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-03_fable-permission-prompts-in-vs-code_4a2ee40c.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-06-29_buffer-not-displaying-in-chart-subwindow_1184e5b8.html">Next →</a></span></div><h1>Bid price travel ratio during trend transitions</h1><div class="meta">Created 2026-06-30 12:54 UTC · Last updated 2026-06-30 13:38 UTC · 6 messages<br>Original: <a href="https://claude.ai/chat/415ea1ca-1168-4248-b760-c09ced2f854a">claude.ai/chat/415ea1ca-1168-4248-b760-c09ced2f854a</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-06-30 12:54 UTC</div><p>My hypothesis is that as price transitions from a short-term trend (up to down or down to up) the ratio between the travel bid-to-bid, one tick to the next decreases. Travel is absolute distance between 2 bid prices. So the variables are bid/bid spread, ticks per time unit, and net price spread over time unit. How would you calculate this?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-06-30 12:56 UTC</div><p>you're taking way to long. Here is the prompt I gave you. Don't answer the question, first restate your understanding of the prompt.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-06-30 12:57 UTC</div><p>you're taking way to long. Here is the prompt I gave you. Don't answer the question, first restate your understanding of the prompt.</p>
+<p>My hypothesis is that as price transitions from a short-term trend (up to down or down to up) the ratio between the travel bid-to-bid, one tick to the next decreases. Travel is absolute distance between 2 bid prices. So the variables are bid/bid spread, ticks per time unit, and net price spread over time unit. How would you calculate this?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-06-30 12:58 UTC</div><p>Understanding: at a short-term trend reversal (up→down or down→up), tick-to-tick bid travel shrinks — the ratio of consecutive single-tick travels (travel at tick t vs travel at tick t−1) trends down through the reversal. Travel = |bid_t − bid_t−1|.</p>
+<p>Three variables named: per-tick travel (the bid/bid spread itself), tick density (ticks per time unit), net price spread per time unit (signed net move over that window).</p>
+<p>Ambiguous: is "the ratio" literally tick-over-tick travel (travel_t / travel_t−1), standalone — or travel normalized against tick density and/or net spread (e.g. net move ÷ sum of travels, efficiency-ratio style)? Different formulas. Which one?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-06-30 13:26 UTC</div><p>//+------------------------------------------------------------------+<br />
+//|                                              BidTravelRatio.mq5 |<br />
+//|                  Multi-window Bid Travel Ratio                   |<br />
+//+------------------------------------------------------------------+</p>
+<h1>property copyright "2026"</h1>
+<h1>property version   "1.01"</h1>
+<h1>property indicator_separate_window</h1>
+<h1>property indicator_buffers 3</h1>
+<h1>property indicator_plots   3</h1>
+<h1>property indicator_type1   DRAW_LINE</h1>
+<h1>property indicator_type2   DRAW_LINE</h1>
+<h1>property indicator_type3   DRAW_LINE</h1>
+<h1>property indicator_color1  clrLime</h1>
+<h1>property indicator_color2  clrAqua</h1>
+<h1>property indicator_color3  clrOrange</h1>
+<h1>property indicator_width1  3</h1>
+<h1>property indicator_width2  3</h1>
+<h1>property indicator_width3  3</h1>
+<p>//--- Inputs<br />
+input int    Window1        = 30;     // Window Size 1<br />
+input int    Window2        = 60;     // Window Size 2<br />
+input int    Window3        = 120;    // Window Size 3<br />
+//--- Buffers<br />
+double Ratio1[];<br />
+double Ratio2[];<br />
+double Ratio3[];<br />
+//+------------------------------------------------------------------+<br />
+int OnInit()<br />
+{<br />
+   SetIndexBuffer(0, Ratio1, INDICATOR_DATA);<br />
+   SetIndexBuffer(1, Ratio2, INDICATOR_DATA);<br />
+   SetIndexBuffer(2, Ratio3, INDICATOR_DATA);</p>
+<p>PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_LINE);<br />
+   PlotIndexSetInteger(1, PLOT_DRAW_TYPE, DRAW_LINE);<br />
+   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_LINE);</p>
+<p>IndicatorSetString(INDICATOR_SHORTNAME, "BidTravelRatio");</p>
+<p>UpdatePlotLabels();</p>
+<p>return(INIT_SUCCEEDED);<br />
+}<br />
+//+------------------------------------------------------------------+<br />
+void UpdatePlotLabels()<br />
+{<br />
+   PlotIndexSetString(0, PLOT_LABEL, "Ratio("+IntegerToString(Window1)+")");<br />
+   PlotIndexSetString(1, PLOT_LABEL, "Ratio("+IntegerToString(Window2)+")");<br />
+   PlotIndexSetString(2, PLOT_LABEL, "Ratio("+IntegerToString(Window3)+")");<br />
+}<br />
+//+------------------------------------------------------------------+<br />
+int OnCalculate(const int rates_total,<br />
+                const int prev_calculated,<br />
+                const datetime &amp;time[],<br />
+                const double &amp;open[],<br />
+                const double &amp;high[],<br />
+                const double &amp;low[],<br />
+                const double &amp;close[],<br />
+                const long &amp;tick_volume[],<br />
+                const long &amp;volume[],<br />
+                const int &amp;spread[])<br />
+{<br />
+   if(rates_total &lt; MathMax(Window3, 10)) return(0);</p>
+<p>int start = prev_calculated &gt; 0 ? prev_calculated - 1 : 0;</p>
+<p>for(int i = start; i &lt; rates_total; i++)<br />
+   {<br />
+      Ratio1[i] = CalculateRatio(i, Window1, close);<br />
+      Ratio2[i] = CalculateRatio(i, Window2, close);<br />
+      Ratio3[i] = CalculateRatio(i, Window3, close);<br />
+   }</p>
+<p>return(rates_total);<br />
+}<br />
+//+------------------------------------------------------------------+<br />
+double CalculateRatio(int pos, int window, const double &amp;price[])<br />
+{<br />
+   if(pos &lt; window-1) return(0.0);</p>
+<p>double total_travel = 0.0;</p>
+<p>for(int k = 0; k &lt; window-1; k++)<br />
+   {<br />
+      int idx = pos - (window-1) + k;<br />
+      total_travel += MathAbs(price[idx+1] - price[idx]);<br />
+   }</p>
+<p>double net = MathAbs(price[pos] - price[pos - window + 1]);</p>
+<p>return (total_travel &gt; 0.0) ? net / total_travel : 0.0;<br />
+}</p>
+<p>This isn't doing what I asked.</p>
+<p>window = number of periods to calculate (in bars)<br />
+total travel = sum of the absolute value of every single tick-to-tick spread between bid prices<br />
+Net travel = spread (signed) between first tick and last tick</p>
+<p>For history, use close[] price (same as last tick bid price)<br />
+For real-time processing, lines must update for each tick.</p>
+<p>At indy load, the first real-time tick will find no data at all, since it requires at least one period to calculate spread. So, at the second tick of the first real-time bar of the indy will plot a 1.0 since net travel = total travel, so nT/tT = 1.</p>
+<p>Can you take it from there?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-06-30 13:38 UTC</div><p>Net travel needs to drop MathAbs — your code has it absolute, the spec wants it signed. Beyond that, this needs new state outside the buffers: live bar timestamp for rollover detection, last live tick price plus whether one's been recorded yet, and a running live-segment sum — reset every new bar, not seeded from the prior close, matching your "first tick, no data" spec. Total travel on the live bar becomes every historical segment in the window except the last one, replaced by that running sum.</p>
+<p>One thing to confirm: with real history loaded, the live bar's 2nd tick won't actually publish 1.0 — Window1's other 28 historical segments are still in total travel alongside that one live segment, so it comes out small, not 1. You mean the live-tick bootstrap in isolation, not the literal published value at that moment — right?</p></div><div class="nav"><span><a href="2026-07-03_fable-permission-prompts-in-vs-code_4a2ee40c.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-06-29_buffer-not-displaying-in-chart-subwindow_1184e5b8.html">Next →</a></span></div></div></body></html>

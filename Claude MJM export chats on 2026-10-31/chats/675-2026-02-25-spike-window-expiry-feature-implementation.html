@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spike window expiry feature implementation</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="674-2026-02-25-debugging-indicator-spike-detection-logic.html">&larr; Debugging indicator spike detection logic</a><a href="../index.html">All chats</a><a href="676-2026-02-25-untitled.html">Untitled &rarr;</a></nav>
+<header class="top">
+<h1>Spike window expiry feature implementation</h1>
+<div class="meta">Created 2026-02-25 16:52 UTC &middot; Last updated 2026-02-25 16:53 UTC &middot; 3 messages<br>Original: <a href="https://claude.ai/chat/1c2b7bfa-99b4-4105-b650-cf374f6a0dba">claude.ai/chat/1c2b7bfa-99b4-4105-b650-cf374f6a0dba</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:52 UTC</span></div><div class="body">from a previous conversation, here&#x27;s where we&#x27;re at:
+
+Context: TEMA_EMA_Trigger_MJM.mq5 — spike detection module work in progress
+The attached file already has these five bug fixes applied (do NOT re-apply):
+1. `CheckSpikeCondition` — added `barOpen` param + inside-channel origination gate (`barOpen &lt; kcUpper` for up, `barOpen &gt; kcLower` for down)
+2. `CheckSpikeHistorical` — added `open[]`/`close[]` params, same origination gate using `open[bar]`
+3. Arrow buffer clear — added `|| iIX == liveBar` to clear stale arrows every tick
+4. Historical spike signal price — replaced synthetic retrace math with `close[bar]`
+5. Removed dead `g_spikeFromPriorBar` setter block
+READY TO CODE (three surgical edits, nothing else):
+Spike window expiry feature. When a spike is detected but unresolved after N bars, just `ResetSpikeState()` — no caching or replay needed because the normal MA cocking/trigger path runs unaffected during an active spike (no spike function modifies `iDir`, `g_isCocked`, `g_cockedDir`, `g_cockLevel`, `g_triggerPending`, etc.).
+1. Add `input int InpSpikeWindowBars = 2;` to the Spike Detection input group (after `InpSpikeHistSignalMultiplier`)
+2. Add `InpSpikeWindowBars &lt; 1` to the OnInit validation block
+3. In the main loop spike section (~line 1493), BEFORE any other spike processing, add: `if(g_spikeActive &amp;&amp; (iIX - g_spikeBar + 1) &gt; InpSpikeWindowBars) { ResetSpikeState(); }` — then let the rest of the spike section run normally (it&#x27;ll skip because `g_spikeActive` is now false)
+PARKED FOR LATER (do not implement now):
+* Outside-KC state variable: when outside KC + spike detected + price doesn&#x27;t re-enter KC within spike window → revert to non-spike state. The outside-KC zone will eventually get its own logic path.
+* TEMA-to-KC-outer integral (area accumulation between TEMA and relevant KC outer line) — for spike severity scoring, tracking how radical the departure is (higher it goes, harder it falls), and historical pattern matching.
+STANDING RULES: Do not make changes beyond what&#x27;s explicitly discussed and agreed. If you notice something off, note it silently, complete the tasked work, report observations after delivery. No code in chat window — downloadable files only. No code until approach discussed and explicit GO received.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:52 UTC</span></div><div class="body"><p>Wednesday, February 25, 2026, ~current session time CST.</p>
+<p>Three edits understood, all mechanical:</p>
+<ol>
+<li><strong>Input declaration</strong> — <code>input int InpSpikeWindowBars = 2;</code> after <code>InpSpikeHistSignalMultiplier</code> in the Spike Detection group.</li>
+<li><strong>OnInit guard</strong> — add <code>InpSpikeWindowBars &lt; 1</code> to the existing validation block.</li>
+<li><strong>Expiry check</strong> — insert before existing spike processing (~line 1493): if spike is active and bar count exceeds window, <code>ResetSpikeState()</code> and let the section fall through naturally.</li>
+</ol>
+<p>No other changes. Need the file and your GO.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:53 UTC</span></div><div class="body">go</div></div>
+<nav class="pager"><a href="674-2026-02-25-debugging-indicator-spike-detection-logic.html">&larr; Debugging indicator spike detection logic</a><a href="../index.html">All chats</a><a href="676-2026-02-25-untitled.html">Untitled &rarr;</a></nav></div></body></html>

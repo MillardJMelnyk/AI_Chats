@@ -1,0 +1,244 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Setting up local AI document indexing with Big RAG</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-13_law-is-violation-manuscript-organization-and-content-consoli_e64a1c2d.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-11_local-ai-for-research-and-writing_0e940557.html">Next →</a></span></div><h1>Setting up local AI document indexing with Big RAG</h1><div class="meta">Created 2026-04-13 16:14 UTC · Last updated 2026-04-13 16:15 UTC · 2 messages<br>Original: <a href="https://claude.ai/chat/7cc03e67-b88e-4ce7-a01e-10ddb697c6d1">claude.ai/chat/7cc03e67-b88e-4ce7-a01e-10ddb697c6d1</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-13 16:14 UTC</div><p>I need help setting up a self-indexing local AI document search system. Here's my situation and what's already been decided:<br />
+My hardware: Intel i7-9700K, 32GB RAM, RTX 2060 Super (8GB VRAM), 9TB storage across multiple drives (D:, E:, F:). A GPU upgrade (likely RTX 3090 24GB) is coming soon.<br />
+Already installed and working: Ollama v0.20.5 (with llama3.1:8b, qwen2.5:14b, and nomic-embed-text models), AnythingLLM Desktop v1.12.0 configured to use Ollama, LM Studio, Python 3.13, Node.js 22.<br />
+My documents: Thousands of research files across multiple drives in DOCX, TXT, PPTX, Excel, PDF, and a large OneNote notebook collection. I need the AI to crawl my drives and index everything automatically — not drag-and-drop file by file.<br />
+The plan we arrived at: Use LM Studio's Big RAG plugin to recursively crawl and index my drives. Big RAG doesn't support DOCX/PPTX/Excel natively, so the workaround is to bulk convert Office files to Markdown using Pandoc first, then let Big RAG crawl everything. OneNote notebooks will be exported to DOCX via a PowerShell/COM script, then also converted to Markdown.<br />
+What I need help with now:</p>
+<ol>
+<li>Install Pandoc if I don't already have it</li>
+<li>Set up bulk conversion of DOCX, PPTX, and Excel to Markdown across my drive structure</li>
+<li>Export OneNote notebooks to DOCX via PowerShell</li>
+<li>Install and configure Big RAG plugin in LM Studio</li>
+<li>Point Big RAG at my drives and start the indexing crawl<br />
+Start by checking whether I have Pandoc installed.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-13 16:15 UTC</div><p>Here's the full walkthrough. Since I can't execute commands on your Windows machine, I'll give you everything ready to run.</p>
+<p><strong>Step 1 — Check for Pandoc</strong></p>
+<p>Open PowerShell and run:</p>
+<pre><code class="language-powershell">pandoc --version
+</code></pre>
+<p>If it returns a version, you're set. If not, install it:</p>
+<pre><code class="language-powershell">winget install --id JohnMacFarlane.Pandoc -e
+</code></pre>
+<p>Then close and reopen PowerShell and verify with <code>pandoc --version</code>.</p>
+<hr />
+<p><strong>Step 2 — Bulk convert Office files to Markdown</strong></p>
+<p>Save this as <code>Convert-ToMarkdown.ps1</code> somewhere convenient. It recursively finds DOCX, PPTX, and XLSX/XLS files across your drives, converts them to <code>.md</code> files placed right next to the originals (so Big RAG finds them during its crawl).</p>
+<pre><code class="language-powershell">#Requires -Version 5.1
+# Convert-ToMarkdown.ps1
+# Bulk-converts DOCX, PPTX, and Excel files to Markdown via Pandoc.
+# Excel goes through an intermediate HTML step since Pandoc can't read .xlsx directly.
+
+param(
+    [string[]]$Drives = @(&quot;D:\&quot;, &quot;E:\&quot;, &quot;F:\&quot;),
+    [switch]$WhatIf
+)
+
+$extensions = @(&quot;*.docx&quot;, &quot;*.pptx&quot;, &quot;*.xlsx&quot;, &quot;*.xls&quot;)
+
+# Excel needs a helper: export each sheet to HTML via COM, then pandoc HTML→MD
+function Convert-ExcelToMarkdown {
+    param([string]$Path, [string]$OutMd, [bool]$DryRun)
+
+    $excel = $null
+    try {
+        $excel = New-Object -ComObject Excel.Application
+        $excel.Visible = $false
+        $excel.DisplayAlerts = $false
+        $wb = $excel.Workbooks.Open($Path)
+        $tmpHtml = [IO.Path]::ChangeExtension($Path, &quot;.tmp.html&quot;)
+        # Save as HTML (xlHtml = 44)
+        $wb.SaveAs($tmpHtml, 44)
+        $wb.Close($false)
+
+        if (-not $DryRun) {
+            &amp; pandoc $tmpHtml -f html -t markdown -o $OutMd --wrap=none 2&gt;&amp;1
+        }
+        Remove-Item $tmpHtml -ErrorAction SilentlyContinue
+        # Excel also creates a _files folder
+        $filesDir = [IO.Path]::ChangeExtension($Path, &quot;.tmp_files&quot;)
+        if (Test-Path $filesDir) { Remove-Item $filesDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    catch {
+        Write-Warning &quot;Excel COM failed for $Path : $_&quot;
+    }
+    finally {
+        if ($excel) {
+            $excel.Quit()
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel) | Out-Null
+        }
+    }
+}
+
+$total = 0; $converted = 0; $failed = 0
+
+foreach ($drive in $Drives) {
+    Write-Host &quot;`n=== Scanning $drive ===&quot; -ForegroundColor Cyan
+    foreach ($ext in $extensions) {
+        Get-ChildItem -Path $drive -Filter $ext -Recurse -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $total++
+            $src = $_.FullName
+            $md  = [IO.Path]::ChangeExtension($src, &quot;.md&quot;)
+
+            # Skip if .md already exists and is newer than source
+            if ((Test-Path $md) -and ((Get-Item $md).LastWriteTime -ge $_.LastWriteTime)) {
+                Write-Host &quot;  SKIP (up-to-date): $src&quot; -ForegroundColor DarkGray
+                return
+            }
+
+            if ($WhatIf) {
+                Write-Host &quot;  WOULD CONVERT: $src&quot; -ForegroundColor Yellow
+                return
+            }
+
+            Write-Host &quot;  Converting: $src&quot; -ForegroundColor Green
+            try {
+                if ($_.Extension -match '\.xlsx?$') {
+                    Convert-ExcelToMarkdown -Path $src -OutMd $md -DryRun $false
+                } else {
+                    &amp; pandoc $src -t markdown -o $md --wrap=none 2&gt;&amp;1
+                }
+
+                if (Test-Path $md) { $converted++ }
+                else { $failed++; Write-Warning &quot;No output produced for $src&quot; }
+            }
+            catch {
+                $failed++
+                Write-Warning &quot;Failed: $src — $_&quot;
+            }
+        }
+    }
+}
+
+Write-Host &quot;`n=== Done ===&quot; -ForegroundColor Cyan
+Write-Host &quot;Total found: $total | Converted: $converted | Failed: $failed&quot;
+</code></pre>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-powershell"># Dry run first — see what it would convert without touching anything
+.\Convert-ToMarkdown.ps1 -WhatIf
+
+# Actually convert
+.\Convert-ToMarkdown.ps1
+
+# Specific drives only
+.\Convert-ToMarkdown.ps1 -Drives @(&quot;D:\&quot;, &quot;E:\&quot;)
+</code></pre>
+<p>Key behaviors: it skips files that already have an up-to-date <code>.md</code> next to them, so you can re-run it after adding new files. Excel conversion uses the COM automation (requires Office installed) to go through HTML as an intermediate.</p>
+<hr />
+<p><strong>Step 3 — Export OneNote notebooks to DOCX</strong></p>
+<p>OneNote's COM API is notoriously brittle, but this approach works with the desktop OneNote app (not the UWP/Store version). Save as <code>Export-OneNote.ps1</code>:</p>
+<pre><code class="language-powershell">#Requires -Version 5.1
+# Export-OneNote.ps1
+# Exports all OneNote sections to DOCX, then converts to Markdown.
+
+param(
+    [string]$OutputRoot = &quot;D:\OneNote-Export&quot;
+)
+
+# OneNote COM requires the desktop (Office) version, not the Windows Store app
+try {
+    $onenote = New-Object -ComObject OneNote.Application
+} catch {
+    Write-Error &quot;Could not start OneNote COM. Ensure the desktop Office version of OneNote is installed.&quot;
+    exit 1
+}
+
+[xml]$hierarchy = $null
+$onenote.GetHierarchy(&quot;&quot;, [Microsoft.Office.Interop.OneNote.HierarchyScope]::hsPages, [ref]$hierarchy)
+
+if (-not $hierarchy) {
+    # Fallback: get as string first
+    [string]$xml = &quot;&quot;
+    $onenote.GetHierarchy(&quot;&quot;, 3, [ref]$xml)  # 3 = hsPages
+    [xml]$hierarchy = $xml
+}
+
+$ns = @{ one = &quot;http://schemas.microsoft.com/office/onenote/2013/onenote&quot; }
+
+$notebooks = $hierarchy | Select-Xml -XPath &quot;//one:Notebook&quot; -Namespace $ns
+
+if (-not $notebooks) {
+    Write-Warning &quot;No notebooks found. Check that OneNote desktop is open with notebooks synced.&quot;
+    exit 1
+}
+
+New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
+$count = 0
+
+foreach ($nb in $notebooks) {
+    $nbName = $nb.Node.name
+    Write-Host &quot;Notebook: $nbName&quot; -ForegroundColor Cyan
+
+    $sections = $nb.Node | Select-Xml -XPath &quot;.//one:Section&quot; -Namespace $ns
+    foreach ($sec in $sections) {
+        $secName = $sec.Node.name
+        $secId   = $sec.Node.ID
+        $safeName = ($nbName + &quot;_&quot; + $secName) -replace '[\\/:*?&quot;&lt;&gt;|]', '_'
+        $outDocx = Join-Path $OutputRoot &quot;$safeName.docx&quot;
+
+        Write-Host &quot;  Exporting section: $secName -&gt; $outDocx&quot;
+        try {
+            # pfWord = 5
+            $onenote.Publish($secId, $outDocx, 5, &quot;&quot;)
+            $count++
+        } catch {
+            Write-Warning &quot;  Failed to export $secName : $_&quot;
+        }
+    }
+}
+
+Write-Host &quot;`nExported $count sections to $OutputRoot&quot; -ForegroundColor Green
+Write-Host &quot;Now converting exported DOCX files to Markdown...&quot;
+
+Get-ChildItem -Path $OutputRoot -Filter &quot;*.docx&quot; | ForEach-Object {
+    $md = [IO.Path]::ChangeExtension($_.FullName, &quot;.md&quot;)
+    &amp; pandoc $_.FullName -t markdown -o $md --wrap=none
+    Write-Host &quot;  -&gt; $md&quot;
+}
+
+Write-Host &quot;Done. Markdown files are in $OutputRoot&quot; -ForegroundColor Green
+</code></pre>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-powershell"># Make sure OneNote desktop is open first
+.\Export-OneNote.ps1 -OutputRoot &quot;D:\OneNote-Export&quot;
+</code></pre>
+<p>This exports each OneNote section as a <code>.docx</code>, then immediately converts each to <code>.md</code>. You can change the output path to wherever you want Big RAG to crawl.</p>
+<hr />
+<p><strong>Step 4 &amp; 5 — Big RAG in LM Studio</strong></p>
+<p>Open LM Studio, go to the <strong>Plugins</strong> tab (or <strong>Discover</strong> → search "Big RAG"). Install the Big RAG plugin. Once installed:</p>
+<ol>
+<li>Open Big RAG's settings panel within LM Studio.</li>
+<li>Set the <strong>embedding model</strong> — select <code>nomic-embed-text</code> (you already have it in Ollama, but Big RAG uses LM Studio's own model loader, so you may need to download it again through LM Studio's model search: search <code>nomic-embed-text</code> and pull it).</li>
+<li>Under <strong>Directories to index</strong>, add your drive roots:<br />
+   - <code>D:\</code><br />
+   - <code>E:\</code><br />
+   - <code>F:\</code><br />
+   - <code>D:\OneNote-Export</code> (or wherever you put the OneNote exports)</li>
+<li>In file type filters, make sure <code>.md</code>, <code>.txt</code>, and <code>.pdf</code> are enabled. You can disable <code>.docx</code>/<code>.pptx</code>/<code>.xlsx</code> since you've already converted them (or leave them — Big RAG will just skip what it can't parse).</li>
+<li>Hit <strong>Start Indexing</strong> and let it crawl. First run on 9TB will take a while — hours, potentially overnight depending on file count.</li>
+</ol>
+<p>After indexing completes, any query you run through LM Studio's chat with Big RAG active will search your local document index and pull relevant chunks into context before the LLM responds.</p>
+<hr />
+<p><strong>Recommended execution order:</strong></p>
+<ol>
+<li><code>pandoc --version</code> → install if missing</li>
+<li>Run <code>Convert-ToMarkdown.ps1 -WhatIf</code> to preview</li>
+<li>Run <code>Convert-ToMarkdown.ps1</code> for real</li>
+<li>Run <code>Export-OneNote.ps1</code></li>
+<li>Set up Big RAG and start the crawl</li>
+</ol>
+<p>Let me know what <code>pandoc --version</code> returns and we'll go from there.</p></div><div class="nav"><span><a href="2026-04-13_law-is-violation-manuscript-organization-and-content-consoli_e64a1c2d.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-11_local-ai-for-research-and-writing_0e940557.html">Next →</a></span></div></div></body></html>

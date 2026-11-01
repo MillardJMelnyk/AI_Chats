@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Finding network adapters in Linux Mint</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="754-2026-08-26-best-clipboard-manager-for-linux-mint.html">&larr; Best clipboard manager for Linux Mint</a><a href="../index.html">All chats</a><a href="756-2026-08-26-mx-master-s3-dongle-compatibility.html">MX Master S3 dongle compatibility &rarr;</a></nav>
+<header class="top">
+<h1>Finding network adapters in Linux Mint</h1>
+<div class="meta">Created 2026-08-26 20:30 UTC &middot; Last updated 2026-08-26 20:34 UTC &middot; 6 messages<br>Original: <a href="https://claude.ai/chat/d9616b55-f556-4c6f-9ed4-38a5859d3756">claude.ai/chat/d9616b55-f556-4c6f-9ed4-38a5859d3756</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-08-26 20:30 UTC</span></div><div class="body">how do I find available network adapters in linux mint?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-08-26 20:30 UTC</span></div><div class="body"><p><code>ip link show</code> lists all network interfaces (adapters), up or down.</p>
+<p><code>nmcli device status</code> — better for Mint (Cinnamon uses NetworkManager); shows device, type, state, connection.</p>
+<p><code>lshw -C network</code> — lists physical adapter hardware, including ones without drivers loaded (needs sudo).</p>
+<p><code>lspci | grep -i network</code> (or <code>-i ethernet</code>, <code>-i wireless</code>) — shows adapters at the PCI hardware level, regardless of driver/interface state.</p>
+<p><code>iwconfig</code> (if installed) — wireless-specific, older tool, may be absent by default on newer Mint.</p>
+<p>For an adapter with no driver bound (won't show in <code>ip link</code> or <code>nmcli</code>), <code>lspci</code>/<code>lshw</code> are the ones that will still find it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-08-26 20:33 UTC</span></div><div class="body">I have a built-in adapter, and I just plugged in a USB adapter. I want to see the usb adapter, enable it, and connect to wifi using it not the built-in adapter.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-08-26 20:33 UTC</span></div><div class="body"><ol>
+<li><strong>Identify the USB adapter:</strong></li>
+</ol>
+<pre><code>ip link show
+</code></pre>
+<p>Look for a new interface that appeared after plugging in (commonly <code>wlan1</code>, <code>wlx&lt;mac&gt;</code>, or similar — the built-in is usually <code>wlan0</code>).</p>
+<p>Confirm it's recognized at the hardware level:</p>
+<pre><code>lsusb
+</code></pre>
+<p>and cross-check driver binding:</p>
+<pre><code>nmcli device status
+</code></pre>
+<p>This lists all devices with TYPE (wifi) and STATE (disconnected/unavailable/connected). If the USB adapter doesn't show here, the driver isn't loaded — check <code>dmesg | tail -30</code> right after plugging it in for driver errors.</p>
+<ol start="2">
+<li><strong>Enable it (bring interface up), if not already:</strong></li>
+</ol>
+<pre><code>sudo ip link set &lt;usb_iface&gt; up
+</code></pre>
+<ol start="3">
+<li><strong>Connect to wifi using specifically the USB adapter:</strong></li>
+</ol>
+<pre><code>nmcli device wifi list ifname &lt;usb_iface&gt;
+nmcli device wifi connect &quot;&lt;SSID&gt;&quot; password &quot;&lt;password&gt;&quot; ifname &lt;usb_iface&gt;
+</code></pre>
+<p>The <code>ifname</code> flag forces NetworkManager to use that specific device rather than whichever it'd pick by default.</p>
+<ol start="4">
+<li><strong>Make sure the built-in adapter doesn't interfere:</strong>
+If both are trying to auto-connect, disconnect/disable the built-in one:</li>
+</ol>
+<pre><code>nmcli device disconnect &lt;builtin_iface&gt;
+</code></pre>
+<p>or disable its autoconnect permanently:</p>
+<pre><code>nmcli connection modify &lt;builtin_connection_name&gt; connection.autoconnect no
+</code></pre>
+<p>Replace <code>&lt;usb_iface&gt;</code> and <code>&lt;builtin_iface&gt;</code> with actual names from step 1's <code>ip link show</code> output — post it if you want exact commands filled in.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-08-26 20:34 UTC</span></div><div class="body">wtf isn&#x27;t there a graphical interface like Network Adapters in Win 11?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-08-26 20:34 UTC</span></div><div class="body"><p>Yes.</p>
+<p><strong>Cinnamon's built-in one:</strong> Menu → Network → or run <code>nm-connection-editor</code> — this is the closest analog to Windows' &quot;Network Connections&quot; panel. Shows all adapters, lets you enable/disable, set per-adapter connection preferences.</p>
+<p>Also: <strong>Settings → Network</strong> (System Settings applet) — simpler view, shows Wired/Wifi devices, toggle on/off.</p>
+<p>For picking which adapter to use for a specific wifi connection: <code>nm-connection-editor</code> → Wi-Fi tab → Edit/Add connection → <strong>General tab → &quot;Restrict to this device&quot;</strong> — this is the GUI equivalent of <code>ifname</code> above, binds an SSID connection to a specific physical adapter.</p>
+<p>The Cinnamon applet (network icon in system tray) will let you pick which <em>adapter's</em> SSID list to browse if multiple wifi devices are present, but it won't show enable/disable per-adapter as cleanly as <code>nm-connection-editor</code>.</p>
+<p>If neither applet shows the USB adapter at all, it's not bound to a driver — GUI won't help, back to <code>dmesg</code>/<code>lsusb</code>.</p>
+</div></div>
+<nav class="pager"><a href="754-2026-08-26-best-clipboard-manager-for-linux-mint.html">&larr; Best clipboard manager for Linux Mint</a><a href="../index.html">All chats</a><a href="756-2026-08-26-mx-master-s3-dongle-compatibility.html">MX Master S3 dongle compatibility &rarr;</a></nav></div></body></html>

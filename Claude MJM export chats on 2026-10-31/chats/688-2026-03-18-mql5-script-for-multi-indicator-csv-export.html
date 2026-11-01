@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 script for multi-indicator CSV export</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="687-2026-03-17-debugging-incorrect-local-time-display.html">&larr; Debugging incorrect local time display</a><a href="../index.html">All chats</a><a href="689-2026-03-18-mql5-price-pattern-detection-functions.html">MQL5 price pattern detection functions &rarr;</a></nav>
+<header class="top">
+<h1>MQL5 script for multi-indicator CSV export</h1>
+<div class="meta">Created 2026-03-18 15:35 UTC &middot; Last updated 2026-03-18 15:57 UTC &middot; 12 messages<br>Original: <a href="https://claude.ai/chat/26d217bb-de8f-4de1-8b02-1b09b36955c2">claude.ai/chat/26d217bb-de8f-4de1-8b02-1b09b36955c2</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:35 UTC</span></div><div class="body">write me an MQL5 script that will write a CSV file containing a time series (datetime,O,H,L,C,V) as well as the values of the following indicators using the parameters shown, each output line/buffer value in its own column:
+
+//--- Input parameters for TEMA(9)
+input int InpTEMAPeriod = 9;                    // TEMA Period
+input ENUM_APPLIED_PRICE InpTEMAPrice = PRICE_CLOSE; // TEMA Applied Price
+input color InpTEMAColor = clrYellow;           // TEMA Color
+input int InpTEMAWidth = 3;                     // TEMA Width
+//--- Input parameters for EMA(3):TEMA(9)
+input int InpEMA3Period = 3;                    // EMA3 Period
+input color InpEMA3Color = clrMagenta;          // EMA3 Color
+input int InpEMA3Width = 3;                     // EMA3 Width
+//--- Input parameters for EMA(33):EMA(3):TEMA(9)
+input int InpEMA33Period = 33;                  // EMA33 Period
+input color InpEMA33Color = clrLime;            // EMA33 Color
+input int InpEMA33Width = 3;                    // EMA33 Width
+//--- Input parameters for EMA(2):(H+L+C+C)/4
+input int InpEMA2Period = 2;                    // EMA2 Period
+input color InpEMA2Color = clrAqua;             // EMA2 Color
+input int InpEMA2Width = 3;                     // EMA2 Width
+//--- Input parameters for SMA(5):(O+C)/2
+input int InpMA5Period = 5;                     // MA5 Period
+input int InpMA5Shift = 0;                      // MA5 Shift
+input ENUM_MA_TYPE InpMA5Method = MA_TYPE_SMA;  // MA5 Method
+input ENUM_PRICE_TYPE InpMA5Price = PRICE_TYPE_BODY_MEDIAN; // MA5 Applied Price
+input color InpMA5Color = clrLightPink;         // MA5 Color
+input int InpMA5Width = 3;                      // MA5 Width
+input bool InpMA5ShowMaxMinLBL = false;         // MA5 Show Max/Min message
+//--- Input parameters for KC(35,23,1.75)
+input int InpKCEMAPeriod = 35;                  // KC EMA Period
+input int InpKCATRPeriod = 23;                  // KC ATR Period
+input double InpKCMultiplier = 1.75;            // KC ATR Multiplier
+input ENUM_APPLIED_PRICE InpKCPrice = PRICE_CLOSE; // KC Applied Price
+input color InpKCUpperColor = clrBlueViolet;    // KC Upper Color
+input int InpKCUpperWidth = 3;                  // KC Upper Width
+input color InpKCMiddleColor = clrWhite;        // KC Middle Color
+input int InpKCMiddleWidth = 2;                 // KC Middle Width
+input color InpKCLowerColor = clrBlueViolet;    // KC Lower Color
+input int InpKCLowerWidth = 3;                  // KC Lower Width</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-18 15:36 UTC</span></div><div class="body"><p>Before coding, I need to clarify the specification:</p>
+<p><strong>Unknowns:</strong></p>
+<ol>
+<li><strong>Data scope</strong>: Current chart symbol/timeframe, or parameterized?</li>
+<li><strong>Bar count</strong>: All available history, or specify range (e.g., last N bars, date range)?</li>
+<li><strong>Output path</strong>: Auto-generate filename (e.g., <code>Symbol_Period_YYYYMMDD_HHMMSS.csv</code>) or user-specified?</li>
+<li><strong>PRICE_TYPE_BODY_MEDIAN</strong>: This enum doesn't exist in standard MQL5. Do you mean <code>(Open[i] + Close[i]) / 2</code> calculated manually?</li>
+</ol>
+<p><strong>Approach (pending your GO):</strong></p>
+<ol>
+<li><strong>TEMA(9)</strong>: Manual calculation via triple EMA recursion on Close</li>
+<li><strong>EMA(3):TEMA(9)</strong>: EMA applied to TEMA buffer</li>
+<li><strong>EMA(33):EMA(3):TEMA(9)</strong>: EMA applied to previous EMA buffer</li>
+<li><strong>EMA(2):(H+L+C+C)/4</strong>: Manual HLCC/4 calculation, then EMA</li>
+<li><strong>SMA(5):(O+C)/2</strong>: Manual body median calculation, then SMA</li>
+<li><strong>KC(35,23,1.75)</strong>: EMA(35) on Close ± ATR(23) * 1.75 for upper/lower bands</li>
+</ol>
+<p><strong>CSV columns (left to right):</strong>
+<code>Datetime,Open,High,Low,Close,Volume,TEMA9,EMA3_TEMA9,EMA33_EMA3_TEMA9,EMA2_HLCC4,SMA5_BodyMedian,KC_Upper,KC_Middle,KC_Lower</code></p>
+<p><strong>Processing:</strong></p>
+<ul>
+<li>Loop bars from oldest to newest (reverse chronological) to ensure indicator initialization</li>
+<li>Skip bars where indicators haven't initialized (insufficient history)</li>
+<li>Write valid rows to CSV</li>
+</ul>
+<p>Clarify the 4 unknowns, then I'll proceed on explicit GO.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:39 UTC</span></div><div class="body">1. whatever the chart it runs on defines them to be
+2. All bars since input parm start datetime, 0 = all
+3. autogenerated including date and time of creation, symbol, timeframe, etc.
+4. Yes
+
+Approach approved.
+columns: yes
+Processing: yes
+
+Ready?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-18 15:39 UTC</span></div><div class="body"><p>Ready. Awaiting explicit GO.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:39 UTC</span></div><div class="body">go</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:48 UTC</span></div><div class="body">the first 990 rows look like this. Give me a code block with logic to suppress these lines and identify the exact lines the new block replaces.<p class="note">[File attached: 1773848842201_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-18 15:48 UTC</span></div><div class="body"><p><strong>Lines to replace:</strong> 126-154</p>
+<p><strong>Original block:</strong></p>
+<pre><code class="language-mql5">   //--- Write data rows
+   int rowsWritten = 0;
+   for(int i = startBar; i &gt;= 0; i--)
+   {
+      datetime barTime = iTime(symbol, period, i);
+      double open = iOpen(symbol, period, i);
+      double high = iHigh(symbol, period, i);
+      double low = iLow(symbol, period, i);
+      double close = iClose(symbol, period, i);
+      long volume = iVolume(symbol, period, i);
+      
+      //--- Skip bars where indicators haven't initialized
+      if(i &gt; startBar - minBars)
+         continue;
+      
+      FileWrite(fileHandle,
+                TimeToString(barTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS),
+                DoubleToString(open, _Digits),
+                DoubleToString(high, _Digits),
+                DoubleToString(low, _Digits),
+                DoubleToString(close, _Digits),
+                IntegerToString(volume),
+                DoubleToString(tema[i], 5),
+                DoubleToString(ema3_tema[i], 5),
+                DoubleToString(ema33_ema3_tema[i], 5),
+                DoubleToString(ema2_hlcc4[i], 5),
+                DoubleToString(sma5_bodymedian[i], 5),
+                DoubleToString(kc_upper[i], 5),
+                DoubleToString(kc_middle[i], 5),
+                DoubleToString(kc_lower[i], 5));
+      rowsWritten++;
+   }
+</code></pre>
+<p><strong>Replacement block:</strong></p>
+<pre><code class="language-mql5">   //--- Write data rows
+   int rowsWritten = 0;
+   for(int i = startBar; i &gt;= 0; i--)
+   {
+      datetime barTime = iTime(symbol, period, i);
+      double open = iOpen(symbol, period, i);
+      double high = iHigh(symbol, period, i);
+      double low = iLow(symbol, period, i);
+      double close = iClose(symbol, period, i);
+      long volume = iVolume(symbol, period, i);
+      
+      //--- Skip bars where indicators haven't initialized
+      if(i &gt; startBar - minBars)
+         continue;
+      
+      //--- Skip bars with invalid price data (all zeros)
+      if(open == 0 &amp;&amp; high == 0 &amp;&amp; low == 0 &amp;&amp; close == 0)
+         continue;
+      
+      FileWrite(fileHandle,
+                TimeToString(barTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS),
+                DoubleToString(open, _Digits),
+                DoubleToString(high, _Digits),
+                DoubleToString(low, _Digits),
+                DoubleToString(close, _Digits),
+                IntegerToString(volume),
+                DoubleToString(tema[i], 5),
+                DoubleToString(ema3_tema[i], 5),
+                DoubleToString(ema33_ema3_tema[i], 5),
+                DoubleToString(ema2_hlcc4[i], 5),
+                DoubleToString(sma5_bodymedian[i], 5),
+                DoubleToString(kc_upper[i], 5),
+                DoubleToString(kc_middle[i], 5),
+                DoubleToString(kc_lower[i], 5));
+      rowsWritten++;
+   }
+</code></pre>
+<p><strong>Change:</strong> Added validation <code>if(open == 0 &amp;&amp; high == 0 &amp;&amp; low == 0 &amp;&amp; close == 0) continue;</code> at line 141-142 to skip rows with invalid price data.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:52 UTC</span></div><div class="body">now there are 995 such lines. Also, the KC columns are changing throughout the entire data set<p class="note">[File attached: 1773849137945_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1773849139123_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-18 15:52 UTC</span></div><div class="body"><p><strong>Problem identified:</strong> KC calculation ignores the <code>shift</code> parameter, calculating only bar 0 values for all rows.</p>
+<p><strong>Lines to replace:</strong> 331-343</p>
+<p><strong>Original block:</strong></p>
+<pre><code class="language-mql5">void CalculateKC(string symbol, ENUM_TIMEFRAMES period, int shift, int emaPeriod, int atrPeriod,
+                 double multiplier, ENUM_APPLIED_PRICE appliedPrice,
+                 double &amp;upper, double &amp;middle, double &amp;lower)
+{
+   //--- Calculate middle line (EMA)
+   middle = iMA(symbol, period, emaPeriod, 0, MODE_EMA, appliedPrice);
+   
+   //--- Calculate ATR
+   double atr = iATR(symbol, period, atrPeriod);
+   
+   //--- Calculate bands
+   upper = middle + multiplier * atr;
+   lower = middle - multiplier * atr;
+}
+</code></pre>
+<p><strong>Replacement block:</strong></p>
+<pre><code class="language-mql5">void CalculateKC(string symbol, ENUM_TIMEFRAMES period, int shift, int emaPeriod, int atrPeriod,
+                 double multiplier, ENUM_APPLIED_PRICE appliedPrice,
+                 double &amp;upper, double &amp;middle, double &amp;lower)
+{
+   //--- Get price for middle line calculation
+   double price = 0;
+   switch(appliedPrice)
+   {
+      case PRICE_CLOSE: price = iClose(symbol, period, shift); break;
+      case PRICE_OPEN: price = iOpen(symbol, period, shift); break;
+      case PRICE_HIGH: price = iHigh(symbol, period, shift); break;
+      case PRICE_LOW: price = iLow(symbol, period, shift); break;
+      case PRICE_MEDIAN: price = (iHigh(symbol, period, shift) + iLow(symbol, period, shift)) / 2.0; break;
+      case PRICE_TYPICAL: price = (iHigh(symbol, period, shift) + iLow(symbol, period, shift) + iClose(symbol, period, shift)) / 3.0; break;
+      case PRICE_WEIGHTED: price = (iHigh(symbol, period, shift) + iLow(symbol, period, shift) + iClose(symbol, period, shift) * 2.0) / 4.0; break;
+   }
+   
+   //--- Calculate middle line (EMA) manually for this specific bar
+   static double emaBuffer[];
+   static int lastCalcShift = -1;
+   static int lastEmaPeriod = -1;
+   
+   if(lastEmaPeriod != emaPeriod || shift &gt; lastCalcShift)
+   {
+      ArraySetAsSeries(emaBuffer, true);
+      ArrayResize(emaBuffer, shift + emaPeriod + 100);
+      lastEmaPeriod = emaPeriod;
+   }
+   lastCalcShift = shift;
+   
+   double emaAlpha = 2.0 / (emaPeriod + 1.0);
+   
+   if(shift &gt;= ArraySize(emaBuffer) - 1)
+   {
+      middle = price;
+   }
+   else if(emaBuffer[shift + 1] == 0)
+   {
+      middle = price;
+   }
+   else
+   {
+      middle = price * emaAlpha + emaBuffer[shift + 1] * (1.0 - emaAlpha);
+   }
+   emaBuffer[shift] = middle;
+   
+   //--- Calculate ATR manually for this specific bar
+   double tr = MathMax(iHigh(symbol, period, shift) - iLow(symbol, period, shift),
+                MathMax(MathAbs(iHigh(symbol, period, shift) - iClose(symbol, period, shift + 1)),
+                        MathAbs(iLow(symbol, period, shift) - iClose(symbol, period, shift + 1))));
+   
+   static double atrBuffer[];
+   static int lastAtrPeriod = -1;
+   
+   if(lastAtrPeriod != atrPeriod || shift &gt; lastCalcShift)
+   {
+      ArraySetAsSeries(atrBuffer, true);
+      ArrayResize(atrBuffer, shift + atrPeriod + 100);
+      lastAtrPeriod = atrPeriod;
+   }
+   
+   double atrAlpha = 1.0 / atrPeriod;
+   double atr;
+   
+   if(shift &gt;= ArraySize(atrBuffer) - 1)
+   {
+      atr = tr;
+   }
+   else if(atrBuffer[shift + 1] == 0)
+   {
+      atr = tr;
+   }
+   else
+   {
+      atr = tr * atrAlpha + atrBuffer[shift + 1] * (1.0 - atrAlpha);
+   }
+   atrBuffer[shift] = atr;
+   
+   //--- Calculate bands
+   upper = middle + multiplier * atr;
+   lower = middle - multiplier * atr;
+}
+</code></pre>
+<p><strong>Change:</strong> Rewrote function to manually calculate EMA and ATR at the specific <code>shift</code> position instead of calling indicators at bar 0.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-18 15:57 UTC</span></div><div class="body">what about the 995 garbage lines?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-18 15:57 UTC</span></div><div class="body"><p>The zero-price check I provided should suppress those 995 lines. However, I need to verify you've applied it.</p>
+<p><strong>Verification:</strong></p>
+<p>The replacement block I gave should now include this check at line 141-142:</p>
+<pre><code class="language-mql5">//--- Skip bars with invalid price data (all zeros)
+if(open == 0 &amp;&amp; high == 0 &amp;&amp; low == 0 &amp;&amp; close == 0)
+   continue;
+</code></pre>
+<p>This check executes AFTER the price variables are populated and BEFORE the FileWrite call, so any row where all four OHLC values are zero gets skipped.</p>
+<p><strong>If you applied the change and still see 995 garbage rows:</strong></p>
+<p>The problem would be that the check logic is insufficient. Some possibilities:</p>
+<ol>
+<li><strong>Volume is also checked</strong>: Need to verify volume is also zero</li>
+<li><strong>Floating-point comparison</strong>: Need epsilon comparison instead of exact zero</li>
+</ol>
+<p><strong>Alternative stronger check:</strong></p>
+<pre><code class="language-mql5">//--- Skip bars with invalid price data
+if((open == 0 &amp;&amp; high == 0 &amp;&amp; low == 0 &amp;&amp; close == 0) || 
+   (volume == 0 &amp;&amp; open == 0))
+   continue;
+</code></pre>
+<p>Did you apply the previous replacement block, and are you still seeing the 995 garbage lines in the output after recompiling and re-running?</p>
+</div></div>
+<nav class="pager"><a href="687-2026-03-17-debugging-incorrect-local-time-display.html">&larr; Debugging incorrect local time display</a><a href="../index.html">All chats</a><a href="689-2026-03-18-mql5-price-pattern-detection-functions.html">MQL5 price pattern detection functions &rarr;</a></nav></div></body></html>

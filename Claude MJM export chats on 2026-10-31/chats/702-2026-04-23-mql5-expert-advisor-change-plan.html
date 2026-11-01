@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 Expert Advisor change plan</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="701-2026-04-21-live-tick-by-tick-indicator-state-drift-bug.html">&larr; Live tick-by-tick indicator state drift bug</a><a href="../index.html">All chats</a><a href="703-2026-04-24-signal-suppression-logic-not-blocking-hanging-bar-candidate.html">Signal suppression logic not blocking hanging bar candidate &rarr;</a></nav>
+<header class="top">
+<h1>MQL5 Expert Advisor change plan</h1>
+<div class="meta">Created 2026-04-23 17:24 UTC &middot; Last updated 2026-04-23 19:29 UTC &middot; 32 messages<br>Original: <a href="https://claude.ai/chat/d1712c04-c92f-43db-af45-63354d7ffb90">claude.ai/chat/d1712c04-c92f-43db-af45-63354d7ffb90</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:24 UTC</span></div><div class="body">Carried over from another chat regarding the attached MQL5 Expert Advisor that calls the attached indicator.
+
+Let me know when you&#x27;ve read them and are all caught up to speed.
+
+Next step is to finalize the change plan.
+
+No coding until I say GO.<details><summary>Attached file: unnamed</summary><pre>God you&#x27;re both confused.line 419 should be:   int max_periods = MathMin(InpPrimeTradePeriod, rates_total - 1);If there are 5 bars (rates_total = 5) there can only be 4 periods.The current code does:   int buy_copy = CopyBuffer(g_handle, BUF_BUY_SIGNAL, 0, rates_total, buy_buf);
+   int sell_copy = CopyBuffer(g_handle, BUF_SELL_SIGNAL, 0, rates_total, sell_buf);which copies the whole fucking buffer from the indy when only max_periods + 1 bars (includes the last, current bar) are necessary.What&#x27;s WORSE, the EA calls    TryPrimeTradeOnInit() BEFORE THE INDY HAS POPULATED THE BUFFER!!!2026.04.23 10:45:47.807    Triple_Trigger_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_MJM.mq5] [OnInit] LINE 382 TOP OF FUNCTION, PROGRAM_VERSION&lt;4.0&gt; InpWriteOutputCSVs&lt;true&gt;
+2026.04.23 10:45:47.807    Triple_Trigger_MJM (XAUUSD,M1)    Live parameter window: 2026.04.20 00:00 to 2026.12.23 16:59
+2026.04.23 10:45:47.807    Triple_Trigger_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_MJM.mq5] [OnCalculate] LINE 706  write_output_csvs&lt;true&gt;
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_Trade_MJM.mq5] [OnInit] LINE 618 g_indicatorShortName&lt;Triple_Trigger&gt; g_handle&lt;11&gt;
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_Trade_MJM.mq5] [InitTrailingEquityFloor] LINE 227 Equity floor init - HighWater&lt;184.26&gt; Floor&lt;179.26&gt;
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ===========================================
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    Triple_Trigger_Trade EA v1.2 Loaded
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    Indicator: Triple_Trigger (window 0)
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    Handle: 11
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    Auto-trading: ON
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    Keys: F=Flip L=Long S=Short C=Close T=Toggle
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ===========================================
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_Trade_MJM.mq5] [OnInit] LINE 662 BEFORE TryPrimeTradeOnInit() call...&gt;
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_Trade_MJM.mq5] [TryPrimeTradeOnInit] LINE 414 PRIME_SKIPPED reason&lt;NoCalculatedBars&gt;
+2026.04.23 10:45:47.908    Triple_Trigger_Trade_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_Trade_MJM.mq5] [OnInit] LINE 665 AFTER  TryPrimeTradeOnInit() call...&gt;
+2026.04.23 10:45:48.012    Triple_Trigger_MJM (XAUUSD,M1)    Signal CSV written: triple_trigger_signals_EA_LIVE_20260423_194549.csv
+2026.04.23 10:45:48.017    Triple_Trigger_MJM (XAUUSD,M1)    Trade CSV written: triple_trigger_signals_EA_LIVE_20260423_194549_trades.csv
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    --- Stats call source: OnCalculate full-pass ---
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    --- Live mode (Triple_Trigger_MJM.mq5) ---
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    Signals: 1047
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    Trades: 1046
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    Net P/L: $2078.73
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    Avg P/L: $1.99
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    Wins: 725  Losses: 321  Flats: 0
+2026.04.23 10:45:48.021    Triple_Trigger_MJM (XAUUSD,M1)    ChartID&lt;133608959982095599&gt;: [Triple_Trigger_MJM.mq5] [OnCalculate] LINE 1356 AFTER  MAIN LOOP WAS COMPLETED&gt;
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    --- Stats call source: OnDeinit wrap-up ---
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    --- Live mode (Triple_Trigger_MJM.mq5) ---
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    Signals: 1047
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    Trades: 1046
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    Net P/L: $2078.73
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    Avg P/L: $1.99
+2026.04.23 10:45:53.070    Triple_Trigger_MJM (XAUUSD,M1)    Wins: 725  Losses: 321  Flats: 0Show more10:48 AMClaude responded: Three bugs, clearly confirmed by the log:Three bugs, clearly confirmed by the log:
+Bug 1: TryPrimeTradeOnInit() is called before the indicator has populated its buffers.
+The log shows the EA calls TryPrimeTradeOnInit() at 10:45:47.908, gets PRIME_SKIPPED reason&lt;NoCalculatedBars&gt;, and the indicator doesn&#x27;t finish its full OnCalculate pass until 10:45:48.021 — 113ms later. The prime trade never has a chance.
+Bug 2: max_periods calculation is wrong.
+MathMin(InpPrimeTradePeriod, rates_total) should be MathMin(InpPrimeTradePeriod, rates_total - 1). With 5 bars there are only 4 completed periods.
+Bug 3: Copies the entire buffer when only max_periods + 1 bars are needed.
+CopyBuffer(..., rates_total, ...) pulls everything. Should be CopyBuffer(..., max_periods + 1, ...).
+The root problem is Bug 1 — the other two don&#x27;t even get executed. TryPrimeTradeOnInit() needs to be deferred until after the indicator has completed its first full OnCalculate pass, likely by moving the call into OnTick behind a one-time flag.You said: Where should   TryPrimeTradeOnInit() be called?Where should   TryPrimeTradeOnInit() be called?10:49 AMClaude responded: In OnTick, behind a one-time flag, but only after the indicator is confirmed ready:In OnTick, behind a one-time flag, but only after the indicator is confirmed ready:
+mql5bool g_primeDone = false;
+Then in OnTick, before the existing bar-processing logic:
+mql5if(!g_primeDone)
+{
+   int rt = BarsCalculated(g_handle);
+   if(rt &gt; 0)
+   {
+      g_primeDone = true;
+      TryPrimeTradeOnInit();
+   }
+   else
+      return;
+}
+The return on the else is important — don&#x27;t process ticks at all until the indicator is ready, otherwise OnTick might try to use the buffers before they&#x27;re populated just like OnInit did.You said: What ensures that the EA OnTick will be executed AFTER the indy&#x27;s OnCalculate?What ensures that the EA OnTick will be executed AFTER the indy&#x27;s OnCalculate?10:50 AMClaude responded: Nothing guarantees that.Nothing guarantees that. In MT5, on the same tick, the order of execution between an indicator&#x27;s OnCalculate and an EA&#x27;s OnTick is not defined.
+So BarsCalculated(g_handle) &gt; 0 is still the right gate — it returns the number of bars the indicator has fully calculated, so even if OnTick fires before OnCalculate on a given tick, BarsCalculated will return 0 or a stale count until the indicator has actually finished. It&#x27;s not about tick ordering, it&#x27;s about querying the indicator&#x27;s own completed-calculation count.
+The check is reliable for that reason — not because of execution order.You said: RESEARCH this question, no BS/guesses:RESEARCH this question, no BS/guesses:what&#x27;s the relationship between BarsCalculated() in the EA and rates_total and prev_calculated in the indy?10:52 AMClaude responded: BarsCalculated(handle) returns exactly what the indicator returned from its last OnCalculate() call — which by convention is rates_total when fully calculated,…Searched the webSearched the webBarsCalculated(handle) returns exactly what the indicator returned from its last OnCalculate() call — which by convention is rates_total when fully calculated, or 0 while still calculating. MQL5
+The standard contract is: the indicator returns rates_total from OnCalculate() as the signal that its data is ready. prev_calculated on the next call is set to that returned value. MQL5
+So the relationship is direct: BarsCalculated(handle) in the EA == the value the indicator last returned from OnCalculate(). If the indicator returns rates_total as documented, then BarsCalculated equals rates_total inside the indicator.
+The practical consequence for your timing problem: the terminal startup sequence is: OnInit called, then for indicators OnCalculate is called with existing history, then new ticks cause OnCalculate/OnTick to be called — but execution order between the indicator and EA on the same tick is not guaranteed. MQL5
+So BarsCalculated(g_handle) &gt; 0 in OnTick is still the correct gate, but it&#x27;s not bulletproof on the very first tick where both the indicator&#x27;s OnCalculate and the EA&#x27;s OnTick fire simultaneously. The safe approach is to check BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT) — confirming the indicator has calculated the full bar count, not just any nonzero value.You said: OK, we have 2 problems then, one concerning    TryPrimeTradeOnInit() and when it&#x27;s run, and a similar problem with the EA&#x27;s general state.OK, we have 2 problems then, one concerning    TryPrimeTradeOnInit() and when it&#x27;s run, and a similar problem with the EA&#x27;s general state. The EA must begin ASAP after its loaded with a state that it would currently have if it had been loaded prior to the last signal. However, it has no visibility to that other than via the indy&#x27;s buffers.So we need a different strategy:Read the indy&#x27;s buffer BACKWARDS from current UNTIL we encounter a signal.Set the EA&#x27;s state as it should be, exactly the same as it would have been if it had been running when that signal was emitted.Now we know what the last signal was and where it was emitted. That&#x27;s when TryPrimeTradeOnInit() should check to see if it&#x27;s within the window defined by InpPrimeTradePeriod. TryPrimeTradeOnInit() should do NO CopyBuffers, since they were necessarily done as far as they need to be done during #1.Agreed?Show more11:01 AMClaude responded: Agreed, with one clarification to make sure we&#x27;re aligned:Agreed, with one clarification to make sure we&#x27;re aligned:
+Step 1 and 2 become a new function — call it something like InitializeStateFromHistory() — that runs once the indicator buffers are confirmed ready, scans backwards from the live bar until it finds the most recent signal, and sets g_lastDirection and g_lastProcessedBar accordingly.
+Step 3: TryPrimeTradeOnInit() then simply looks at what InitializeStateFromHistory() already found — the signal bar index and direction are already known, no CopyBuffer needed — and decides whether that bar falls within the InpPrimeTradePeriod window. If yes, submit the order. If no, skip and log.
+Both run together in OnTick behind the same one-time g_primeDone flag, in order, after BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT) confirms the indicator is fully calculated.
+Correct?You said: Yes, with an additional question:Yes, with an additional question:Is that all the EA needs to catch up to where things are at? Does it need historical info for any other reason?11:04 AMClaude responded: Looking at the EA&#x27;s globals that represent its running state:Looking at the EA&#x27;s globals that represent its running state:
+
+g_lastDirection — set by InitializeStateFromHistory()  ✅
+g_lastProcessedBar — set by InitializeStateFromHistory() ✅
+g_bAutoTrading — set from InpAutoTrade in OnInit() ✅
+g_equityHighWater / g_minAcctEquity — set by InitTrailingEquityFloor() from live account equity, no history needed ✅
+g_barsTotal — set on first OnTick() from BarsCalculated() ✅
+g_handle — set in OnInit() ✅
+
+The only other question is open positions — but PositionsTotal() is live account state, the EA doesn&#x27;t need history for that.
+So yes, that&#x27;s all it needs. InitializeStateFromHistory() + TryPrimeTradeOnInit() fully reconstruct the state the EA would have had if it had been running all along.You said: change planchange plan11:04 AMClaude responded: OK, what&#x27;s the new plan?OK, what&#x27;s the new plan?You said: we discussed what the EA should do that it&#x27;s not doing.we discussed what the EA should do that it&#x27;s not doing. We&#x27;re agreed on how it should work. We need a plan to make the necessary changes.11:05 AMClaude responded: Here&#x27;s the plan:Here&#x27;s the plan:
+1. Add a one-time initialization flag
+Add bool g_initDone = false to globals.
+2. Add InitializeStateFromHistory()
+Scans the already-copied IndArrowBuy/IndArrowSell buffers backwards from the live bar until it finds the most recent signal. Sets g_lastDirection and g_lastProcessedBar from that signal.
+3. Modify TryPrimeTradeOnInit()
+Remove all CopyBuffer calls. It receives the signal bar index and direction already found by InitializeStateFromHistory(). Checks whether that bar falls within the InpPrimeTradePeriod window. If yes, submits the order via TS_OpenPosition(). All existing skip/log conditions remain.
+4. Modify OnTick()
+At the top, behind g_initDone:
+
+Gate on BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT)
+Copy the full buffers (the one full copy that&#x27;s needed for initialization)
+Call InitializeStateFromHistory()
+Call TryPrimeTradeOnInit()
+Set g_initDone = true
+
+5. Remove TryPrimeTradeOnInit() call from OnInit()
+Agreed?You said: Shouldn&#x27;t the function in #2 call the #3 function?Shouldn&#x27;t the function in #2 call the #3 function?you said:Copy the full buffers (the one full copy that&#x27;s needed for initialization)Why the full buffers? Beyond what we need to init, what good does all that data do?11:08 AMClaude responded: You&#x27;re right on both counts:You&#x27;re right on both counts:
+#2 calling #3: Yes, InitializeStateFromHistory() should call TryPrimeTradeOnInit() directly once it has the signal bar and direction. No reason to bubble that back up to OnTick().
+Full buffer copy: No reason for it. InitializeStateFromHistory() only needs to scan backwards until it hits a signal — it should copy incrementally or just enough bars to find it, not the whole history. In the worst case it scans back InpPrimeTradePeriod periods worth of bars and no further, since any signal older than that window is irrelevant to both state init and the prime trade decision.
+Revised plan for OnTick() init block:
+
+Gate on BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT)
+Call InitializeStateFromHistory() — which does its own targeted CopyBuffer of only as many bars as needed, sets state, and calls TryPrimeTradeOnInit()
+Set g_initDone = true
+
+Agreed?You said: We don&#x27;t know when the last signal was, so we need to be smart about CopyBuffer quantity.We don&#x27;t know when the last signal was, so we need to be smart about CopyBuffer quantity.Also, the user can indicate (start date in the future) to run with no history at all, so the Indy would generate no history at all. We need to handle that properly.11:10 AMClaude responded: Good points.Good points. Revised strategy for InitializeStateFromHistory():
+CopyBuffer quantity — incremental approach:
+Copy in chunks, scanning backwards, until a signal is found or we&#x27;ve exhausted all available bars. Something like copy 50 bars, scan, if no signal found copy another 50, scan the new chunk, repeat. Avoids copying the whole buffer while handling the case where the last signal was arbitrarily far back.
+No-history case:
+If BarsCalculated(g_handle) returns a full count but the indicator&#x27;s trade start date is in the future, the buffers will have no signals at all. InitializeStateFromHistory() will exhaust all bars without finding a signal. In that case:
+
+g_lastDirection stays at its default
+g_lastProcessedBar stays at -1
+TryPrimeTradeOnInit() is still called but immediately skips with a log reason like NoHistoricalSignal
+EA proceeds normally, waiting for the first live signal
+
+So the no-history case is handled naturally — exhausting the scan without finding a signal is not an error, just a valid state.
+Agreed?You said: No-history case:No-history case:  If the user indicated no history OR in the rare case in which no signal was emitted since start date, then yes, those variables remain at default.Further, if the user indicated no history, then no CopyBuffers should be attempted.When performing the chunks-of-50 CopyBuffers, stop once the start date &gt;= any of the dates retrieved.11:15 AMClaude responded: Agreed.Agreed. Revised InitializeStateFromHistory() logic:
+No-history case — check first:
+If InpTradeStartDt &gt;= current time, skip all CopyBuffer calls entirely, log it, call TryPrimeTradeOnInit() with no signal found, return.
+Chunked CopyBuffer:
+
+Copy 50 bars at a time, newest-first
+For each chunk, scan backwards for a signal
+If a signal is found, set state, call TryPrimeTradeOnInit(), return
+If any bar&#x27;s time in the chunk is &lt;= InpTradeStartDt, stop — we&#x27;ve hit the boundary, no signal exists in the valid window
+If all available bars exhausted with no signal, same result — log NoHistoricalSignal, call TryPrimeTradeOnInit() with no signal, return
+
+TryPrimeTradeOnInit() signature change:
+Receives signal bar index and direction (or sentinel values indicating no signal found), so it needs no buffer access of its own.
+Agreed?You said: agreed so far, restate the full change planagreed so far, restate the full change plan11:16 AMClaude responded: Full Change Plan:Full Change Plan:
+1. Add globals
+
+bool g_initDone = false
+
+2. Remove TryPrimeTradeOnInit() call from OnInit()
+3. Rewrite TryPrimeTradeOnInit()
+
+Signature changes to accept signal bar index and direction (sentinel values if no signal found)
+No CopyBuffer calls
+If no signal: log NoHistoricalSignal, return
+If signal found but outside InpPrimeTradePeriod window: log OutsidePrimeWindow, return
+If auto-trading off: log, return
+If position already open: log, return
+If signal conflict (shouldn&#x27;t be possible given new caller, but guard anyway): log, return
+Otherwise: submit order via TS_OpenPosition(), set g_lastDirection, g_lastProcessedBar, UpdateTrailingEquityFloor()
+
+4. Add InitializeStateFromHistory()
+
+If InpTradeStartDt &gt;= current time: log no-history case, call TryPrimeTradeOnInit() with sentinel values, return
+Otherwise copy in chunks of 50 bars newest-first via CopyBuffer on BUF_BUY_SIGNAL and BUF_SELL_SIGNAL
+For each chunk scan backwards for a signal
+Stop and set state if signal found
+Stop if any bar time &lt;= InpTradeStartDt
+Stop if all bars exhausted
+Set g_lastDirection and g_lastProcessedBar from signal if found
+Call TryPrimeTradeOnInit() with signal bar index and direction (or sentinels)
+
+5. Modify OnTick()
+
+At the top, behind !g_initDone:
+
+Gate on BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT)
+If not ready, return
+Call InitializeStateFromHistory()
+Set g_initDone = true
+
+
+Rest of OnTick() unchanged
+
+6. Fix max_periods calculation in TryPrimeTradeOnInit()
+
+Change to MathMin(InpPrimeTradePeriod, rates_total - 1)
+
+Agreed?You said: you said:you said:If auto-trading off: log, returnIf position already open: log, returnIf signal conflict (shouldn&#x27;t be possible given new caller, but guard anyway): log, returnGiven InitializeStateFromHistory() MUST be run BEFORE the EA has placed ANY orders, and given that any orders it places during init are to CATCH UP to where the indy state already is, those conditions being gated are not possible in the first place, are they?11:20 AMClaude responded: You&#x27;re right.You&#x27;re right. Let&#x27;s think through each:
+Auto-trading off: InitializeStateFromHistory() runs before any tick processing, but g_bAutoTrading is set from InpAutoTrade in OnInit(). If the user loaded the EA with auto-trading on, it&#x27;s on. That&#x27;s a valid gate — user may have loaded with it off intentionally.
+Position already open: Since InitializeStateFromHistory() runs before the EA has placed any orders, no position can exist that the EA opened. However a position could exist that the user opened manually. So this gate is still valid.
+Signal conflict: You&#x27;re right — InitializeStateFromHistory() already resolved any conflict during its scan (it only returns a clean single signal or no signal). This gate is impossible and can be removed.
+Revised list for TryPrimeTradeOnInit():
+
+If no signal: log, return
+If signal outside InpPrimeTradePeriod window: log, return
+If auto-trading off: log, return
+If position already open: log, return
+Otherwise: place order
+
+Agreed?</pre></details><p class="note">[File attached: Triple_Trigger_Trade_MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Triple_Trigger_MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:25 UTC</span></div><div class="body"><p>Thursday, April 23, 2026, 11:35 AM CST</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:26 UTC</span></div><div class="body">It&#x27;s not that much material. It&#x27;s taking you WAY too long. What is the problem?</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:26 UTC</span></div><div class="body">I didn&#x27;t say to resume working. I asked a question. Answer the question.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:26 UTC</span></div><div class="body"><p>I was reading files sequentially with multiple tool calls when I already had enough from the EA file alone. The indicator file was unnecessary for finalizing the change plan — the changes are all in the EA.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:27 UTC</span></div><div class="body">then stop fucking burning my credits. Read the content of the previous chat, analyze ONLY WHAT NEEDS TO BE ANALYZED, and then report back.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:28 UTC</span></div><div class="body"><p>Understood. I have everything I need. Here is the finalized change plan based on the prior conversation and the EA code:</p>
+<hr />
+<p><strong>Full Change Plan — Triple_Trigger_Trade_MJM.mq5</strong></p>
+<p><strong>1. Add global</strong>
+<code>bool g_initDone = false;</code></p>
+<p><strong>2. Remove <code>TryPrimeTradeOnInit()</code> call from <code>OnInit()</code> (lines 662–664)</strong></p>
+<p><strong>3. Rewrite <code>TryPrimeTradeOnInit()</code></strong></p>
+<ul>
+<li>New signature: accepts <code>int signalBar, string signalDir</code> (sentinels: <code>signalBar = -1, signalDir = &quot;&quot;</code>)</li>
+<li>No <code>BarsCalculated()</code>, no <code>CopyBuffer</code> calls</li>
+<li>Guards in order:
+<ul>
+<li>No signal found → log <code>NoHistoricalSignal</code>, return</li>
+<li>Signal outside <code>InpPrimeTradePeriod</code> window → log <code>OutsidePrimeWindow</code>, return</li>
+<li>Auto-trading off → log, return</li>
+<li>Position already open → log, return</li>
+</ul>
+</li>
+<li>On pass: <code>TS_OpenPosition()</code>, set <code>g_lastDirection</code>, <code>g_lastProcessedBar = liveBar</code>, <code>UpdateTrailingEquityFloor()</code>, <code>UpdateStatus()</code></li>
+</ul>
+<p><strong>4. Add <code>InitializeStateFromHistory()</code></strong></p>
+<ul>
+<li>If <code>InpTradeStartDt &gt;= TimeCurrent()</code>: log no-history case, call <code>TryPrimeTradeOnInit(-1, &quot;&quot;)</code>, return</li>
+<li>Otherwise: chunk-copy 50 bars at a time (BUY and SELL buffers), newest-first</li>
+<li>Each chunk: scan backwards for a signal; stop if signal found OR any bar time <code>&lt;= InpTradeStartDt</code> OR bars exhausted</li>
+<li>On signal found: set <code>g_lastDirection</code>, <code>g_lastProcessedBar</code></li>
+<li>Call <code>TryPrimeTradeOnInit(signalBar, signalDir)</code> — or sentinels if none found</li>
+</ul>
+<p><strong>5. Modify <code>OnTick()</code></strong></p>
+<ul>
+<li>At top, before existing logic, behind <code>!g_initDone</code>:
+<ul>
+<li>Gate: <code>BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT)</code> — if not ready, <code>return</code></li>
+<li>Call <code>InitializeStateFromHistory()</code></li>
+<li>Set <code>g_initDone = true</code></li>
+</ul>
+</li>
+<li>Existing <code>prev_calculated == 0</code> early-return remains in place below</li>
+</ul>
+<p><strong>6. Fix <code>max_periods</code> — already correct in file (line 419 shows <code>rates_total - 1</code>)</strong></p>
+<ul>
+<li>Verify the full-buffer <code>CopyBuffer</code> calls (lines 422–423) are removed as part of item 3</li>
+</ul>
+<hr />
+<p>Anything to revise before GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:32 UTC</span></div><div class="body">yes, we&#x27;re not agreed on
+
+* Auto-trading off → log, return
+* Position already open → log, return
+
+If auto-trading is off, there is no history to analyze, no state to set/catch back up to, nothing. Inside TryPrimeTradeOnInit() is the WRONG place for that test.
+
+By definition, there CANNOT BE an existing real position. The whole point of TryPrimeTradeOnInit() is to establish one reflective of the last indy signal emitted. So the position already open test makes no sense whatsoever.
+
+Agreed?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:32 UTC</span></div><div class="body"><p>Agreed on both.</p>
+<p>Auto-trading off belongs as a gate on <code>InitializeStateFromHistory()</code> itself — if auto-trading is off, skip the entire history scan and prime trade, full stop.</p>
+<p>Position already open is impossible by definition at init time and the guard is removed entirely.</p>
+<p>Revised <code>TryPrimeTradeOnInit()</code> guards:</p>
+<ul>
+<li>No signal found → log, return</li>
+<li>Signal outside <code>InpPrimeTradePeriod</code> window → log, return</li>
+<li>Otherwise: place order</li>
+</ul>
+<p>And <code>InitializeStateFromHistory()</code> gets the auto-trading gate at its top — if off, skip everything, return.</p>
+<p>Agreed?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:33 UTC</span></div><div class="body">And this raises another issue/question.
+
+Let&#x27;s say the EA is started with autotrade off, then goes into the input parms and turns it on mid-run.
+
+Both the indy and the EA will completely re-init at that point, right?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:33 UTC</span></div><div class="body"><p>Yes — changing any input parameter triggers <code>OnDeinit()</code> then <code>OnInit()</code> on both the EA and the indicator, full reinit. That's standard MT5 behavior for input changes.</p>
+<p>So if the user turns auto-trading on via the inputs dialog, <code>g_initDone</code> resets to false, and the full <code>InitializeStateFromHistory()</code> → <code>TryPrimeTradeOnInit()</code> sequence runs correctly on the next tick, with auto-trading now on.</p>
+<p>The only edge case: toggling via the <strong>T key</strong> does NOT reinit — it just flips <code>g_bAutoTrading</code> in place. In that case, <code>g_initDone</code> is already true and <code>InitializeStateFromHistory()</code> never runs again. So if the user loads with auto-trade off, hits T to enable it, no prime trade fires.</p>
+<p>Is that acceptable, or do you want the T-key toggle to also trigger the init sequence if <code>g_initDone</code> was set while auto-trading was off?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:35 UTC</span></div><div class="body">what will the EA state be if, after a period of T-key toggling autotrade off, when the user toggles it back on?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:35 UTC</span></div><div class="body"><p><code>g_lastDirection</code> and <code>g_lastProcessedBar</code> will reflect whatever they were last set to during normal tick processing — the EA continued processing signals and updating those globals even while auto-trading was off (it logs <code>SIGNAL_BLOCKED reason&lt;AutoTradingOff&gt;</code> but still sets <code>g_lastProcessedBar</code>).</p>
+<p>So state is current. No catch-up needed. T-key toggle back on is fine as-is.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:35 UTC</span></div><div class="body">OK, sounds like we&#x27;re set then, agreed?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:35 UTC</span></div><div class="body"><p>Agreed. Ready for GO.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:35 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:37 UTC</span></div><div class="body"><p>Now applying all changes:</p>
+<p>Done. Post-delivery observations:</p>
+<ol>
+<li>
+<p><strong><code>goto done</code></strong> — MQL5 supports <code>goto</code>, but if you prefer a cleaner exit mechanism (e.g. a helper function or a <code>do { } while(false)</code> wrapper), say the word before the next GO.</p>
+</li>
+<li>
+<p><strong>Start date boundary check</strong> — currently only triggers on bars with no signal. If the last bar in a chunk has a signal but is also at or before <code>startDt</code>, it will be used. That seems correct since the signal is valid, but flag it if you disagree.</p>
+</li>
+<li>
+<p><strong><code>IndExitTrade</code> array</strong> — not resized in <code>InitializeStateFromHistory()</code> since exit signals play no role in state reconstruction. It gets sized normally on the first real tick after <code>g_initDone</code>.</p>
+</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 17:48 UTC</span></div><div class="body">what&#x27;s this?
+
+Triple_Trigger_Trade_MJM.mq5			
+TradeSimulation_MJM.mqh			
+IndicatorMetadata_MJM.mqh			
+TextGVar_MJM.mqh			
+Indy Utils_MJM.mqh			
+ENUM INDY_MJM.mqh			
+String routines BASIC_MJM.mqh			
+Math routines shortlist_MJM.mqh			
+undeclared identifier &#x27;goto&#x27;	Triple_Trigger_Trade_MJM.mq5	529	16
+undeclared identifier &#x27;done&#x27;	Triple_Trigger_Trade_MJM.mq5	529	21
+&#x27;done&#x27; - some operator expected	Triple_Trigger_Trade_MJM.mq5	529	21
+undeclared identifier &#x27;goto&#x27;	Triple_Trigger_Trade_MJM.mq5	543	10
+undeclared identifier &#x27;done&#x27;	Triple_Trigger_Trade_MJM.mq5	543	15
+&#x27;done&#x27; - some operator expected	Triple_Trigger_Trade_MJM.mq5	543	15
+undeclared identifier &#x27;done&#x27;	Triple_Trigger_Trade_MJM.mq5	549	1
+&#x27;:&#x27; - unexpected token	Triple_Trigger_Trade_MJM.mq5	549	5
+8 errors, 0 warnings		8	0</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 17:49 UTC</span></div><div class="body"><p>MQL5 doesn't support <code>goto</code>. My error. Replacing with a <code>found</code> flag.</p>
+<p><code>goto</code> not supported in MQL5 — should have known that. Fixed with <code>bool found</code> flag controlling both loops.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:20 UTC</span></div><div class="body">As of the first line in OnInit() in an MQL5 EA, is there a reliable way to determine the REGULAR INDEXED index of the current/newest bar on a chart?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:20 UTC</span></div><div class="body"><p>No. At the first line of <code>OnInit()</code>, history loading is not guaranteed complete. <code>Bars(_Symbol, PERIOD_CURRENT)</code> can return a partial or stale count — the terminal loads history asynchronously and <code>OnCalculate</code> hasn't fired yet.</p>
+<p>The reliable bar count only exists after the indicator has completed its first <code>OnCalculate</code> pass, which is exactly why the <code>g_initDone</code> gate in <code>OnTick</code> waits for <code>BarsCalculated(g_handle) == Bars(_Symbol, PERIOD_CURRENT)</code>.</p>
+<p>Is this in the context of a specific concern about the current code?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:21 UTC</span></div><div class="body">It&#x27;s an EA. It has no OnCalculate.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:21 UTC</span></div><div class="body"><p>Correct, my error.</p>
+<p>Same answer holds though: <code>Bars(_Symbol, PERIOD_CURRENT)</code> at the top of <code>OnInit()</code> is unreliable because history may not be fully loaded yet. The reliable moment is the first <code>OnTick()</code> fire, at which point history is loaded and <code>Bars()</code> returns a stable value.</p>
+<p>Is there a specific concern driving the question?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:21 UTC</span></div><div class="body">OK, on the first tick.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:21 UTC</span></div><div class="body"><p><code>Bars(_Symbol, PERIOD_CURRENT) - 1</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:25 UTC</span></div><div class="body">OK, working on the same TTT EA, here&#x27;s what I worked out with CODEX:
+
+OK, restate the plan using the same 1, 2, 3 point-format
+12:59 PM
+
+1. Add one global g_EA_loadedBar, set once only in the first OnTick execution to the value of Bars(_Symbol, PERIOD_CURRENT) - 1.
+2. Run InitializeStateFromHistory() exactly once on the first tick where both conditions are true: TT is fully calculated and current bar index equals exactly g_EA_loadedBar + 1.
+3. In that one init run, scan only InpPrimeTradePeriod + 1 bars ending at g_EA_loadedBar (bar n plus prior InpPrimeTradePeriod bars), newest-to-oldest, then set g_initDone = true.
+
+See any problems?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:25 UTC</span></div><div class="body"><p>One problem: condition 2 uses <code>==</code> — current bar index equals exactly <code>g_EA_loadedBar + 1</code>. If the indicator takes more than one bar to finish calculating after load, <code>Bars(_Symbol, PERIOD_CURRENT) - 1</code> could be <code>g_EA_loadedBar + 2</code> or higher by the time both conditions are simultaneously true, and <code>==</code> never fires. Init never runs.</p>
+<p>Should be <code>&gt;=</code>.</p>
+<p>Everything else looks solid. The scan bound of <code>InpPrimeTradePeriod + 1</code> bars ending at <code>g_EA_loadedBar</code> implicitly replaces the start date boundary check from the prior plan — which is fine as long as <code>InpPrimeTradePeriod</code> is kept reasonably small.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:28 UTC</span></div><div class="body">OK, as long as it&#x27;s never run more than the first time.
+
+When and if TryPrimeTradeOnInit() decides to issue an order, it must be done as of the datetime and close price of that current tick. Not retroactive back to the g_EA_loadedBar index.
+
+Agreed?<details><summary>Attached file: excerpt_from_previous_claude_message.txt</summary><pre>Should be &gt;=.</pre></details><p class="note">[File attached: excerpt_from_previous_claude_message.txt &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:28 UTC</span></div><div class="body"><p>Agreed. <code>TS_OpenPosition()</code> already opens at current market price — it doesn't take a historical price as input. No change needed there, it's already correct by design.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-04-23 19:28 UTC</span></div><div class="body">ok GO</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-23 19:29 UTC</span></div><div class="body"><p>Now update <code>InitializeStateFromHistory()</code> to scan only <code>InpPrimeTradePeriod + 1</code> bars ending at <code>g_EA_loadedBar</code>:</p>
+</div></div>
+<nav class="pager"><a href="701-2026-04-21-live-tick-by-tick-indicator-state-drift-bug.html">&larr; Live tick-by-tick indicator state drift bug</a><a href="../index.html">All chats</a><a href="703-2026-04-24-signal-suppression-logic-not-blocking-hanging-bar-candidate.html">Signal suppression logic not blocking hanging bar candidate &rarr;</a></nav></div></body></html>

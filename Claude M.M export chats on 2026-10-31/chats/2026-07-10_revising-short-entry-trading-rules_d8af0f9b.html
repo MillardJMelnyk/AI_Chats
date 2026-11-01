@@ -1,0 +1,419 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Revising short entry trading rules</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-10_indy-processing-window-start-time-calculation_0662b974.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-09_refactoring-indy-to-disentangle-concerns_8aae3a66.html">Next →</a></span></div><h1>Revising short entry trading rules</h1><div class="meta">Created 2026-07-10 13:50 UTC · Last updated 2026-07-10 21:05 UTC · 44 messages<br>Original: <a href="https://claude.ai/chat/d8af0f9b-bb27-4ee1-a552-f6858e26f18e">claude.ai/chat/d8af0f9b-bb27-4ee1-a552-f6858e26f18e</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 13:50 UTC</div><p>Help me revise these trading rules.</p>
+<p>Leave the LONG rules as is but enclose in comment that they're out of date.</p>
+<p>Think through these rules with me:</p>
+<p>Enter short only when all entry conditions are true:<br />
+1. Indy1 abs(slope) &gt; minIndy1Slope (0).<br />
+2. Indy2 abs(slope) &gt; minIndy2Slope (determine by data scan).<br />
+3. r1 slope &lt; 0<br />
+4. r2 slope &lt; 0<br />
+5. r1 crossed down over r3<br />
+6. r2 crossed down over r3<br />
+7. DELTA of slope of indy1 (SoI[n] - SoI[n-1]) &lt; 0<br />
+<strong>confirmation (within max 2 bars)</strong><br />
+1. r3 slope &lt; 0<br />
+2. DELTA of slope of indy2 (SoI[n] - SoI[n-1]) &lt; 0<br />
+3. DELTA of indys spread (Indy1 - Indy2) &lt; 0</p>
+<p>I've also attached the indy.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 13:52 UTC</div><p>Read the source. Facts first, then the questions the new rules raise.</p>
+<p><strong>What the indicator already tracks vs. what's new:</strong><br />
+- Indy 1/2 slopes, r1/r2/r3 slopes: tracked per tick. Spread of indys is defined as Indy1 − Indy2, so "spread delta &lt; 0" for short matches the sign convention as written. Spread delta is already tracked.<br />
+- r1-vs-r3 cross: has a calibrated noise-rejecting detector. r2-vs-r3 cross does <strong>not</strong> exist — that's a new detector pair plus history plus state fields.<br />
+- Delta of Indy1 slope and delta of Indy2 slope: tracked nowhere. The only slope-delta currently computed is on the <em>spread of slopes</em>, not per-line. Two new fields.</p>
+<p><strong>Questions before these are rules:</strong></p>
+<ol>
+<li>
+<p>Conditions 1–2 use abs(slope) — no direction. An indy sloping <em>up</em> hard passes the short entry as written. Old rules required both averages sloping the entry way. Intentional (direction carried by the crosses and r-slopes), or should these be <code>dir × slope &gt; min</code>?</p>
+</li>
+<li>
+<p>Condition 1 with min = 0: abs &gt; 0 only excludes exactly-flat ticks — effectively a no-op. Placeholder for a scanned threshold like condition 2?</p>
+</li>
+<li>
+<p>Conditions 5–6: two crosses almost never land on the same tick, so these must be latched states ("crossed down and still below"), same latching regime as before. Confirm, and confirm the clear condition is crossing back.</p>
+</li>
+<li>
+<p>Clock mixing. "SoI[n] − SoI[n-1]" and "within max 2 bars" read as bar-indexed; everything else in this system is per-tick. Are the three delta terms bar-sampled while conditions 1–6 run per tick? If the deltas are per-tick, note that delta-of-slope with slope period 1 is a second difference of the line — the noisiest series available, exactly the chatter you build detectors to kill. Bar-sampled mostly defuses that.</p>
+</li>
+<li>
+<p>Confirmation semantics: does the 2-bar clock start when all 7 entry conditions first hold? Must all 3 confirmations be true simultaneously at some point in the window, or latch independently? Window expires → signal dead for good, or re-armable? Entry fires the instant confirmation completes?</p>
+</li>
+<li>
+<p>Does the existing flicker layer (5-tick hold, 10-tick watch) sit on top of this, or does the 2-bar confirmation replace it?</p>
+</li>
+<li>
+<p>r3's role changed completely: no r3 level or turn condition anywhere in the new entry — only r3 slope in confirmation. Deliberate? And do early exit (r1 back through r3 before r3 crosses zero) and profit exit (r3 &gt; 0.25 + turn + cross) survive unchanged?</p>
+</li>
+</ol>
+<p><strong>Doc plan (on GO):</strong> wrap the existing long-form rules in a comment block marked out of date, unchanged; append the new short-form entry + confirmation set once the above are settled. Not touching the file until then.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:26 UTC</div><h1>1 -- all the logic in the indy is supposed to be direction agnostic, determined by "Dir" variables = -1, 0, or +1. So, for threshold comparisons, abs(value) &lt;  or &gt; whatever  works whether the value is negative or positive, short or long, etc.</h1>
+<h1>2 -- of course, the threshold needs to be present, to start with I'm going to use 0</h1>
+<h1>3 -- agreed, and it's been hard to get AIs to get this through their heads. I've started the process of shifting from event-driven to state-driven, lots of changes made to the logic. The code still needs to be finely audited to make sure the shift is complete.</h1>
+<h1>5 -- The 2-bar clock starts on the precise tick a trade was entered.</h1>
+<h1>6 -- That's a question for those much smarter and familiar with the logic than me.</h1>
+<h1>7 -- I'm starting simple and will work up only if needed. r3 might come back. I see its role more as an inhibiter, though. I.e., once all the entry rules are satisfied, is there any reason NOT to enter? Another one is if the triggered entry direction contradicts the slopes of indys 1 and 2. They might block the entry or they might invoke more stringent criteria before entry is allowed, but that will come later.</h1>
+<p>First step is to test the rules without trying to cover all the bases to see if they're worth enough to do the work to cover all the bases.</p>
+<p>Anything you'd add or change?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:27 UTC</div><p>The #5 answer changes the picture: "confirmation" is post-entry, not an entry gate. Entry fires on the 7 conditions; the 3 confirmation conditions are a survival test on an open trade. That forces new questions, plus #4 is still open.</p>
+<p><strong>#6, my position:</strong> drop the flicker layer for the first test. Its statistics (5-tick hold, 0.04 strength floor, 10-tick watch) were derived from the <em>old</em> signal population — r3-turn-below-zero entries. The new 7-condition signal is a different population; those numbers don't transfer. Test bare, and if the new signal chatters, re-derive flicker handling from its own replay data. Carrying the old layer over would be tuning to a dead signal definition.</p>
+<p><strong>New questions from the post-entry reading:</strong></p>
+<ol>
+<li>Failure action: if the 2 bars elapse without confirmation, exit immediately at the deadline? At what price logic — next tick, bar close?</li>
+<li>Success criterion: all 3 confirmation conditions true simultaneously on some tick within the window, or each latches once independently?</li>
+<li>Success effect: once confirmed, what changes? Trade just stays open, and then what ever closes it? The new rule set defines no exit for a confirmed trade — old profit exit and early exit are built on r3 machinery you're benching. A backtest can't score entries without a close rule, even a dumb placeholder (reversal-only, fixed bars, fixed dollars). That's the biggest hole.</li>
+</ol>
+<p><strong>#4, still unanswered — sampling of the delta terms.</strong> "SoI[n] − SoI[n-1]" and a 2-bar window read bar-indexed, but the entry conditions run per tick. If the deltas are per-tick, delta-of-slope at slope period 1 is a second difference of the line — the noisiest series in the system, raw sign checks on it will chatter exactly the way you build detectors to avoid. If bar-sampled: a 2-bar window gives you at most 2 evaluation points. Which is it, and when within the window are the confirmations evaluated?</p>
+<p><strong>One thing I'd add:</strong> you said the shift is state-driven now — but rules 3, 4, and the two delta confirmations as written are raw sign comparisons, not detector-backed states. r1 slope and r2 slope have no detectors in the source. Raw sign checks around zero are threshold chatter by another name. Doesn't need solving before the first test (starting at 0 is fine), but it should be on the audit list, because a "state-driven" system with raw comparisons in the entry path isn't one yet.</p>
+<p>Doc plan unchanged, waiting on the answers above and GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:38 UTC</div><h1>1 -- we're writing rules, and I take task in logical chunks. Like I said, "cover all the bases" is coming up if necessary. For the code right now, I'd probably code it both ways: plant a question mark where the exit would be but continue on, or actually exit (input-gated) and see what the differences are.</h1>
+<p>Take you're mind OUT of safeguarding against every eventuality. This is creative work. Don't drag in the What-if Gestapo.</p>
+<h1>2 -- READ MORE CAREFULLY. ALREADY ANSWERED.</h1>
+<h1>3 -- confirmed, nothing changes. Failed to confirm, see #1.</h1>
+<h1>4 -- we (supposedly) switched the logic to match regular timeseries processing for everything other than ratio processing. I can go either way. By the time a bar has been closed, all that's normally available is the data of the last tick of the bar. That's find for the indys (TEMA/MA) and price and metrics derived from them. What side of the tick vs. bar category do you think sampling of delta terms properly lies?</h1>
+<p>You said:</p>
+<p>r1 slope and r2 slope have no detectors in the source</p>
+<p>Then how are they already being plotted on the chart?</p>
+<p>For your next response, take what I've said about being less critical and more creative/adventurous into account. This is preparatory to investigation and testing. Too many decisions now would be premature. Get me?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:38 UTC</div><p>Got it — exploratory mode, decisions cheap, knobs not verdicts.</p>
+<p><strong>Slopes clarification:</strong> they're computed and plotted from buffers — that's just arithmetic on the ratio series. What they lack is calibrated level-event <em>detectors</em> (the Calibrator/Detector pairs). Only line1/line2 slope, spread, r3, r3 slope, and r1−r3 have those. Plotting ≠ detection. Point stands but it's an audit-list item, not a blocker.</p>
+<p><strong>Delta sampling — my answer: bar side.</strong> Reasoning: the indys moved to regular timeseries processing, so SoI is a bar series — its delta inherits that clock. Sampling a bar-domain slope per tick means the current-bar value mutates all bar long and its delta flips with it; you'd be reading noise off a series that hasn't finished forming. Bar-close sampling gives one stable value per bar, and the second-difference chatter problem mostly evaporates because the differencing happens on settled values.</p>
+<p>And it makes the architecture prettier, not just safer: entry lives in the tick domain (ratios, crosses — the fast clock catches the move early, which is your whole trading style), confirmation lives in the bar domain (indy structure — the slow clock asks "is the terrain actually agreeing?"). Two clocks, two jobs. The 2-bar window then means exactly two evaluation points: two bar closes.</p>
+<p>One knob worth planting while you're in there: entry can land anywhere inside a bar, so "2 bars" is ambiguous between "the next 2 bar closes" (first one could arrive a tick after entry) and "2 full bars after the entry bar." Input-gate it like the exit-vs-question-mark choice and let the replay say which matters. My hunch: it matters more than it looks, because entries late in a bar get a nearly-free first confirmation read.</p>
+<p>Ready to write the doc revision on GO, or more rule-shaping first?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:41 UTC</div><p>THEN YOU NEED TO SAY "level-event detectors" INSTEAD OF JUST "DETECTORS". When there is more than just one type of something, SPECIFY WHICH ONE YOU'RE TALKING ABOUT.</p>
+<p>I've already been through two big rounds of installing level event detection, you're saying that there are some comparisons that were missed?</p>
+<p>Delta sampling: so the question was already moot in your mind?</p>
+<p>I like your "next 2 bar closes" revision.</p>
+<p>go</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:42 UTC</div><p>wait a minute, I want answers to my questions, my "go" was premature.</p>
+<p>Answers?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:43 UTC</div><p>Answers, checked against the source:</p>
+<p><strong>1. No — nothing was missed.</strong> I was wrong to imply otherwise, and I own that. Every comparison in the <em>current</em> trade logic runs through level-event state: both indy slopes, the spread, r3 level, r3 slope turn, and the r1−r3 cross all read latched level-event directions or event history. The only raw comparison anywhere in the trade path is r3 against the 0.25 profit threshold, which sits behind two level-event conditions anyway. The two rounds got full coverage.</p>
+<p>What I meant, said badly: the <strong>new</strong> rules introduce five comparisons that don't have level-event detector pairs yet, because they've never been used in trade logic — r1 slope sign, r2 slope sign, the r2−r3 cross, and the two per-line slope deltas. That's new construction, not missed coverage.</p>
+<p><strong>2. No, not moot.</strong> When I first raised it, I genuinely didn't know which clock the deltas lived on — the rule text read bar-indexed, the rest of the system runs on ticks. Your answer to #4 supplied the missing fact: the indys now run on regular timeseries processing. Given that, the deltas inherit the bar clock and the question resolved. Open when asked, settled by your input, not pre-decided.</p>
+<p>GO rescinded — standing by.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:44 UTC</div><p>OK, cool. </p>
+<p>On #1, that was confusing. You were asking implementation questions, we're only writing the rules to be implemented.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:44 UTC</div><p>Right — my lane here is the rules doc, not the build. Detector construction belongs in the change plan when the rules get implemented, not in the rules.</p>
+<p>Plan stands: wrap the existing long-form rules in a comment block marked out of date, unchanged; append the new short-form entry set with the agreed refinements — latched-state conditions, confirmation as post-entry survival test evaluated at the next 2 bar closes, failure action left as an open knob (question-mark vs. actual exit, input-gated), flicker layer dropped pending re-derivation, r3 benched with a note it may return as an inhibitor layer.</p>
+<p>Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:46 UTC</div><p>And you understand that these are rules-by-example, that there isn't a "long" and a "short" version of the rules. Direction agnostic means the same rules, the same logic, and EXACTLY THE SAME CODE is used whether long or short, up or down, right?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:46 UTC</div><p>Yes. One rule set, one logic path, one code path — <code>_dir</code> supplies the sign. "Short rules" in your draft is just the worked example showing the rules with dir = −1 plugged in, same as the old doc showed them with dir = +1. The doc should say that explicitly: rules are stated once, direction-agnostic; the short form shown is illustration, not a second rule set.</p>
+<p>Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:48 UTC</div><p>I would like to </p>
+<ol>
+<li>preserve the existing "long" rules section with the note that they're old,</li>
+<li>Coin the short example rules as we've discussed here,</li>
+<li>Coin a twin LONG example rules section, too,</li>
+<li>Coin the direction-agnostic form of the rules.</li>
+</ol>
+<p>give me a change plan for the rules document.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:48 UTC</div><p>Change plan for <code>ticktravel-momentum-rules-final.md</code>:</p>
+<p><strong>1. Frontmatter.</strong> Update <code>description</code> to reflect supersession (e.g. "2026-07-10 revision: new entry + post-entry confirmation rules; 2026-07-07 rules preserved as superseded"). Name field unchanged.</p>
+<p><strong>2. Superseded block.</strong> Everything from <code>## STE Rule Statements</code> through <code>## Additional Info and Notes</code> preserved verbatim, preceded by a visible banner: <code>## SUPERSEDED 2026-07-10 — historical reference only</code> with one line noting the long-form rules below are the old rule set. (Alternative: HTML comment wrapper, which hides it when rendered — I assume you want it visible. Say if not.)</p>
+<p><strong>3. New section: Rules (direction-agnostic, canonical).</strong> Preamble stating: one rule set, one logic path, one code path; <code>dir</code> = ±1 supplies the sign; the long/short sections that follow are worked examples, not separate rule sets. Then:</p>
+<p><em>Entry — all conditions hold as latched states on the same tick:</em><br />
+1. abs(Indy1 slope) &gt; minIndy1Slope (initial value 0)<br />
+2. abs(Indy2 slope) &gt; minIndy2Slope (initial value from data scan)<br />
+3. dir × r1 slope &gt; 0<br />
+4. dir × r2 slope &gt; 0<br />
+5. r1 on the dir side of r3 (latched from the cross; clears on cross-back)<br />
+6. r2 on the dir side of r3 (same latching)<br />
+7. dir × delta of Indy1 slope &gt; 0</p>
+<p><em>Confirmation — post-entry survival test, not an entry gate:</em><br />
+- Clock starts on the entry tick; evaluated at each of the next 2 bar closes.<br />
+- Conditions: dir × r3 slope &gt; 0; dir × delta of Indy2 slope &gt; 0; dir × delta of indy spread (Indy1 − Indy2) &gt; 0.<br />
+- Confirmed: nothing changes, trade runs.<br />
+- Failed: input-gated knob — (a) flag with a question marker and continue, or (b) exit — to be compared in testing.<br />
+- Sampling note: entry conditions live on the tick clock; all delta terms and confirmation evaluation live on the bar clock. "Next 2 bar closes" knob noted: first close can arrive right after a late-in-bar entry.</p>
+<p><strong>4. New section: Long example</strong> — the canonical rules with dir = +1 written out in plain direction words (slopes up, crosses up, above).</p>
+<p><strong>5. New section: Short example</strong> — same with dir = −1, matching your draft wording.</p>
+<p><strong>6. New section: Status and open items.</strong> Flicker layer dropped for first test (old statistics derived from the superseded signal population; re-derive if the new signal chatters). r3 benched; candidate future inhibitor layer, along with indy-slope-contradiction inhibition. Exit rules beyond confirmation-failure: undefined, open. Threshold values: scan pending.</p>
+<p><strong>One wording to verify before I write:</strong> confirmation success — all three conditions holding (latched) at a bar-close evaluation within the window. That's my reading of "already answered" via the latching regime. Correct?</p>
+<p>That's the plan. GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 14:51 UTC</div><p>yes</p>
+<p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 14:52 UTC</div><p>Done, exactly per plan: canonical direction-agnostic rules, long example, short example, status/open items, then the full 2026-07-07 set preserved verbatim under a visible SUPERSEDED banner. Frontmatter description updated.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:15 UTC</div><p>I had CODEX review the .md, here are its comments, below.</p>
+<ol>
+<li>Note ONLY those points you DISAGREE with and STE your disagreement.</li>
+<li></li>
+<li></li>
+<li></li>
+<li>Overall: the new rules are coherent and direction-agnostic, but not yet mechanically complete enough to implement without assumptions.<br />
+Key comments:</li>
+</ol>
+<ul>
+<li>“All entry conditions are latched states” is too broad. The slope thresholds and slope directions are current states; the r1/r3 and r2/r3 relationships are true cross-latches. The bar-close delta states update only at bar close and hold between closes. The document should distinguish these.</li>
+<li>The new entry logic is a full replacement of the live entry logic. The live code still uses the superseded r3 turn, Indy direction/alignment, 5-tick hold, and 10-tick recovery watch.</li>
+<li>The live code has an r1/r3 cross-latch but no r2/r3 cross-latch.</li>
+<li>The three required bar-close deltas do not presently exist with the specified sampling. The live Indy spread delta changes during the open bar; separate closed-bar values will be required.</li>
+<li>The confirmation lifecycle does not exist yet: entry timestamp, two-close count, confirmed/failed state, failure action, and question marker all need adding.<br />
+Decisions still required:</li>
+</ul>
+<ol>
+<li>Choose “next two closes” or “two full bars after the entry bar.”</li>
+<li>Supply the initial Indy2 minimum slope.</li>
+<li>State whether zero clears a positive/negative slope or delta latch.</li>
+<li>State whether confirmation latches reset at entry or may already be holding from before entry.</li>
+<li>State whether opposite entry still reverses an unconfirmed or confirmed trade.</li>
+<li>State whether the old early exit, profit exit, and aggressive exits are removed or merely disabled.</li>
+<li>Define where the question marker is plotted and whether a flagged trade can later become confirmed.<br />
+The strongest part is the clean separation between immediate entry and post-entry confirmation. The main weakness is that “latched” currently covers three different behaviors—tick states, cross-latches, and bar-close states—which must be stated separately to prevent implementation drift.</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:17 UTC</div><p>I had CODEX review the .md, here are its comments, below.</p>
+<ol>
+<li>Note ONLY those points you DISAGREE with and STE your disagreement.</li>
+<li>Answer all the questions you can with your recommendations.</li>
+</ol>
+<p>CODEX:</p>
+<p>Overall: the new rules are coherent and direction-agnostic, but not yet mechanically complete enough to implement without assumptions. Key comments:</p>
+<ul>
+<li>“All entry conditions are latched states” is too broad. The slope thresholds and slope directions are current states; the r1/r3 and r2/r3 relationships are true cross-latches. The bar-close delta states update only at bar close and hold between closes. The document should distinguish these.</li>
+<li>The new entry logic is a full replacement of the live entry logic. The live code still uses the superseded r3 turn, Indy direction/alignment, 5-tick hold, and 10-tick recovery watch.</li>
+<li>The live code has an r1/r3 cross-latch but no r2/r3 cross-latch.</li>
+<li>The three required bar-close deltas do not presently exist with the specified sampling. The live Indy spread delta changes during the open bar; separate closed-bar values will be required.</li>
+<li>The confirmation lifecycle does not exist yet: entry timestamp, two-close count, confirmed/failed state, failure action, and question marker all need adding. Decisions still required:</li>
+</ul>
+<ol>
+<li>Choose “next two closes” or “two full bars after the entry bar.”</li>
+<li>Supply the initial Indy2 minimum slope.</li>
+<li>State whether zero clears a positive/negative slope or delta latch.</li>
+<li>State whether confirmation latches reset at entry or may already be holding from before entry.</li>
+<li>State whether opposite entry still reverses an unconfirmed or confirmed trade.</li>
+<li>State whether the old early exit, profit exit, and aggressive exits are removed or merely disabled.</li>
+<li>Define where the question marker is plotted and whether a flagged trade can later become confirmed. The strongest part is the clean separation between immediate entry and post-entry confirmation. The main weakness is that “latched” currently covers three different behaviors—tick states, cross-latches, and bar-close states—which must be stated separately to prevent implementation drift.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 15:18 UTC</div><p><strong>Disagreements:</strong></p>
+<ol>
+<li>
+<p><strong>The three-way "latched" taxonomy is miscut.</strong> CODEX splits conditions into current states (slope thresholds + slope directions), cross-latches (5–6), and bar-close states. Wrong split. In the state-driven regime, slope <em>directions</em> (3–4) and cross <em>sides</em> (5–6) are the same animal: level-event direction states that hold until a confirmed opposite event. There's no behavioral difference to document between them. The real split is two-way by clock plus one exception: conditions 3–6 are level-event latched states (tick clock); the deltas are bar-close states (bar clock); conditions 1–2 alone are instantaneous magnitude checks, not latches — that one correction to the doc is warranted.</p>
+</li>
+<li>
+<p><strong>"Not mechanically complete enough to implement" misreads the document's job.</strong> It's a rules doc, not an implementation spec — established scope. The bullets about missing detectors, missing closed-bar deltas, and missing confirmation lifecycle are change-plan material for implementation day, not rule gaps. Decision items 1, 3–7 are legitimate rule-level gaps; the rest of the "key comments" restate what we already established from the source.</p>
+</li>
+</ol>
+<p><strong>Answers with recommendations:</strong></p>
+<ol>
+<li>
+<p><strong>Window choice:</strong> input-gated knob, default "next two closes" for the first test. It's the simpler reading of "clock starts on the entry tick," and the late-in-bar free-read effect is exactly what the replay should measure, not what we should pre-decide away.</p>
+</li>
+<li>
+<p><strong>Initial Indy2 minimum:</strong> 0, same as Indy1, until the data scan runs. First test measures structure, not thresholds.</p>
+</li>
+<li>
+<p><strong>Zero never clears anything.</strong> That's the point of the level-event machinery: a latch flips only on a confirmed cross to the other side. Exact zero is inert — the held direction stands. One direction-agnostic statement: dir × value &gt; 0 sets; only a confirmed opposite event clears.</p>
+</li>
+<li>
+<p><strong>No reset at entry — pre-holding counts.</strong> Confirmation conditions describe the terrain, not events caused by the trade. Demanding fresh post-entry turns would convert states back into events, against the whole shift. Terrain already agreeing at the first close <em>is</em> confirmation.</p>
+</li>
+<li>
+<p><strong>Reversal applies to both, unconfirmed or confirmed.</strong> A full opposite entry picture is the strongest contradiction available; the open trade's confirmation status doesn't change the opposite signal's validity. Note: with the flicker layer dropped, the old 5-tick reversal delay is gone — reversal is immediate.</p>
+</li>
+<li>
+<p><strong>Rule level: old exits are out of the rules.</strong> Code level: input-gate off, don't delete, so replays can compare. But flag the hole this opens: with old exits off, the only closes are reversal and the failure-exit knob. That's a testable close set (reversal-only is a legitimate baseline), but know that's what the first test is scoring — entry quality under a dumb close rule, not a finished system.</p>
+</li>
+<li>
+<p><strong>Marker at the tick failure becomes final</strong> — the second bar close without all three holding — plotted on the entry-direction side of the ratio cluster like the existing arrows, distinct symbol. <strong>Flagged never converts to confirmed.</strong> The window is the statistic being tested; letting flags convert re-opens the window and destroys the measurement. The flag is a permanent audit mark; the trade lives on per knob (a) and its outcome tells you what failure meant.</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:21 UTC</div><p>CODEX'S response:</p>
+<p>Claude is correct on both disagreements.<br />
+My taxonomy was wrong. The correct split is:</p>
+<ul>
+<li>Conditions 1–2: instantaneous magnitude checks.</li>
+<li>Conditions 3–6: tick-clock level-event states, held until a confirmed opposite event.</li>
+<li>
+<p>Condition 7 and confirmation deltas: bar-close states, held between bar closes.<br />
+I also treated implementation work as missing rule content. The missing detectors, bar-close storage, and confirmation machinery belong in the eventual change plan, not the rules document.<br />
+Claude’s answers resolve the rule-level gaps:</p>
+</li>
+<li>
+<p>Default confirmation window: next two closes, input-selectable.</p>
+</li>
+<li>Both initial Indy slope minimums: 0.</li>
+<li>Exact zero is inert.</li>
+<li>Confirmation terrain does not reset at entry.</li>
+<li>Opposite entry immediately reverses confirmed or unconfirmed trades.</li>
+<li>Old exits are outside the rules but remain code-gated off for comparison.</li>
+<li>Failure becomes final at the second unsuccessful close.</li>
+<li>The distinct question marker is plotted on the existing entry-arrow side.</li>
+<li>A flagged trade can never convert to confirmed.<br />
+One precision correction remains: the level-event detector’s first nonzero sample establishes its initial direction immediately; after initialization, exact zero preserves that direction and only a confirmed opposite event flips it. A detector reset can return it to unset. Therefore, the clean rule wording is:<br />
+After initialization, each level-event direction state holds through zero and flips only on a confirmed opposite event.<br />
+With that wording correction, the rules are sufficiently settled as a rules document.</li>
+</ul>
+<p>Let me know if both of you are 100% agreed at this point.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 15:21 UTC</div><p>Agreed on all rule content, with one honesty note: CODEX's initialization claim ("first nonzero sample establishes direction immediately") describes detector internals in the include file, which I don't have — only the indicator was uploaded. I can't verify it from source. It doesn't matter for the rules: the proposed wording — <em>after initialization, each level-event direction state holds through zero and flips only on a confirmed opposite event</em> — is correct rule language either way, and I accept it as written.</p>
+<p>So: 100% agreed on the rules. The initialization mechanics are an implementation-audit item, verifiable when the include is in front of whoever builds it.</p>
+<p>The doc doesn't yet contain the settled decisions from this round (three-way condition taxonomy, the nine resolved items, the level-event wording). Change plan: fold them into the canonical section and Status/Open Items of the revised .md — taxonomy note replacing the "all conditions are latched states" sentence, resolved decisions moved from open to settled, window knob and marker semantics stated. Say GO and I'll produce the updated file.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:22 UTC</div><p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 15:23 UTC</div><p>Done. Five edits, nothing else touched: taxonomy paragraph replaces the broad latched-states sentence; entry conditions tagged by class with Indy2 minimum set to 0; confirmation section carries the settled window, no-reset rule, finality, marker, no-conversion, and immediate reversal; sampling-clocks knob note updated; new Settled Decisions section, with Open Items trimmed to what's genuinely open plus the initialization audit note. Superseded block and examples untouched.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:27 UTC</div><p>CODEX on the revised rules:</p>
+<p>The rules are not ready for the implementation change plan yet; three points need correction or resolution:</p>
+<ol>
+<li>“All conditions hold as latched states” contradicts the taxonomy. It should say “all conditions hold together as states.”</li>
+<li>Both worked examples still say the Indy2 minimum must be determined by scanning. They should say “initial value 0; data scan pending.”</li>
+<li>One substantive decision remains. The live detector assigns its initial direction from the first nonzero sample without a confirmed cross, but conditions 5–6 say the r1/r3 and r2/r3 sides are held from a confirmed cross. Specify whether:<br />
+   * The initialized side counts immediately; or<br />
+   * Conditions 5–6 remain unset until their first confirmed cross after initialization or reset.<br />
+Conditions 3–4 can independently use the initialized slope direction if intended.<br />
+I have not created the change plan because choosing either interpretation for item 3 would materially change entry behavior.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 15:27 UTC</div><p>On CODEX's 1 and 2: both correct, both my misses. The canonical Entry header still says "hold as latched states," contradicting the taxonomy above it, and both worked examples still carry "(determine by data scan)." Two-line fixes.</p>
+<p>On 3, my recommendation: <strong>the initialized side counts immediately.</strong> Same logic that settled no-reset-at-entry: conditions describe the current terrain, not the history of how it got there. Requiring a first post-initialization confirmed cross converts a state back into an event — the exact regression the state-driven shift exists to kill. It also creates an arbitrary blackout after every detector start or reset where a perfectly readable r1-below-r3 picture is invisible to the rules. And it keeps one mechanism one behavior: conditions 3–6 all read level-event direction states; splitting 5–6 onto a stricter regime than 3–4 forks the machinery for no rule-level reason.</p>
+<p>One direction-agnostic wording covers it: <em>a level-event direction state is valid from the moment it is set, whether set by initialization or by a confirmed event; conditions read the state, not its origin.</em></p>
+<p>Caveat, same as before: the first-nonzero-sample initialization behavior is CODEX's description of the include, which I still haven't seen. My recommendation holds under that description; the description itself is an implementation-audit item.</p>
+<p>Change plan on GO: fix the Entry header wording ("hold together as states on the same tick"), fix both example lines to "(initial value 0; data scan pending)", and — if you accept the recommendation — add the state-origin sentence to the level-event rule in the canonical section and log the decision under Settled Decisions.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 15:36 UTC</div><p>Please QA the change plan.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 15:37 UTC</div><p>QA done, checked against the live source. The plan is sound and matches the settled rules — every rule-level item (window modes, no-reset terrain, second-close finality, marker semantics, no-conversion, immediate reversal, gated old exits, zero-inert, initialization-counts-immediately) is faithfully carried. Verified against source: version is 1.61, the hold-ticks input and its validation exist where claimed, buffers/plots are 33 so new index 33 / count 34 is right, and the marker sides are correct — the existing buy entry arrow plots below the cluster and sell above, matching the plan's failed-long-below / failed-short-above.</p>
+<p>Four findings:</p>
+<p><strong>1. Dependency hazard in item 5 — the biggest one.</strong> The plan retains the four old exits behind the gate (item 9) but doesn't state that their feeds must survive the deletions. The gated profit exit reads the r3 turn latch; that latch is fed by the r3 and r3-slope level-event chains. The early exit arms off the r3 level-event direction at trade open and reads the r1−r3 history. The aggressive bails read the Indy1-slope and slope-spread level-event directions. Trade blocking (item 14: unchanged) reads the spread and slope chains too. Item 2 explicitly retains only the r1−r3 chain — an implementer following the deletion list could prune the "unused" ratio3, ratio3-slope, and indy-side chains and silently break everything gated. The plan should state: retain <strong>all</strong> existing level-event chains and the r3 turn latch update; the only state deleted is the old r1-side-of-r3 global (entry-only) plus the flicker system.</p>
+<p><strong>2. Multi-bar tick gaps unspecified.</strong> Item 3 captures "the preceding tick state" at the first tick of a new bar. When no tick lands in a bar period (session gaps, replay gaps), the preceding tick belongs to a bar further back: the plan doesn't say how deltas are formed across non-adjacent closed bars, nor how eligible-close counting behaves when a pending trade's window spans a gap — two closes can elapse in one tick. Needs a stated rule; simplest candidate is "closes with no ticks are skipped, not counted," but that's a decision, not mine to make.</p>
+<p><strong>3. Confirm one intended behavior.</strong> With the evaluation order in item 12 plus the retained edge tracking in item 4: an exit-mode confirmation failure closes the trade while the entry picture may still be held — edge tracking then suppresses same-direction re-entry until the picture drops and reforms. I read that as intended (one held picture, one entry), but it means exit-mode failures can't immediately re-enter. Confirm.</p>
+<p><strong>4. Cosmetic.</strong> Item 7's proviso "provided it occurs after the entry tick" is vacuous — the entry tick is inside the entry bar by definition, so its close always follows. Harmless; delete or keep.</p>
+<p>Nothing else. Items 1, 6–13, and 15 all check out against the source and the rules doc.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:00 UTC</div><p>Someone fucked the rules up.</p>
+<p>Here's what I originally asked for. </p>
+<p>Enter short only when all entry conditions are true: 1. Indy1 abs(slope) &gt; minIndy1Slope (0). 2. Indy2 abs(slope) &gt; minIndy2Slope (determine by data scan). 3. r1 slope &lt; 0 4. r2 slope &lt; 0 5. r1 crossed down over r3 6. r2 crossed down over r3 7. DELTA of slope of indy1 (SoI[n] - SoI[n-1]) &lt; 0 <strong>confirmation (within max 2 bars)</strong> 1. r3 slope &lt; 0 2. DELTA of slope of indy2 (SoI[n] - SoI[n-1]) &lt; 0 3. DELTA of indys spread (Indy1 - Indy2) &lt; 0</p>
+<p>Attached is the rules .md</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:01 UTC</div><p>Diffed your original against the doc, deviation by deviation, with where each came from:</p>
+<ol>
+<li>
+<p><strong>Condition 2 threshold:</strong> "(determine by data scan)" → "(initial value 0; data scan pending)." From the CODEX Q&amp;A round — both minimums start at 0, scan pending. You relayed CODEX's sign-off on it.</p>
+</li>
+<li>
+<p><strong>Conditions 3–4:</strong> your plain <code>r1 slope &lt; 0</code> / <code>r2 slope &lt; 0</code> → "level-event states." Origin: my chatter comment, then CODEX's taxonomy, ratified in the "100% agreed" round. <strong>This is the strongest candidate for the fuck-up.</strong> You wrote raw sign checks. You told me to keep the What-if Gestapo out and test bare. We converted your two simplest conditions into level-event machinery you never asked for — that's added infrastructure ahead of evidence, the exact thing you said not to do.</p>
+</li>
+<li>
+<p><strong>Condition 7 and the confirmation deltas:</strong> your <code>SoI[n] − SoI[n-1]</code> with no stated clock → bar-close-only states. Origin: your #4 question, my bar-side recommendation. You engaged it ("so the question was already moot?") but never ruled "yes, bar-close" in so many words.</p>
+</li>
+<li>
+<p><strong>Confirmation window:</strong> your "within max 2 bars" → "evaluated only at the next 2 bar closes." Origin: my knob proposal; you said you liked the "next 2 bar closes" revision. Note the narrowing though: "within max 2 bars" can be read as <em>any tick</em> inside the window; the doc permits exactly 2 evaluation points.</p>
+</li>
+<li>
+<p><strong>Confirmation condition 1 misclassified:</strong> doc lumps r3 slope under "bar-close states." r3 is a ratio — ratios stayed on the tick clock in your architecture. CODEX's taxonomy said "confirmation <em>deltas</em>" are bar-close; r3 slope isn't a delta. The doc overreached the taxonomy. That one's a genuine error regardless of the other rulings.</p>
+</li>
+<li>
+<p><strong>Everything else added</strong> (post-entry survival reading, no-reset terrain, second-close finality, marker, no-conversion, immediate reversal, old exits gated) came from your direct answers in this chat.</p>
+</li>
+</ol>
+<p>Which of these are the fuck-up? My guess is 2, possibly plus 3/4 — if so, the fix is reverting 3–4 to raw sign checks as written and deciding whether "within max 2 bars" means closes-only or any-tick. Say which items and I'll state the revert plan.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:01 UTC</div><p>did I ask you to diff the doc?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:01 UTC</div><p>No. You said the rules got fucked up — I should have asked what's wrong instead of deciding an audit was the answer. What's fucked up?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:01 UTC</div><p>fucking hell dude. Did I tell you what I originally asked for?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:02 UTC</div><p>Yes — and that was the instruction. The original is the spec; the doc drifted from it. No question needed.</p>
+<p>Plan: rewrite the canonical, long, and short sections to your original as written — raw sign checks on r1/r2 slope, plain crossed-down/up conditions, deltas as written with no clock doctrine, condition 2 back to "(determine by data scan)", confirmation as "within max 2 bars" with your three conditions. Strip the taxonomy paragraph, the level-event wording, the sampling-clocks section, and every Settled Decision that rewrote a condition. Keep only the additions you dictated directly: post-entry confirmation, entry-tick clock, failure knob (question mark vs exit), marker, no-conversion, immediate reversal, old exits gated off, flicker dropped, r3 benched. Superseded block untouched.</p>
+<p>GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:02 UTC</div><p>FUCKING NO.</p>
+<p>You don't even know what I want yet.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:02 UTC</div><p>Correct. What do you want?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:03 UTC</div><p>Do you see the diff between THE ORIGINAL RULES I GAVE YOU AND THE .MD FILE I JUST UPLOADED? YES OR NO</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:03 UTC</div><p>Yes.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:03 UTC</div><p>LIST THE DIFFERENCES.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:03 UTC</div><p>Original vs. uploaded .md, Short Example section (your original was the short form):</p>
+<ol>
+<li>Condition 2: original "(determine by data scan)" — doc says "(initial value 0; data scan pending)".</li>
+<li>Conditions 3–4: original <code>r1 slope &lt; 0</code>, <code>r2 slope &lt; 0</code> — doc's canonical section reclassifies them as level-event states (the short example text itself still reads <code>&lt; 0</code>).</li>
+<li>Conditions 5–6: original "r1 crossed down over r3", "r2 crossed down over r3" — doc appends "(latched: r1 below r3 since the cross)" and, in the canonical section, "held from the confirmed cross; flips on a confirmed cross back."</li>
+<li>Condition 7: original bare <code>SoI[n] − SoI[n-1] &lt; 0</code> — doc's canonical section adds "from closed-bar values" and tags it a bar-close state.</li>
+<li>Confirmation header: original "<strong>confirmation (within max 2 bars)</strong>" — doc says "evaluated at the next 2 bar closes after entry", and the canonical section restricts evaluation to exactly 2 bar-close points, adds the input-selectable "2 full bars" alternative.</li>
+<li>Confirmation conditions 1–3: original bare sign checks — doc classifies all three as bar-close states, including r3 slope.</li>
+<li>Original has nothing else. Doc adds: the taxonomy paragraph, the level-event state rule (zero-inert, initialization wording), "entry fires on first tick where all conditions hold," the entire confirmation lifecycle (entry-tick clock start, no-reset terrain, confirmed/failed semantics, second-close finality, flag-vs-exit knob, question marker, no-conversion, immediate reversal), the Sampling Clocks section, Settled Decisions section, Status and Open Items section, the twin Long Example, and the canonical direction-agnostic form.</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:04 UTC</div><p>TABULAR, WHAT i ASKED IN COLUMN 1, WHAT EXISTS IN COL 2.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:04 UTC</div><table>
+<thead>
+<tr>
+<th>#</th>
+<th>What I asked</th>
+<th>What exists in the .md</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Indy1 abs(slope) &gt; minIndy1Slope (0)</td>
+<td>Same, tagged <em>(instantaneous)</em></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Indy2 abs(slope) &gt; minIndy2Slope (determine by data scan)</td>
+<td>minIndy2Slope (initial value 0; data scan pending), tagged <em>(instantaneous)</em></td>
+</tr>
+<tr>
+<td>3</td>
+<td>r1 slope &lt; 0</td>
+<td>dir × r1 slope &gt; 0, tagged <em>(level-event state)</em></td>
+</tr>
+<tr>
+<td>4</td>
+<td>r2 slope &lt; 0</td>
+<td>dir × r2 slope &gt; 0, tagged <em>(level-event state)</em></td>
+</tr>
+<tr>
+<td>5</td>
+<td>r1 crossed down over r3</td>
+<td>r1 on the dir side of r3 — held from the confirmed cross; flips on a confirmed cross back <em>(level-event state)</em></td>
+</tr>
+<tr>
+<td>6</td>
+<td>r2 crossed down over r3</td>
+<td>r2 on the dir side of r3 — same <em>(level-event state)</em></td>
+</tr>
+<tr>
+<td>7</td>
+<td>DELTA of slope of indy1 (SoI[n] − SoI[n-1]) &lt; 0</td>
+<td>dir × delta of Indy1 slope &gt; 0, from closed-bar values, tagged <em>(bar-close state)</em></td>
+</tr>
+<tr>
+<td>C-header</td>
+<td>confirmation (within max 2 bars)</td>
+<td>Post-entry survival test; clock starts on entry tick; evaluated only at the next 2 bar closes (default), input-selectable to 2 full bars</td>
+</tr>
+<tr>
+<td>C1</td>
+<td>r3 slope &lt; 0</td>
+<td>dir × r3 slope &gt; 0, tagged <em>(bar-close state)</em></td>
+</tr>
+<tr>
+<td>C2</td>
+<td>DELTA of slope of indy2 (SoI[n] − SoI[n-1]) &lt; 0</td>
+<td>dir × delta of Indy2 slope &gt; 0, tagged <em>(bar-close state)</em></td>
+</tr>
+<tr>
+<td>C3</td>
+<td>DELTA of indys spread (Indy1 − Indy2) &lt; 0</td>
+<td>dir × delta of indy spread &gt; 0, tagged <em>(bar-close state)</em></td>
+</tr>
+<tr>
+<td>—</td>
+<td>(nothing else asked)</td>
+<td>Added: taxonomy paragraph; level-event zero-inert/initialization rule; entry-fires-on-first-tick line; confirmation lifecycle (no-reset terrain, second-close finality, flag-vs-exit knob, question marker, no-conversion, immediate reversal); Sampling Clocks section; Settled Decisions; Status and Open Items; Long Example; canonical dir form</td>
+</tr>
+</tbody>
+</table></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-10 21:05 UTC</div><p>THAT'S AS CLEAR AS MUD. STE FUCKER</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-10 21:05 UTC</div><table>
+<thead>
+<tr>
+<th>I asked</th>
+<th>The .md has</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>threshold: determine by data scan</td>
+<td>threshold: 0 for now</td>
+</tr>
+<tr>
+<td>r1 slope &lt; 0, plain</td>
+<td>r1 slope reads a held state</td>
+</tr>
+<tr>
+<td>r2 slope &lt; 0, plain</td>
+<td>r2 slope reads a held state</td>
+</tr>
+<tr>
+<td>r1 crossed down over r3</td>
+<td>r1 below r3, held since the cross</td>
+</tr>
+<tr>
+<td>r2 crossed down over r3</td>
+<td>r2 below r3, held since the cross</td>
+</tr>
+<tr>
+<td>Indy1 slope delta &lt; 0, plain</td>
+<td>Indy1 slope delta from closed bars only</td>
+</tr>
+<tr>
+<td>confirm within max 2 bars</td>
+<td>confirm checked only at 2 bar closes</td>
+</tr>
+<tr>
+<td>r3 slope &lt; 0, plain</td>
+<td>r3 slope from closed bars only</td>
+</tr>
+<tr>
+<td>Indy2 slope delta &lt; 0, plain</td>
+<td>Indy2 slope delta from closed bars only</td>
+</tr>
+<tr>
+<td>spread delta &lt; 0, plain</td>
+<td>spread delta from closed bars only</td>
+</tr>
+<tr>
+<td>nothing more</td>
+<td>a pile of added rules: what happens on confirm fail, markers, reversals, old exits, examples, decision logs</td>
+</tr>
+</tbody>
+</table></div><div class="nav"><span><a href="2026-07-10_indy-processing-window-start-time-calculation_0662b974.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-09_refactoring-indy-to-disentangle-concerns_8aae3a66.html">Next →</a></span></div></div></body></html>

@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Refactoring MQL5 indicator for modularity</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="619-2026-01-23-stop-loss-liquidity-risks-in-flash-crashes.html">&larr; Stop-loss liquidity risks in flash crashes</a><a href="../index.html">All chats</a><a href="621-2026-01-24-mathematics-for-real-world-problem-solving.html">Mathematics for real-world problem solving &rarr;</a></nav>
+<header class="top">
+<h1>Refactoring MQL5 indicator for modularity</h1>
+<div class="meta">Created 2026-01-24 06:47 UTC &middot; Last updated 2026-01-24 08:04 UTC &middot; 36 messages<br>Original: <a href="https://claude.ai/chat/81a75983-67ce-4104-bbb0-a02292b1999b">claude.ai/chat/81a75983-67ce-4104-bbb0-a02292b1999b</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 06:47 UTC</span></div><div class="body">This is an MQL5 indicator with lots of problems. I&#x27;m thinking that it would be easier to debug if it were modularized. There&#x27;s an incredibly long if structure in the DrawEventArrowsAndSimulateTrades function that should be restructured. The function itself comingles two independent concerns: price events and trading signals.
+
+I want to proceed step by step and test changes. Please examine the code and tell me what opportunities there are for modularization and improving the structure.<p class="note">[File attached: KC_EMA_Relationship_Detector.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 06:49 UTC</span></div><div class="body"><p>Friday, January 24, 2026, 10:47 AM CST</p>
+<p>The file is UTF-16LE encoded. Let me convert it to read it properly.</p>
+<p>Now I have a complete picture. Here's my analysis:</p>
+<hr />
+<h2>Code Structure Overview</h2>
+<p><strong>File size:</strong> 2,299 lines<br />
+<strong>Primary problem function:</strong> <code>DrawEventArrowsAndSimulateTrades</code> (lines 979–1489, ~510 lines)</p>
+<hr />
+<h2>Identified Modularization Opportunities</h2>
+<h3>1. <strong>Separation of Concerns in <code>DrawEventArrowsAndSimulateTrades</code></strong></h3>
+<p>The function currently handles three distinct responsibilities:</p>
+<table>
+<thead>
+<tr>
+<th>Responsibility</th>
+<th>Lines (approx)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Event Detection</td>
+<td>~400</td>
+<td>Detecting crosses, kisses, hugs for 3 bands</td>
+</tr>
+<tr>
+<td>Arrow Drawing</td>
+<td>~80</td>
+<td>Creating visual chart objects</td>
+</tr>
+<tr>
+<td>Signal Generation</td>
+<td>~30</td>
+<td>Populating <code>SignalEvent[]</code> for trade simulation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendation:</strong> Split into:</p>
+<ul>
+<li><code>DetectPriceEvents()</code> — returns detected events</li>
+<li><code>DrawEventArrows()</code> — consumes events, draws arrows</li>
+<li>Signal generation stays in or near <code>SimulateTrades()</code></li>
+</ul>
+<hr />
+<h3>2. <strong>Repetitive Band Processing (The Long If Structure)</strong></h3>
+<p>The main loop (lines 1014–1481) contains nearly identical code blocks repeated 3 times for upper/middle/lower bands. Each block:</p>
+<ul>
+<li>Detects potential cross (lines ~1037–1059, 1129–1151, 1220–1242)</li>
+<li>Confirms or rejects cross (lines ~1062–1126, 1154–1217, 1245–1304)</li>
+<li>Tracks contact for kiss/hug (lines ~1308–1366, 1368–1421, 1423–1480)</li>
+</ul>
+<p><strong>Repetition pattern:</strong></p>
+<pre><code>Band processing × 3 bands = ~450 lines that could be ~150 lines + parameterization
+</code></pre>
+<p><strong>Recommendation:</strong> Create a <code>BandState</code> struct and process all bands in a loop:</p>
+<pre><code class="language-cpp">struct BandState {
+   double         &amp;line[];        // KC_Upper, KC_Middle, or KC_Lower
+   PendingCross   pending;
+   int            contact_count;
+   int            contact_start_bar;
+   bool           in_hug;
+   string         band_name;      // &quot;upper&quot;, &quot;middle&quot;, &quot;lower&quot;
+   string         cross_up_signal;   // &quot;XUU&quot;, &quot;XMU&quot;, &quot;XLU&quot;
+   string         cross_down_signal; // &quot;XUD&quot;, &quot;XMD&quot;, &quot;XLD&quot;
+   string         kiss_signal;       // &quot;KU&quot;, &quot;KM&quot;, &quot;KL&quot;
+   string         hug_signal;        // &quot;HU&quot;, &quot;HM&quot;, &quot;HL&quot;
+   int            trade_direction_kiss;  // TRADE_SHORT for upper, contextual for middle, TRADE_LONG for lower
+};
+</code></pre>
+<hr />
+<h3>3. <strong>Duplicate Detection Logic</strong></h3>
+<p>Two separate detection passes exist:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Purpose</th>
+<th>Redundancy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DetectCrossesWithConfirmation</code> (690–817)</td>
+<td>Statistics counting</td>
+<td>Duplicates detection logic</td>
+</tr>
+<tr>
+<td><code>DetectKissesAndHugs</code> (823–~965)</td>
+<td>Statistics counting</td>
+<td>Duplicates detection logic</td>
+</tr>
+<tr>
+<td><code>DrawEventArrowsAndSimulateTrades</code> (979–1489)</td>
+<td>Arrows + signals</td>
+<td>Re-implements same detection</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Recommendation:</strong> Single-pass detection that:</p>
+<ol>
+<li>Populates event records (<code>g_events[]</code>)</li>
+<li>Updates counters (<code>g_counters</code>)</li>
+<li>Subsequent functions consume events for arrows/signals</li>
+</ol>
+<hr />
+<h3>4. <strong>Arrow Creation Functions</strong></h3>
+<p>Currently 5 similar functions (lines 1596–1700):</p>
+<ul>
+<li><code>CreateCrossArrow</code></li>
+<li><code>CreateKissArrow</code></li>
+<li><code>CreateHugArrow</code></li>
+<li><code>CreateTradeEntryArrow</code></li>
+<li><code>CreateTradeExitArrow</code></li>
+</ul>
+<p><strong>Recommendation:</strong> Single parameterized <code>CreateArrow()</code> with an <code>ArrowConfig</code> struct, or at minimum extract common <code>ObjectSetInteger</code> calls.</p>
+<hr />
+<h2>Proposed Refactoring Order</h2>
+<ol>
+<li><strong>Extract band state into struct</strong> — immediate complexity reduction</li>
+<li><strong>Parameterize band loop</strong> — eliminates ~300 lines of repetition</li>
+<li><strong>Unify detection pass</strong> — remove redundant <code>DetectCrossesWithConfirmation</code> and <code>DetectKissesAndHugs</code></li>
+<li><strong>Separate arrow drawing</strong> — <code>DrawEventArrows(EventRecord &amp;events[])</code> consumes pre-detected events</li>
+<li><strong>Separate signal generation</strong> — signals derived from events, not inline with detection</li>
+</ol>
+<hr />
+<p>Which refactoring step do you want to tackle first?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 06:54 UTC</span></div><div class="body">what do you mean by &quot;band&quot;?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 06:55 UTC</span></div><div class="body"><p>The three Keltner Channel lines:</p>
+<ul>
+<li><strong>Upper band</strong> — <code>KC_Upper[]</code> (middle + ATR × multiplier)</li>
+<li><strong>Middle band</strong> — <code>KC_Middle[]</code> (the EMA(20) centerline)</li>
+<li><strong>Lower band</strong> — <code>KC_Lower[]</code> (middle − ATR × multiplier)</li>
+</ul>
+<p>The code processes each of these three lines separately for cross/kiss/hug detection against price, resulting in the repetitive structure where nearly identical logic appears three times with only the array reference and signal names changed.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 06:55 UTC</span></div><div class="body">haha, it&#x27;s a channel. KISS it dude.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 06:55 UTC</span></div><div class="body"><p>Right. Upper, middle, lower. The channel lines.</p>
+<p>I'll drop the jargon.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 06:56 UTC</span></div><div class="body">which step(s) do you recommend, just go through one at a time in the order given?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 06:56 UTC</span></div><div class="body"><p>Yes, that order makes sense. Steps 1 and 2 are effectively one change — you'd create the struct and parameterize the loop together.</p>
+<p>That's the highest-impact change: ~300 lines of repetition collapses into a loop over 3 channel lines. Biggest debugging benefit because you fix logic once instead of hunting through three copies.</p>
+<p>Steps 3–5 are cleanup that becomes easier after the core loop is simplified.</p>
+<p>Ready to start with the <code>BandState</code> struct and loop parameterization?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 06:57 UTC</span></div><div class="body">OK, let&#x27;s do that one. Can you present the file for download and OMIT the exasperating line-by-line code printout in the chat window?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:01 UTC</span></div><div class="body"><p>Let me create the refactored version with the struct and loop.</p>
+<p>Now let me replace the massive <code>DrawEventArrowsAndSimulateTrades</code> function with the refactored loop-based version. Let me first get the exact boundaries.</p>
+<p>I need to fix the array reference issue. Let me add an overloaded <code>IsCrossConfirmed</code> that takes <code>line_id</code>:</p>
+<p>Done. Changes:</p>
+<p><strong>Added:</strong></p>
+<ul>
+<li><code>ChannelLineState</code> struct (holds per-line state: pending cross, contact tracking, signal names)</li>
+<li><code>InitChannelLineStates()</code> — sets up signal names and default directions for each line</li>
+<li><code>ResetChannelLineStates()</code> — clears state between runs</li>
+<li><code>GetLineValue()</code>, <code>GetTouchPrice()</code>, <code>IsTouchingLine()</code> — line-specific value lookups</li>
+<li><code>GetEventDirection()</code> — handles upper/lower fixed direction vs middle contextual</li>
+<li><code>IsCrossConfirmedByLineId()</code> — line_id-based cross confirmation</li>
+</ul>
+<p><strong>Replaced:</strong></p>
+<ul>
+<li>3× repeated cross detection blocks → single loop with <code>n = 0..2</code></li>
+<li>3× repeated contact tracking blocks → single loop</li>
+<li>3× separate <code>PendingCross</code> variables → stored in <code>g_line_states[n].pending</code></li>
+<li>3× separate contact counters → stored in <code>g_line_states[n]</code></li>
+</ul>
+<p><strong>Result:</strong></p>
+<ul>
+<li>2299 → 2172 lines (−127)</li>
+<li>Logic now exists in one place — fix once, applies to all three lines</li>
+</ul>
+<p>Test in MT5 to confirm behavior matches the original.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:04 UTC</span></div><div class="body">what&#x27;s this?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:04 UTC</span></div><div class="body"><p>Need more context. What are you looking at?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:04 UTC</span></div><div class="body">KC_EMA_Relationship_Detector_v182.mq5			
+class type expected, pointer to type &#x27;ChannelLineState&#x27; is not allowed	KC_EMA_Relationship_Detector_v182.mq5	1187	27
+class type expected	KC_EMA_Relationship_Detector_v182.mq5	1187	60
+   built-in: void* GetPointer(const T&amp;)	KC_EMA_Relationship_Detector_v182.mq5	1187	36
+&#x27;struct ChannelLineState&#x27; initialized from type type &#x27;unknown&#x27; using assignment operator, this behavior is deprecated and will be removed in future	KC_EMA_Relationship_Detector_v182.mq5	1187	34
+   consider defining constructor &#x27;ChannelLineState(const unknown&amp;)&#x27;	KC_EMA_Relationship_Detector_v182.mq5	299	8
+parameter passed as reference, variable expected	KC_EMA_Relationship_Detector_v182.mq5	1187	36
+   implicit void ChannelLineState::operator=(const ChannelLineState&amp;)	KC_EMA_Relationship_Detector_v182.mq5	299	8
+&#x27;operator=&#x27; - object required	KC_EMA_Relationship_Detector_v182.mq5	1187	34
+4 errors, 1 warnings		4	1</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:05 UTC</span></div><div class="body"><p>MQL5 compilation errors. <code>GetPointer()</code> only works with classes, not structs.</p>
+<p>Fix: replace the pointer with direct array access.</p>
+<p>Fixed. Replaced <code>GetPointer()</code> with direct array access (<code>g_line_states[n].</code>). MQL5 only allows <code>GetPointer()</code> on class objects, not structs.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:16 UTC</span></div><div class="body">Check the output.
+
+From BEFORE refactoring.
+
+and then AFTER refactoring<details><summary>Attached file: unnamed</summary><pre>2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	=== Starting KC-EMA Relationship Analysis Vsn 1.81 ===
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Symbol: USDJPY.a | Timeframe: PERIOD_H1
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Trade Start Date: 2026.01.01
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Confirm Bars: 3
+2026.01.24 00:59:37.182	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Analyzing 99967 bars...
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	       KC-EMA EVENT STATISTICS - USDJPY.a PERIOD_H1
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	       Total Bars Analyzed: 100007
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	       Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	       Cross Confirm Bars: 3
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PRICE EVENTS ---
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Upper:  1314 up / 2372 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Middle: 3088 up / 2962 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Lower:  2334 up / 1020 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Upper:   3852
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Middle:  6536
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Lower:   3637
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Upper:    3159
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Middle:   4184
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Lower:    3336
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- EMA(7) EVENTS ---
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Upper:  419 up / 599 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Middle: 2003 up / 1995 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Cross Lower:  368 up / 208 down
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Upper:   408
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Middle:  906
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Kiss Lower:   258
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Upper:    1836
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Middle:   1858
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hug Lower:    1794
+2026.01.24 00:59:37.185	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Drew 158 event arrows on chart
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Total signals for trade simulation: 119
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Total events recorded: 11683
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_383,2026.01.02 00:00,156.166
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_381_2,2026.01.02 02:00,157.225
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_377_2,2026.01.02 06:00,156.214
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_371_2,2026.01.02 12:00,157.412
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_362_2,2026.01.02 21:00,156.394
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_360_2,2026.01.02 23:00,157.376
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_355_2,2026.01.05 04:00,156.517
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_352_2,2026.01.05 07:00,157.783
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_345_2,2026.01.05 14:00,156.123
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_344_2,2026.01.05 15:00,157.150
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_343_2,2026.01.05 16:00,156.323
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_338_2,2026.01.05 21:00,156.688
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,156.006
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,157.006
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_318_2,2026.01.06 17:00,155.905
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_303_2,2026.01.07 08:00,156.885
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_299_2,2026.01.07 12:00,155.963
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_284_2,2026.01.08 03:00,157.287
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_283_2,2026.01.08 04:00,156.412
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_280_2,2026.01.08 07:00,157.190
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_275_2,2026.01.08 12:00,156.247
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,157.223
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,156.223
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_268_2,2026.01.08 19:00,157.403
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_260_2,2026.01.09 03:00,156.508
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_260_2,2026.01.09 03:00,157.508
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_257_2,2026.01.09 06:00,156.737
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_248_2,2026.01.09 15:00,158.148
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_244_2,2026.01.09 19:00,157.578
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_240_2,2026.01.09 23:00,158.385
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_237_2,2026.01.12 02:00,157.637
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_234_2,2026.01.12 05:00,158.549
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_233_2,2026.01.12 06:00,157.618
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,158.347
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,157.347
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_191_2,2026.01.14 00:00,159.585
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_169_2,2026.01.14 22:00,158.005
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_155_2,2026.01.15 12:00,158.899
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_151_2,2026.01.15 16:00,158.330
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_147_2,2026.01.15 20:00,159.009
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_144_2,2026.01.15 23:00,158.143
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_138_2,2026.01.16 05:00,158.803
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_136_2,2026.01.16 07:00,157.777
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_116_2,2026.01.19 03:00,157.973
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_112_2,2026.01.19 07:00,157.328
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_110_2,2026.01.19 09:00,158.313
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_109_2,2026.01.19 10:00,157.576
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_106_2,2026.01.19 13:00,158.384
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_104_2,2026.01.19 15:00,157.520
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_83_2,2026.01.20 12:00,158.232
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_79_2,2026.01.20 16:00,157.338
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_61_2,2026.01.21 10:00,158.428
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_54_2,2026.01.21 17:00,157.611
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_52_2,2026.01.21 19:00,158.670
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,158.216
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,159.216
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_19_2,2026.01.23 04:00,158.143
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_15_2,2026.01.23 08:00,159.125
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_13_2,2026.01.23 10:00,157.890
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,158.505
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,157.505
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_2_2,2026.01.23 21:00,156.666
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Drew 123 trade arrows on chart
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	               TRADE SIMULATION STATISTICS
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	               Start Date: 2026.01.01
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- TRADE COUNTS ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Total Trades:      61
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Long Trades:       31 (10W/18L/3BE) WR: 35.7%
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Short Trades:      30 (8W/19L/3BE) WR: 29.6%
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Winning Trades:    18
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Losing Trades:     37
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Breakeven Trades:  6
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PROFIT/LOSS (pips) ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Gross Profit:      455.6
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Gross Loss:        991.0
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Net Profit:        -535.4
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- AVERAGES (pips) ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Avg Win:           25.31
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Avg Loss:          26.78
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Avg Trade:         -8.78
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Avg Duration:      6.2 bars
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- EXTREMES (pips) ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Largest Win:       123.8
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Largest Loss:      -183.9
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Max Drawdown:      643.4
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PERFORMANCE METRICS ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Win Rate:          32.73%
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Loss Rate:         67.27%
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Profit Factor:     0.46
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Risk/Reward:       0.95
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Expectancy:        -9.73 pips/trade
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Sharpe Ratio:      -0.23
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Recovery Factor:   -0.83
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Time in Market:    99.5%
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Max Consec Wins:   4
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Max Consec Losses: 8
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PERFORMANCE BY ENTRY SIGNAL ---
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KL: 6 | 3W/3L | WR: 50.0% | Tot: 71.6 | Avg: 11.93
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -56.0 | Avg: -7.00
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HL: 10 | 4W/6L | WR: 40.0% | Tot: -46.9 | Avg: -4.69
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KM: 8 | 3W/5L | WR: 37.5% | Tot: -249.3 | Avg: -31.16
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -34.4 | Avg: -8.60
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KU: 5 | 2W/3L | WR: 40.0% | Tot: -39.8 | Avg: -7.96
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XLU: 5 | 2W/3L | WR: 40.0% | Tot: -43.2 | Avg: -8.64
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XLD: 2 | 0W/2L | WR: 0.0% | Tot: -67.3 | Avg: -33.65
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XMD: 2 | 0W/2L | WR: 0.0% | Tot: -21.2 | Avg: -10.60
+2026.01.24 00:59:38.148	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HM: 4 | 2W/2L | WR: 50.0% | Tot: -11.9 | Avg: -2.97
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XUU: 3 | 2W/1L | WR: 66.7% | Tot: 21.8 | Avg: 7.27
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HU: 4 | 2W/2L | WR: 50.0% | Tot: -58.8 | Avg: -14.70
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PERFORMANCE BY EXIT SIGNAL ---
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -73.9 | Avg: -9.24
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HL: 10 | 3W/7L | WR: 30.0% | Tot: -84.3 | Avg: -8.43
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KM: 8 | 7W/1L | WR: 87.5% | Tot: 264.2 | Avg: 33.02
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -56.8 | Avg: -14.20
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KU: 5 | 3W/2L | WR: 60.0% | Tot: -18.0 | Avg: -3.60
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XLU: 5 | 1W/4L | WR: 20.0% | Tot: -34.4 | Avg: -6.88
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XLD: 3 | 0W/3L | WR: 0.0% | Tot: -327.8 | Avg: -109.27
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XMD: 2 | 0W/2L | WR: 0.0% | Tot: -34.1 | Avg: -17.05
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HM: 4 | 2W/2L | WR: 50.0% | Tot: 28.2 | Avg: 7.05
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	KL: 5 | 3W/2L | WR: 60.0% | Tot: -15.3 | Avg: -3.06
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	XUU: 3 | 0W/3L | WR: 0.0% | Tot: -120.5 | Avg: -40.17
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	HU: 4 | 1W/3L | WR: 25.0% | Tot: -62.7 | Avg: -15.67
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PERFORMANCE BY HOUR (UTC) ---
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 00: 2 trades | 63.9 pips | Avg: 31.95
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 01: 2 trades | 10.1 pips | Avg: 5.05
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 02: 2 trades | -7.7 pips | Avg: -3.85
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 03: 4 trades | -70.9 pips | Avg: -17.72
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 04: 3 trades | 2.6 pips | Avg: 0.87
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 05: 2 trades | -4.3 pips | Avg: -2.15
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 06: 3 trades | 33.8 pips | Avg: 11.27
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 07: 4 trades | -21.6 pips | Avg: -5.40
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 08: 4 trades | 23.0 pips | Avg: 5.75
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 09: 1 trades | -26.3 pips | Avg: -26.30
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 10: 5 trades | 47.8 pips | Avg: 9.56
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 12: 7 trades | -205.8 pips | Avg: -29.40
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 13: 1 trades | -13.6 pips | Avg: -13.60
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 14: 1 trades | 2.7 pips | Avg: 2.70
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 15: 5 trades | -71.1 pips | Avg: -14.22
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 16: 3 trades | -86.6 pips | Avg: -28.87
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 17: 2 trades | 3.9 pips | Avg: 1.95
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 19: 3 trades | -84.4 pips | Avg: -28.13
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 20: 1 trades | -13.4 pips | Avg: -13.40
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 21: 2 trades | -33.6 pips | Avg: -16.80
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 22: 1 trades | -10.6 pips | Avg: -10.60
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Hour 23: 3 trades | -73.3 pips | Avg: -24.43
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	--- PERFORMANCE BY DAY OF WEEK ---
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Mon: 17 trades | -61.2 pips | Avg: -3.60
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Tue: 5 trades | 6.5 pips | Avg: 1.30
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Wed: 7 trades | 5.0 pips | Avg: 0.71
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Thu: 13 trades | -150.6 pips | Avg: -11.58
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	Fri: 19 trades | -335.1 pips | Avg: -17.64
+2026.01.24 00:59:38.149	KC_EMA_Relationship_Detector (USDJPY.a,H1)	==============================================================</pre></details><details><summary>Attached file: unnamed</summary><pre>2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	=== Starting KC-EMA Relationship Analysis Vsn 1.82 ===
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Symbol: USDJPY.a | Timeframe: PERIOD_H1
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Trade Start Date: 2026.01.01
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Confirm Bars: 3
+2026.01.24 01:08:42.598	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Analyzing 99967 bars...
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	       KC-EMA EVENT STATISTICS - USDJPY.a PERIOD_H1
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	       Total Bars Analyzed: 100007
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	       Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	       Cross Confirm Bars: 3
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PRICE EVENTS ---
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Upper:  1314 up / 2372 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Middle: 3088 up / 2962 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Lower:  2334 up / 1020 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Upper:   3852
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Middle:  6536
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Lower:   3637
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Upper:    3159
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Middle:   4184
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Lower:    3336
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- EMA(7) EVENTS ---
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Upper:  419 up / 599 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Middle: 2003 up / 1995 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Cross Lower:  368 up / 208 down
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Upper:   408
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Middle:  906
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Kiss Lower:   258
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Upper:    1836
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Middle:   1858
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hug Lower:    1794
+2026.01.24 01:08:42.601	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Drew 158 event arrows on chart
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Total signals for trade simulation: 119
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Total events recorded: 11683
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_383,2026.01.02 00:00,156.166
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_381_2,2026.01.02 02:00,157.225
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_377_2,2026.01.02 06:00,156.214
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_371_2,2026.01.02 12:00,157.412
+2026.01.24 01:08:43.579	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_362_2,2026.01.02 21:00,156.394
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_360_2,2026.01.02 23:00,157.376
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_355_2,2026.01.05 04:00,156.517
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_352_2,2026.01.05 07:00,157.783
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_345_2,2026.01.05 14:00,156.123
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_344_2,2026.01.05 15:00,157.150
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_343_2,2026.01.05 16:00,156.323
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_338_2,2026.01.05 21:00,156.688
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,156.006
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,157.006
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_318_2,2026.01.06 17:00,155.905
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_303_2,2026.01.07 08:00,156.885
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_299_2,2026.01.07 12:00,155.963
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_284_2,2026.01.08 03:00,157.287
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_283_2,2026.01.08 04:00,156.412
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_280_2,2026.01.08 07:00,157.190
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_275_2,2026.01.08 12:00,156.247
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,157.223
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,156.223
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_268_2,2026.01.08 19:00,157.403
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_260_2,2026.01.09 03:00,156.508
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_248_2,2026.01.09 15:00,158.148
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_244_2,2026.01.09 19:00,157.578
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_240_2,2026.01.09 23:00,158.385
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_237_2,2026.01.12 02:00,157.637
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_234_2,2026.01.12 05:00,158.549
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_233_2,2026.01.12 06:00,157.618
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,158.347
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,157.347
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_191_2,2026.01.14 00:00,159.585
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_169_2,2026.01.14 22:00,158.005
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_155_2,2026.01.15 12:00,158.899
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_151_2,2026.01.15 16:00,158.330
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_147_2,2026.01.15 20:00,159.009
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_144_2,2026.01.15 23:00,158.143
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_138_2,2026.01.16 05:00,158.803
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_136_2,2026.01.16 07:00,157.777
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_116_2,2026.01.19 03:00,157.973
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_112_2,2026.01.19 07:00,157.328
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_110_2,2026.01.19 09:00,158.313
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_109_2,2026.01.19 10:00,157.576
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_106_2,2026.01.19 13:00,158.384
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_104_2,2026.01.19 15:00,157.520
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_83_2,2026.01.20 12:00,158.232
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_79_2,2026.01.20 16:00,157.338
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_61_2,2026.01.21 10:00,158.428
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_54_2,2026.01.21 17:00,157.611
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_52_2,2026.01.21 19:00,158.670
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,158.216
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,159.216
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_19_2,2026.01.23 04:00,158.143
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_15_2,2026.01.23 08:00,159.125
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_13_2,2026.01.23 10:00,157.890
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,158.505
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,157.505
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_2_2,2026.01.23 21:00,156.666
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Drew 119 trade arrows on chart
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	               TRADE SIMULATION STATISTICS
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	               Start Date: 2026.01.01
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- TRADE COUNTS ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Total Trades:      59
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Long Trades:       30 (10W/18L/2BE) WR: 35.7%
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Short Trades:      29 (8W/18L/3BE) WR: 30.8%
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Winning Trades:    18
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Losing Trades:     36
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Breakeven Trades:  5
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PROFIT/LOSS (pips) ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Gross Profit:      478.5
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Gross Loss:        968.1
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Net Profit:        -489.6
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- AVERAGES (pips) ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Avg Win:           26.58
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Avg Loss:          26.89
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Avg Trade:         -8.30
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Avg Duration:      6.5 bars
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- EXTREMES (pips) ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Largest Win:       123.8
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Largest Loss:      -183.9
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Max Drawdown:      597.9
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PERFORMANCE METRICS ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Win Rate:          33.33%
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Loss Rate:         66.67%
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Profit Factor:     0.49
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Risk/Reward:       0.99
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Expectancy:        -9.07 pips/trade
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Sharpe Ratio:      -0.21
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Recovery Factor:   -0.82
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Time in Market:    99.5%
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Max Consec Wins:   4
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Max Consec Losses: 8
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PERFORMANCE BY ENTRY SIGNAL ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KL: 6 | 3W/3L | WR: 50.0% | Tot: 71.6 | Avg: 11.93
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -56.0 | Avg: -7.00
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HL: 10 | 4W/6L | WR: 40.0% | Tot: 17.1 | Avg: 1.71
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KM: 8 | 3W/5L | WR: 37.5% | Tot: -249.3 | Avg: -31.16
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -34.4 | Avg: -8.60
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KU: 5 | 2W/3L | WR: 40.0% | Tot: -39.8 | Avg: -7.96
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XLU: 5 | 2W/3L | WR: 40.0% | Tot: -43.2 | Avg: -8.64
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XLD: 2 | 0W/2L | WR: 0.0% | Tot: -67.3 | Avg: -33.65
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HU: 5 | 2W/3L | WR: 40.0% | Tot: -66.6 | Avg: -13.32
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HM: 3 | 2W/1L | WR: 66.7% | Tot: 11.0 | Avg: 3.67
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XUU: 2 | 1W/1L | WR: 50.0% | Tot: -19.3 | Avg: -9.65
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XMD: 1 | 0W/1L | WR: 0.0% | Tot: -13.4 | Avg: -13.40
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PERFORMANCE BY EXIT SIGNAL ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -73.9 | Avg: -9.24
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HL: 10 | 3W/7L | WR: 30.0% | Tot: -84.3 | Avg: -8.43
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KM: 8 | 7W/1L | WR: 87.5% | Tot: 287.1 | Avg: 35.89
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -56.8 | Avg: -14.20
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KU: 5 | 3W/2L | WR: 60.0% | Tot: -18.0 | Avg: -3.60
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XLU: 5 | 1W/4L | WR: 20.0% | Tot: -34.4 | Avg: -6.88
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XLD: 3 | 0W/3L | WR: 0.0% | Tot: -327.8 | Avg: -109.27
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HU: 5 | 1W/4L | WR: 20.0% | Tot: -64.7 | Avg: -12.94
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	HM: 3 | 1W/2L | WR: 33.3% | Tot: 28.2 | Avg: 9.40
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	KL: 5 | 3W/2L | WR: 60.0% | Tot: -15.3 | Avg: -3.06
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XUU: 2 | 0W/2L | WR: 0.0% | Tot: -97.6 | Avg: -48.80
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	XMD: 1 | 0W/1L | WR: 0.0% | Tot: -32.1 | Avg: -32.10
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PERFORMANCE BY HOUR (UTC) ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 00: 2 trades | 63.9 pips | Avg: 31.95
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 01: 2 trades | 10.1 pips | Avg: 5.05
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 02: 2 trades | -7.7 pips | Avg: -3.85
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 03: 3 trades | 16.0 pips | Avg: 5.33
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 04: 3 trades | 2.6 pips | Avg: 0.87
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 05: 2 trades | -4.3 pips | Avg: -2.15
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 06: 2 trades | -7.3 pips | Avg: -3.65
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 07: 4 trades | -21.6 pips | Avg: -5.40
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 08: 4 trades | 23.0 pips | Avg: 5.75
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 09: 1 trades | -26.3 pips | Avg: -26.30
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 10: 5 trades | 47.8 pips | Avg: 9.56
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 12: 7 trades | -205.8 pips | Avg: -29.40
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 13: 1 trades | -13.6 pips | Avg: -13.60
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 14: 1 trades | 2.7 pips | Avg: 2.70
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 15: 5 trades | -71.1 pips | Avg: -14.22
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 16: 3 trades | -86.6 pips | Avg: -28.87
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 17: 2 trades | 3.9 pips | Avg: 1.95
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 19: 3 trades | -84.4 pips | Avg: -28.13
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 20: 1 trades | -13.4 pips | Avg: -13.40
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 21: 2 trades | -33.6 pips | Avg: -16.80
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 22: 1 trades | -10.6 pips | Avg: -10.60
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Hour 23: 3 trades | -73.3 pips | Avg: -24.43
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	--- PERFORMANCE BY DAY OF WEEK ---
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Mon: 17 trades | -61.2 pips | Avg: -3.60
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Tue: 5 trades | 6.5 pips | Avg: 1.30
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Wed: 7 trades | 5.0 pips | Avg: 0.71
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Thu: 13 trades | -150.6 pips | Avg: -11.58
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	Fri: 17 trades | -289.3 pips | Avg: -17.02
+2026.01.24 01:08:43.580	KC_EMA_Relationship_Detector_v182 (USDJPY.a,H1)	==============================================================</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:17 UTC</span></div><div class="body"><p>Output differs. Not a clean refactor.</p>
+<p><strong>Key discrepancies:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>v1.81</th>
+<th>v1.82</th>
+<th>Delta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Total Trades</td>
+<td>61</td>
+<td>59</td>
+<td>-2</td>
+</tr>
+<tr>
+<td>Trade Arrows</td>
+<td>123</td>
+<td>119</td>
+<td>-4</td>
+</tr>
+<tr>
+<td>Net Profit</td>
+<td>-535.4</td>
+<td>-489.6</td>
+<td>+45.8</td>
+</tr>
+<tr>
+<td>Breakeven</td>
+<td>6</td>
+<td>5</td>
+<td>-1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Signal count differences:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>v1.81</th>
+<th>v1.82</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>XMD entry</td>
+<td>2</td>
+<td>1</td>
+</tr>
+<tr>
+<td>HM entry</td>
+<td>4</td>
+<td>3</td>
+</tr>
+<tr>
+<td>XUU entry</td>
+<td>3</td>
+<td>2</td>
+</tr>
+<tr>
+<td>HU entry</td>
+<td>4</td>
+<td>5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Specific divergence point visible in logs:</strong></p>
+<p>v1.81 has duplicate entry at bar 260:</p>
+<pre><code>KC_TE_260_2,2026.01.09 03:00,156.508
+KC_TE_260_2,2026.01.09 03:00,157.508
+</code></pre>
+<p>v1.82 only has:</p>
+<pre><code>KC_TE_260_2,2026.01.09 03:00,156.508
+</code></pre>
+<p>The issue is likely the <strong>order of channel processing within each bar</strong>. The original code processed all of upper's logic, then all of middle's, then all of lower's. The refactored loop processes cross detection for all three, then contact detection for all three — but within a single bar iteration, the interaction between channels may differ.</p>
+<p>Do you want me to debug this, or revert to a safer refactoring approach that preserves the original processing order?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:19 UTC</span></div><div class="body">No, we&#x27;re good enough for our purposes.
+
+How should we attack the last 3?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:19 UTC</span></div><div class="body"><p>Remaining steps:</p>
+<ol start="3">
+<li>
+<p><strong>Unify detection pass</strong> — <code>DetectCrossesWithConfirmation</code> and <code>DetectKissesAndHugs</code> exist only for statistics counting. They duplicate logic now consolidated in <code>DrawEventArrowsAndSimulateTrades</code>. Option: delete them, have the main loop update <code>g_counters</code> directly.</p>
+</li>
+<li>
+<p><strong>Separate arrow drawing</strong> — Extract arrow creation into <code>DrawEventArrows(EventRecord &amp;events[])</code>. The main loop populates events; a separate pass draws arrows. Cleaner separation but requires storing more event data upfront.</p>
+</li>
+<li>
+<p><strong>Separate signal generation</strong> — Signals are currently generated inline during detection. Alternative: derive signals from <code>g_events[]</code> after detection completes. Decouples &quot;what happened&quot; from &quot;what trades to take.&quot;</p>
+</li>
+</ol>
+<p><strong>Recommendation:</strong></p>
+<p>Steps 4 and 5 are higher risk for introducing behavioral changes (as we just saw). Step 3 is low risk — it's pure deletion of redundant code that doesn't affect trading logic.</p>
+<p>Start with step 3. Delete the two redundant functions and wire the counters into the existing loop. Low effort, zero behavioral impact on trade simulation.</p>
+<p>Steps 4 and 5 are architectural improvements that matter more if you're adding features or debugging event logic. If the current output is &quot;good enough,&quot; they may not be worth the effort.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:20 UTC</span></div><div class="body">OK, you still have the code, right?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:20 UTC</span></div><div class="body"><p>Yes. Both the original and v1.82 refactored version.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:21 UTC</span></div><div class="body">OK, working on v1.82, implement Unify detection pass</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:21 UTC</span></div><div class="body"><p>I see the issue. The statistics track both <strong>price</strong> and <strong>EMA</strong> events against the channel. The main loop only processes price events for trading.</p>
+<p>Plan:</p>
+<ol>
+<li>Add price counter increments to the main loop</li>
+<li>Delete the redundant functions</li>
+<li>Create a simple <code>DetectEMAStatistics()</code> function for EMA-only counting (since EMA stats don't affect trading)</li>
+</ol>
+<p>Now add the counter updates in the main loop. First, for confirmed crosses:</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:23 UTC</span></div><div class="body">You gave me no chance.
+
+(since EMA stats don&#x27;t affect trading)
+
+FALSE, unless I misunderstand. 
+
+EVENTS affect trading. We&#x27;re detecting events for both price and EMA.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:23 UTC</span></div><div class="body"><p>You're right to stop me.</p>
+<p>Looking back at the current <code>DrawEventArrowsAndSimulateTrades</code> — it only processes <code>close[]</code> (price) against the KC lines. I don't see EMA events generating signals there.</p>
+<p>Clarify: Should EMA-vs-KC events also generate trading signals? Or are they currently tracked for statistics only and you want to keep that capability?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:26 UTC</span></div><div class="body">Like I said, the code is screwed up. BOTH EMA and prices are to be monitored for contact with KC lines, which constitutes events.  I had thought the original coder had figured out and coded a way to do that.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:26 UTC</span></div><div class="body"><p>Got it. So the bug is: EMA events are counted for statistics but never generate trading signals. The main loop only processes price.</p>
+<p>Before I touch anything else — do you want me to:</p>
+<ol>
+<li><strong>Fix the bug first</strong> — add EMA event detection to the main loop so EMA-vs-KC events generate signals like price events do</li>
+<li><strong>Continue the refactor as-is</strong> — knowing the statistics will be incomplete until the bug is fixed separately</li>
+</ol>
+<p>Option 1 is the right move if you actually want EMA signals. Option 2 just cleans up code that's already broken.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:27 UTC</span></div><div class="body">2 would only be my choice if the refactor simplified the debugging.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:27 UTC</span></div><div class="body"><p>It would.</p>
+<p>The <code>ChannelLineState</code> struct and loop-based approach means adding EMA support requires:</p>
+<ol>
+<li>A second set of states (or extending the struct) for EMA tracking</li>
+<li>One additional inner loop or parallel processing</li>
+</ol>
+<p>Without the refactor, adding EMA signals would mean duplicating another ~300 lines of band-specific code.</p>
+<p>So: continue the refactor, then fix the EMA bug. The structure will be in place to handle it cleanly.</p>
+<p>Want me to proceed?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:28 UTC</span></div><div class="body">yes</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:30 UTC</span></div><div class="body"><p>Continuing. Need to add counter updates for:</p>
+<ul>
+<li>Failed crosses (kisses)</li>
+<li>Contact-based kisses</li>
+<li>Hugs</li>
+</ul>
+<p>Now create a simplified EMA statistics function:</p>
+<p>Done. v1.83 changes:</p>
+<p><strong>Deleted:</strong></p>
+<ul>
+<li><code>DetectCrossesWithConfirmation()</code> — 128 lines</li>
+<li><code>DetectKissesAndHugs()</code> — 97 lines (price portion)</li>
+</ul>
+<p><strong>Added:</strong></p>
+<ul>
+<li>Counter update calls in main loop (3 lines)</li>
+<li><code>UpdatePriceCrossCounter()</code>, <code>UpdatePriceKissCounter()</code>, <code>UpdatePriceHugCounter()</code> — 30 lines</li>
+<li><code>DetectEMAStatistics()</code> — 85 lines (EMA stats only)</li>
+</ul>
+<p><strong>Line count:</strong></p>
+<ul>
+<li>Original: 2299</li>
+<li>v1.82: 2172 (−127)</li>
+<li>v1.83: 2069 (−103 more, −230 total)</li>
+</ul>
+<p>Price statistics now collected during signal generation. EMA statistics still separate (since EMA events don't generate signals yet — that's the bug to fix next).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:33 UTC</span></div><div class="body">Looking good, here is output. Can you compare it to output from the previous version 1.82?<details><summary>Attached file: unnamed</summary><pre>2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	=== Starting KC-EMA Relationship Analysis Vsn 1.83 ===
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Symbol: USDJPY.a | Timeframe: PERIOD_H1
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Trade Start Date: 2026.01.01
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Confirm Bars: 3
+2026.01.24 01:32:47.658	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Analyzing 99967 bars...
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	       KC-EMA EVENT STATISTICS - USDJPY.a PERIOD_H1
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	       Total Bars Analyzed: 100007
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	       Kiss Max Bars: 3 | Hug Min Bars: 4
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	       Cross Confirm Bars: 3
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PRICE EVENTS ---
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Upper:  0 up / 0 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Middle: 0 up / 0 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Lower:  0 up / 0 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Upper:   0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Middle:  0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Lower:   0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Upper:    0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Middle:   0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Lower:    0
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- EMA(7) EVENTS ---
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Upper:  419 up / 599 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Middle: 2003 up / 1995 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Cross Lower:  368 up / 208 down
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Upper:   408
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Middle:  906
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Kiss Lower:   258
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Upper:    1836
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Middle:   1858
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hug Lower:    1794
+2026.01.24 01:32:47.659	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Drew 158 event arrows on chart
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Total signals for trade simulation: 119
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Total events recorded: 11683
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_383,2026.01.02 00:00,156.166
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_381_2,2026.01.02 02:00,157.225
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_377_2,2026.01.02 06:00,156.214
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_371_2,2026.01.02 12:00,157.412
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_362_2,2026.01.02 21:00,156.394
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_360_2,2026.01.02 23:00,157.376
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_355_2,2026.01.05 04:00,156.517
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_352_2,2026.01.05 07:00,157.783
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_345_2,2026.01.05 14:00,156.123
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_344_2,2026.01.05 15:00,157.150
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_343_2,2026.01.05 16:00,156.323
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_338_2,2026.01.05 21:00,156.688
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,156.006
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_334_2,2026.01.06 01:00,157.006
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_318_2,2026.01.06 17:00,155.905
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_303_2,2026.01.07 08:00,156.885
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_299_2,2026.01.07 12:00,155.963
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_284_2,2026.01.08 03:00,157.287
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_283_2,2026.01.08 04:00,156.412
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_280_2,2026.01.08 07:00,157.190
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_275_2,2026.01.08 12:00,156.247
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,157.223
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_272_2,2026.01.08 15:00,156.223
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_268_2,2026.01.08 19:00,157.403
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_260_2,2026.01.09 03:00,156.508
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_248_2,2026.01.09 15:00,158.148
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_244_2,2026.01.09 19:00,157.578
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_240_2,2026.01.09 23:00,158.385
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_237_2,2026.01.12 02:00,157.637
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_234_2,2026.01.12 05:00,158.549
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_233_2,2026.01.12 06:00,157.618
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,158.347
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_229_2,2026.01.12 10:00,157.347
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_191_2,2026.01.14 00:00,159.585
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_169_2,2026.01.14 22:00,158.005
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_155_2,2026.01.15 12:00,158.899
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_151_2,2026.01.15 16:00,158.330
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_147_2,2026.01.15 20:00,159.009
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_144_2,2026.01.15 23:00,158.143
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_138_2,2026.01.16 05:00,158.803
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_136_2,2026.01.16 07:00,157.777
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_116_2,2026.01.19 03:00,157.973
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_112_2,2026.01.19 07:00,157.328
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_110_2,2026.01.19 09:00,158.313
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_109_2,2026.01.19 10:00,157.576
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_106_2,2026.01.19 13:00,158.384
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_104_2,2026.01.19 15:00,157.520
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_83_2,2026.01.20 12:00,158.232
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_79_2,2026.01.20 16:00,157.338
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_61_2,2026.01.21 10:00,158.428
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_54_2,2026.01.21 17:00,157.611
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_52_2,2026.01.21 19:00,158.670
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,158.216
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_39_2,2026.01.22 08:00,159.216
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_19_2,2026.01.23 04:00,158.143
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_15_2,2026.01.23 08:00,159.125
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_13_2,2026.01.23 10:00,157.890
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,158.505
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_11_2,2026.01.23 12:00,157.505
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	CreateTradeEntryArrow: KC_TE_2_2,2026.01.23 21:00,156.666
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Drew 119 trade arrows on chart
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	               TRADE SIMULATION STATISTICS
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	               Start Date: 2026.01.01
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- TRADE COUNTS ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Total Trades:      59
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Long Trades:       30 (10W/18L/2BE) WR: 35.7%
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Short Trades:      29 (8W/18L/3BE) WR: 30.8%
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Winning Trades:    18
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Losing Trades:     36
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Breakeven Trades:  5
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PROFIT/LOSS (pips) ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Gross Profit:      478.5
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Gross Loss:        968.1
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Net Profit:        -489.6
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- AVERAGES (pips) ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Avg Win:           26.58
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Avg Loss:          26.89
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Avg Trade:         -8.30
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Avg Duration:      6.5 bars
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- EXTREMES (pips) ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Largest Win:       123.8
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Largest Loss:      -183.9
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Max Drawdown:      597.9
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PERFORMANCE METRICS ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Win Rate:          33.33%
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Loss Rate:         66.67%
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Profit Factor:     0.49
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Risk/Reward:       0.99
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Expectancy:        -9.07 pips/trade
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Sharpe Ratio:      -0.21
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Recovery Factor:   -0.82
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Time in Market:    99.5%
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Max Consec Wins:   4
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Max Consec Losses: 8
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PERFORMANCE BY ENTRY SIGNAL ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KL: 6 | 3W/3L | WR: 50.0% | Tot: 71.6 | Avg: 11.93
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -56.0 | Avg: -7.00
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HL: 10 | 4W/6L | WR: 40.0% | Tot: 17.1 | Avg: 1.71
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KM: 8 | 3W/5L | WR: 37.5% | Tot: -249.3 | Avg: -31.16
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -34.4 | Avg: -8.60
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KU: 5 | 2W/3L | WR: 40.0% | Tot: -39.8 | Avg: -7.96
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XLU: 5 | 2W/3L | WR: 40.0% | Tot: -43.2 | Avg: -8.64
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XLD: 2 | 0W/2L | WR: 0.0% | Tot: -67.3 | Avg: -33.65
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HU: 5 | 2W/3L | WR: 40.0% | Tot: -66.6 | Avg: -13.32
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HM: 3 | 2W/1L | WR: 66.7% | Tot: 11.0 | Avg: 3.67
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XUU: 2 | 1W/1L | WR: 50.0% | Tot: -19.3 | Avg: -9.65
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XMD: 1 | 0W/1L | WR: 0.0% | Tot: -13.4 | Avg: -13.40
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PERFORMANCE BY EXIT SIGNAL ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XUD: 8 | 3W/5L | WR: 37.5% | Tot: -73.9 | Avg: -9.24
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HL: 10 | 3W/7L | WR: 30.0% | Tot: -84.3 | Avg: -8.43
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KM: 8 | 7W/1L | WR: 87.5% | Tot: 287.1 | Avg: 35.89
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XMU: 4 | 1W/3L | WR: 25.0% | Tot: -56.8 | Avg: -14.20
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KU: 5 | 3W/2L | WR: 60.0% | Tot: -18.0 | Avg: -3.60
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XLU: 5 | 1W/4L | WR: 20.0% | Tot: -34.4 | Avg: -6.88
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XLD: 3 | 0W/3L | WR: 0.0% | Tot: -327.8 | Avg: -109.27
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HU: 5 | 1W/4L | WR: 20.0% | Tot: -64.7 | Avg: -12.94
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	HM: 3 | 1W/2L | WR: 33.3% | Tot: 28.2 | Avg: 9.40
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	KL: 5 | 3W/2L | WR: 60.0% | Tot: -15.3 | Avg: -3.06
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XUU: 2 | 0W/2L | WR: 0.0% | Tot: -97.6 | Avg: -48.80
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	XMD: 1 | 0W/1L | WR: 0.0% | Tot: -32.1 | Avg: -32.10
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PERFORMANCE BY HOUR (UTC) ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 00: 2 trades | 63.9 pips | Avg: 31.95
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 01: 2 trades | 10.1 pips | Avg: 5.05
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 02: 2 trades | -7.7 pips | Avg: -3.85
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 03: 3 trades | 16.0 pips | Avg: 5.33
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 04: 3 trades | 2.6 pips | Avg: 0.87
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 05: 2 trades | -4.3 pips | Avg: -2.15
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 06: 2 trades | -7.3 pips | Avg: -3.65
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 07: 4 trades | -21.6 pips | Avg: -5.40
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 08: 4 trades | 23.0 pips | Avg: 5.75
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 09: 1 trades | -26.3 pips | Avg: -26.30
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 10: 5 trades | 47.8 pips | Avg: 9.56
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 12: 7 trades | -205.8 pips | Avg: -29.40
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 13: 1 trades | -13.6 pips | Avg: -13.60
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 14: 1 trades | 2.7 pips | Avg: 2.70
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 15: 5 trades | -71.1 pips | Avg: -14.22
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 16: 3 trades | -86.6 pips | Avg: -28.87
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 17: 2 trades | 3.9 pips | Avg: 1.95
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 19: 3 trades | -84.4 pips | Avg: -28.13
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 20: 1 trades | -13.4 pips | Avg: -13.40
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 21: 2 trades | -33.6 pips | Avg: -16.80
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 22: 1 trades | -10.6 pips | Avg: -10.60
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Hour 23: 3 trades | -73.3 pips | Avg: -24.43
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	--- PERFORMANCE BY DAY OF WEEK ---
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Mon: 17 trades | -61.2 pips | Avg: -3.60
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Tue: 5 trades | 6.5 pips | Avg: 1.30
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Wed: 7 trades | 5.0 pips | Avg: 0.71
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Thu: 13 trades | -150.6 pips | Avg: -11.58
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	Fri: 17 trades | -289.3 pips | Avg: -17.02
+2026.01.24 01:32:48.607	KC_EMA_Relationship_Detector_v183 (USDJPY.a,H1)	==============================================================</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:34 UTC</span></div><div class="body"><p><strong>Problem found.</strong></p>
+<p>Trading output matches v1.82 perfectly — all trade counts, signals, P/L identical. Good.</p>
+<p>But price statistics are all zeros:</p>
+<pre><code>v1.82: Cross Upper: 1314 up / 2372 down
+v1.83: Cross Upper: 0 up / 0 down
+</code></pre>
+<p><strong>Root cause:</strong> Execution order bug.</p>
+<p>The call sequence is:</p>
+<ol>
+<li><code>DetectAllEvents()</code> → calls <code>DetectEMAStatistics()</code></li>
+<li><code>PrintStatistics()</code> → prints counters (price counters still zero!)</li>
+<li><code>DrawEventArrowsAndSimulateTrades()</code> → updates price counters (too late)</li>
+</ol>
+<p>The price counters are updated correctly, but <em>after</em> statistics are printed.</p>
+<p><strong>Fix:</strong> Move <code>PrintStatistics()</code> call to after <code>DrawEventArrowsAndSimulateTrades()</code>.</p>
+<p>Want me to fix it?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 07:50 UTC</span></div><div class="body">OK, that&#x27;s two bugs to fix. Wanna do them at the same time?
+
+I think we need to talk about how to handle price vs. EMA. 
+
+Would it possible to add code to handle the EMA as an option to price, one or the other? Retain the price branch but add an independent EMA branch?
+
+I&#x27;m actually going to eventually want a 2nd EMA that will factor in with whichever of the options the user chooses, but step at a time.
+
+Or another ide would be to use a 1-bar MA (SMA and EMA are the same in that case) instead of price, which would easily allow the calculations to be based on any of the price types OHLC.
+
+Your thoughts?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 07:51 UTC</span></div><div class="body"><p>Two approaches:</p>
+<p><strong>Option A: Source selector input</strong></p>
+<pre><code class="language-cpp">enum ENUM_EVENT_SOURCE { SOURCE_PRICE, SOURCE_EMA };
+input ENUM_EVENT_SOURCE Event_Source = SOURCE_PRICE;
+</code></pre>
+<ul>
+<li>Main loop checks <code>Event_Source</code> and uses either <code>close[]</code> or <code>EMA_Buffer[]</code></li>
+<li>One source active at a time</li>
+<li>Simple, clean</li>
+<li>Statistics only count the selected source</li>
+</ul>
+<p><strong>Option B: 1-bar MA abstraction (your idea)</strong></p>
+<pre><code class="language-cpp">input ENUM_APPLIED_PRICE Signal_Price_Type = PRICE_CLOSE;
+input int Signal_MA_Period = 1;  // 1 = raw price, 7 = EMA(7), etc.
+</code></pre>
+<ul>
+<li>Create a single <code>Signal_Buffer[]</code> populated by iMA with user params</li>
+<li>Period=1 gives raw OHLC price (user picks which)</li>
+<li>Period=7 gives EMA(7)</li>
+<li>Period=14 gives EMA(14)</li>
+<li><strong>All detection code uses one buffer</strong> — no branching</li>
+</ul>
+<p>Option B is cleaner architecturally. The &quot;price vs EMA&quot; distinction disappears — everything is just &quot;signal source MA.&quot; Adding a 2nd EMA later becomes trivial: you just add a second MA handle and buffer.</p>
+<p>Downside: slight overhead of MA calculation even for raw price. Negligible on modern hardware.</p>
+<p><strong>Recommendation:</strong> Option B. It future-proofs the code and simplifies the detection logic. The current loop already processes a single source — we just need to make that source configurable rather than hardcoded to <code>close[]</code>.</p>
+<p>Your call.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-24 08:03 UTC</span></div><div class="body">Still debating. check out the image. Maybe we should wonder if there&#x27;s a better way than either price or MA. In the rise on the left, it tracks the upper KC line. I call that a hug. Also with the rapid drop which follows (once it crosses the channel). But continuing right where the Hug arrows were actually planted, there is no Hug anywhere, more like a rapid succession of mid-line crosses. How can we conceptualize that in the code?<p class="note">[File attached: 1769241557735_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-24 08:04 UTC</span></div><div class="body"><p>Looking at the chart, I see the distinction you're making.</p>
+<p><strong>Left side (true hug):</strong> Price stays ON ONE SIDE of the upper KC line, tracking along it — using it as support/resistance. The line acts as a boundary.</p>
+<p><strong>Right side (false hug detection):</strong> Price is OSCILLATING THROUGH the middle line — repeatedly crossing back and forth. It's not tracking the line, it's chopping through it.</p>
+<p><strong>The conceptual difference:</strong></p>
+<table>
+<thead>
+<tr>
+<th>True Hug</th>
+<th>Oscillation/Chop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Price approaches line, touches, stays on same side</td>
+<td>Price crosses through repeatedly</td>
+</tr>
+<tr>
+<td>Line acts as support/resistance</td>
+<td>Line is meaningless noise</td>
+</tr>
+<tr>
+<td>Contact + consistent side</td>
+<td>Contact + alternating sides</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Current code flaw:</strong> It only counts &quot;is price touching?&quot; — it doesn't track &quot;which side is price on?&quot;</p>
+<p><strong>Proposed fix — add side consistency tracking:</strong></p>
+<pre><code class="language-cpp">struct ContactState {
+   int contact_count;
+   int side_changes;        // How many times price flipped sides during contact
+   bool last_was_above;     // Which side was price on last bar?
+};
+</code></pre>
+<p>A true hug: <code>contact_count &gt;= 4 AND side_changes &lt;= 1</code></p>
+<p>Oscillation: <code>contact_count &gt;= 4 AND side_changes &gt;= 3</code> → NOT a hug, maybe flag as &quot;chop zone&quot;</p>
+<p>This would filter out the false hug detections on the right side of your chart while preserving the legitimate ones on the left.</p>
+<p>Worth implementing?</p>
+</div></div>
+<nav class="pager"><a href="619-2026-01-23-stop-loss-liquidity-risks-in-flash-crashes.html">&larr; Stop-loss liquidity risks in flash crashes</a><a href="../index.html">All chats</a><a href="621-2026-01-24-mathematics-for-real-world-problem-solving.html">Mathematics for real-world problem solving &rarr;</a></nav></div></body></html>

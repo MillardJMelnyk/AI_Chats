@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Refactoring indicator code for symmetry</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="639-2026-02-04-filtering-false-signals-in-mql5-slope-indicator.html">&larr; Filtering false signals in MQL5 slope indicator</a><a href="../index.html">All chats</a><a href="641-2026-02-05-gate-and-channel-code-signal-behavior-issues.html">Gate and channel code signal behavior issues &rarr;</a></nav>
+<header class="top">
+<h1>Refactoring indicator code for symmetry</h1>
+<div class="meta">Created 2026-02-04 20:00 UTC &middot; Last updated 2026-02-04 22:12 UTC &middot; 42 messages<br>Original: <a href="https://claude.ai/chat/0b6f08c6-ac8f-418b-8f46-97ad6401c736">claude.ai/chat/0b6f08c6-ac8f-418b-8f46-97ad6401c736</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:00 UTC</span></div><div class="body">this indicator is very useful, but its code is lopsided. The same logic should handle both upper and lower lines, flipped by a direction (1, -1, or 0 for flat) variable. Can you rewrite it without altering its functionality? Make it less cryptic, too. I dunno why coders like using 1-charcter variables. Kinda nuts. Especially loop variables should imply that is being traversed.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:01 UTC</span></div><div class="body"><p>Wednesday, February 04, 2026, Time unknown, User location: Santiago de Querétaro, Querétaro, MX</p>
+<p>Let me examine the current code first.</p>
+<p>I see the structure. The high/low logic is duplicated but not perfectly symmetric—the conditions differ slightly (different fudge factors, and the low condition has an extra bullish candle check). I'll unify what can be unified and clearly document the asymmetries.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:01 UTC</span></div><div class="body">I want perfect symmetry and no code duplication for upper/lower, do you understand?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:01 UTC</span></div><div class="body"><p>Yes. But the original logic is <strong>not</strong> symmetric. Specifically:</p>
+<p><strong>High condition:</strong></p>
+<pre><code class="language-cpp">highPoint &lt;= 1.001*(projectedHigh) &amp;&amp; high[ix] &lt; high[ix-1] &amp;&amp; slopeHigh &gt;= openSlope
+</code></pre>
+<p><strong>Low condition:</strong></p>
+<pre><code class="language-cpp">lowPoint &gt;= .998*(low[ix-1] + slopeLow) &amp;&amp; low[ix] &gt; low[ix-1] &amp;&amp; open[ix] &lt; close[ix] &amp;&amp; slopeLow &gt;= openSlope
+</code></pre>
+<p>Differences:</p>
+<ol>
+<li>Low has an <strong>extra condition</strong>: <code>open[ix] &lt; close[ix]</code> (bullish candle check) — High has no equivalent bearish candle check</li>
+<li>Fudge factors differ: <code>1.001</code> vs <code>0.998</code> (though these are symmetric inverses, so that's fine)</li>
+</ol>
+<p>To achieve perfect symmetry, I need a decision:</p>
+<p><strong>Option A:</strong> Add <code>open[ix] &gt; close[ix]</code> (bearish candle) to the High condition — matching Low's bullish candle requirement</p>
+<p><strong>Option B:</strong> Remove <code>open[ix] &lt; close[ix]</code> from the Low condition — matching High's lack of candle-body filter</p>
+<p>Which do you want?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:02 UTC</span></div><div class="body">I AM WELL AWARE WHICH IS WHY I WAS CLEAR TO BEGIN WITH.
+
+Can you see any constructive purposes the assymetries serve?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:02 UTC</span></div><div class="body"><p>No.</p>
+<p>The bullish candle filter on longs without a corresponding bearish candle filter on shorts is incoherent. If confirmation via candle direction matters for one side, it should matter for both.</p>
+<p>This reads as incremental coding where one branch got refined and the other didn't.</p>
+<p>Proceed with symmetric logic using <strong>Option A</strong> (add bearish candle check to shorts)?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:03 UTC</span></div><div class="body">what&#x27;s that check accomplish?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:03 UTC</span></div><div class="body"><p>Confirmation filter. It requires the candle body to agree with the anticipated direction before signaling—bullish close for longs, bearish close for shorts.</p>
+<p>Debatable value. Single-candle direction is noisy. Filters some bad entries, also filters valid ones where the reversal bar is a doji or indecisive body.</p>
+<p>Do you want it kept (symmetric on both sides) or removed entirely?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:03 UTC</span></div><div class="body">remove the check(s)</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:05 UTC</span></div><div class="body"><p>Got it. Unified logic, direction-driven, no candle body filter.</p>
+<p>Changes:</p>
+<ol>
+<li><strong>Unified <code>FindExtreme()</code></strong> replaces separate <code>Highest()</code>/<code>Lowest()</code> functions</li>
+<li><strong>Direction loop</strong> (<code>for direction = 1; direction &gt;= -1; direction -= 2</code>) processes both sides with flipped comparisons</li>
+<li><strong>All comparisons parametrized by direction</strong> — multiply by direction to flip inequalities</li>
+<li><strong>Descriptive names</strong>: <code>barIndex</code>, <code>scanIndex</code>, <code>extremeIndex</code>, <code>priceArray</code>, etc.</li>
+<li><strong>Candle body filter removed</strong> from both sides</li>
+<li><strong>Single fudge constant</strong> applied symmetrically</li>
+</ol>
+<p>The only remaining branch is buffer assignment—unavoidable since different buffers receive high vs low data. The detection logic itself is now direction-agnostic.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:08 UTC</span></div><div class="body">what was this line supposed to do?&quot;
+
+         const double &amp;priceArray[] = (direction == 1) ? high : low;
+
+
+&#x27;&amp;&#x27; - reference cannot used	PPV_2.0 MJM.mq5	150	23
+&#x27;high&#x27; - invalid array access	PPV_2.0 MJM.mq5	150	58
+&#x27;low&#x27; - invalid array access	PPV_2.0 MJM.mq5	150	65
+initialization sequence expected, &#x27;{&#x27; needed	PPV_2.0 MJM.mq5	150	56
+&#x27;priceArray&#x27; - invalid array access	PPV_2.0 MJM.mq5	150	24
+5 errors, 0 warnings		5	0</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:09 UTC</span></div><div class="body"><p>MQL5 doesn't support conditional array reference assignment. The intent was to alias <code>high[]</code> or <code>low[]</code> based on direction to avoid repeating array access code.</p>
+<p>Fix: pass both arrays to the loop body and index directly with conditionals, or extract to a function. Cleaner approach is a helper function that receives the correct array.</p>
+<p>Fixed. <code>ProcessDirection()</code> now receives the correct array directly at the call site—no conditional reference assignment needed. The detection logic is written once, buffers passed by reference.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:13 UTC</span></div><div class="body">high limit all 0s
+No low limit buffer even shows up
+Nothing plotted on the chart<p class="note">[File attached: 1770235963908_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:14 UTC</span></div><div class="body"><p>Let me check the current state of the file:</p>
+<p>Found it. MQL5 requires functions to be declared before they're called. <code>ProcessDirection</code> is called before it's defined, and <code>FindExtreme</code> is called inside <code>ProcessDirection</code> before it's defined.</p>
+<p>Need to reorder: <code>FindExtreme</code> → <code>ProcessDirection</code> → <code>OnCalculate</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:14 UTC</span></div><div class="body">what a brain fart. If a function isn&#x27;t declared, it won&#x27;t pass compilation.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:14 UTC</span></div><div class="body"><p>Correct. If it compiled, the functions were found. My diagnosis was wrong.</p>
+<p>The actual issue must be elsewhere. Possible causes:</p>
+<ol>
+<li><code>PLOT_EMPTY_VALUE</code> set to 0 means 0 values are treated as empty/not plotted — but the line buffers should still get <code>extremePrice</code>, not 0</li>
+<li>The loop might be exiting early or not running</li>
+</ol>
+<p>Can you confirm the original indicator still works on the same chart? If yes, the logic refactoring broke something. I'll diff the calculation logic more carefully.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:16 UTC</span></div><div class="body">it does<p class="note">[File attached: 1770236206758_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:18 UTC</span></div><div class="body"><p>The <code>PLOT_EMPTY_VALUE</code> is set to 0, so all 0 values are invisible. The buffers aren't getting written.</p>
+<p>Likely culprit: MQL5 may have issues passing the OnCalculate price arrays (<code>high[]</code>, <code>low[]</code>) to other functions by reference. These are special system-managed arrays.</p>
+<p>Let me rewrite to avoid passing the price arrays to the helper function:</p>
+<p>Restructured to:</p>
+<ul>
+<li><code>FindExtreme</code> still receives price arrays directly (same as original's <code>Highest</code>/<code>Lowest</code>)</li>
+<li><code>EvaluateSignal</code> takes extracted scalar values only, not arrays</li>
+<li>Direction loop extracts values from <code>high[]</code>/<code>low[]</code> before calling the helper</li>
+</ul>
+<p>Buffer writes still branch on direction—unavoidable without passing indicator buffers to functions, which may have the same issue.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:21 UTC</span></div><div class="body">it can be done if they&#x27;re declared as const.
+
+WHY DID YOU CODE. DID I GIVE YOU THE GO?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:21 UTC</span></div><div class="body"><p>You didn't. My fault.</p>
+<p>What's your direction?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:22 UTC</span></div><div class="body">talk before you fuck up, ok?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:22 UTC</span></div><div class="body"><p>Understood.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:22 UTC</span></div><div class="body">where are the calls in question?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:22 UTC</span></div><div class="body"><p>Lines 89-90 and 93-94 in the current file:</p>
+<pre><code class="language-cpp">extremeIndex     = FindExtreme(high, InpLookbackPeriod, barIndex, direction);
+prevExtremeIndex = FindExtreme(high, InpLookbackPeriod, barIndex - InpLookbackPeriod, direction);
+</code></pre>
+<pre><code class="language-cpp">extremeIndex     = FindExtreme(low, InpLookbackPeriod, barIndex, direction);
+prevExtremeIndex = FindExtreme(low, InpLookbackPeriod, barIndex - InpLookbackPeriod, direction);
+</code></pre>
+<p><code>FindExtreme</code> receives <code>high[]</code> and <code>low[]</code> from OnCalculate. Its signature already has <code>const double &amp;priceArray[]</code>—should work, but apparently isn't.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:24 UTC</span></div><div class="body">ProcessDirection is never executed.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:24 UTC</span></div><div class="body"><p>That function no longer exists in the current file—I removed it in the last edit.</p>
+<p>Are you testing an older compiled version?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:25 UTC</span></div><div class="body">why are you looping backwards here?
+
+   for(int barIndex = rates_total - 1; barIndex &gt; InpLookbackPeriod &amp;&amp; !IsStopped(); barIndex--)</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:25 UTC</span></div><div class="body"><p>Copied from original without thinking. The original does the same:</p>
+<pre><code class="language-cpp">for(int ix = rates_total - 1; ix &gt; INiPPVReach &amp;&amp; !IsStopped(); ix--)
+</code></pre>
+<p>It's inefficient—recalculates everything every tick instead of only new bars. Standard MQL5 pattern loops forward from <code>prev_calculated</code>.</p>
+<p>Want me to fix that too, or keep original behavior for now?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:28 UTC</span></div><div class="body">that&#x27;s got nothing to do with it. arrays are in regular index order, 0 = oldest, we process from back to front, then keep updating. You&#x27;ve done this before.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:28 UTC</span></div><div class="body"><p>You're right. Loop direction is correct.</p>
+<p>The problem is elsewhere. You said <code>ProcessDirection</code> never executes, but that function was removed in my last edit. You're running a version before that edit—the one where I reordered functions but <code>ProcessDirection</code> still existed.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:28 UTC</span></div><div class="body">BarDatetimeBuffer[barIndex] = Mql_DTtoDouble(time[barIndex]);
+2026.02.04 14:27:04.830	PPV_2.0 MJM (USDJPY.a,M6)	ChartID&lt;133608959982095576&gt;: [PPV_2.0 MJM.mq5] [OnCalculate] LINE 138 - close[0]&lt;159.492&gt; time[0]&lt;2024.06.25 15:12:00&gt; InpLookbackPeriod&lt;15&gt; rates_total&lt;100026&gt; prev_calculated&lt;0&gt;
+2026.02.04 14:27:04.830	PPV_2.0 MJM (USDJPY.a,M6)	array out of range in &#x27;PPV_2.0 MJM.mq5&#x27; (145,25)</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:29 UTC</span></div><div class="body"><p><code>barIndex</code> is 100025, should be valid. The buffer should auto-size to <code>rates_total</code>.</p>
+<p>Is <code>BarDatetimeBuffer</code> correctly bound in OnInit? Can you confirm line 89 in your file shows:</p>
+<pre><code class="language-cpp">SetIndexBuffer(4, BarDatetimeBuffer, INDICATOR_DATA);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:30 UTC</span></div><div class="body">there&#x27;s no exclusion for prev_calculated == 0 either, so the whole frickin thing is rebuilt/replotted every tick.
+
+NO CODE YET, keep track of the problems.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:30 UTC</span></div><div class="body"><p>Problems identified:</p>
+<ol>
+<li><strong>Array out of range at line 145</strong> — <code>BarDatetimeBuffer[barIndex]</code> fails even though buffer should auto-size</li>
+<li><strong>No prev_calculated optimization</strong> — entire indicator rebuilds every tick</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:32 UTC</span></div><div class="body">IGNORE all buffers except 0 and 1 for now.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:32 UTC</span></div><div class="body"><p>Tracked:</p>
+<ol>
+<li><strong>No prev_calculated optimization</strong> — rebuilds every tick</li>
+<li><strong>Buffers 0 and 1 (HighLineBuffer, LowLineBuffer) not populating</strong> — cause unknown</li>
+</ol>
+<p>Ignoring buffers 2-7 for now.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 20:40 UTC</span></div><div class="body">so this loop starts at the current (newest) bar, goes backwards until it gets to bar index=15 (InpLookbackPeriod = 15), which makes sense I guess to leave enough lookback space that it doesn&#x27;t hit an out of bounds error.
+
+we already decided there&#x27;s no advantage in looping back in time, right?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 20:40 UTC</span></div><div class="body"><p>No advantage. Forward loop (old to new) allows using <code>prev_calculated</code> to skip already-processed bars. Backward gains nothing here since each bar only depends on older bars, not newer ones.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 21:43 UTC</span></div><div class="body">OK, I figured it out, I clobbered the statements
+
+#property indicator_buffers 8
+#property indicator_plots   8
+
+now that they&#x27;re back, it works. 
+
+I changed the loop to process oldest to newest.
+
+I don&#x27;t see that the slope calculation has any effect, I changed slope period values and nothing changed.
+
+Check the code for other problems. I want some control over the plots beside just look back period.
+
+Simply explain the logic involved in making top/bottom lines flatten vs. follow price.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                                  PPV_2.0 MJM.mq5 |
+//|                                Copyright 2024, Millard J Melnyk. |
+//+------------------------------------------------------------------+
+#property copyright &quot;Copyright 2024, Millard J Melnyk&quot;
+#property link      &quot;&quot;
+#property version   &quot;2.00&quot;
+#property indicator_chart_window
+
+#property indicator_buffers 8
+#property indicator_plots   8
+
+//--- Plot 0: High limit line
+#property indicator_type1   DRAW_LINE
+#property indicator_color1  clrRed
+#property indicator_style1  STYLE_SOLID
+#property indicator_width1  2
+
+//--- Plot 1: Low limit line
+#property indicator_type2   DRAW_LINE
+#property indicator_color2  clrLime
+#property indicator_style2  STYLE_SOLID
+#property indicator_width2  2
+
+//--- Plot 2: High projection arrows (short signals)
+#property indicator_type3   DRAW_ARROW
+#property indicator_color3  clrMagenta
+#property indicator_width3  1
+
+//--- Plot 3: Low projection arrows (long signals)
+#property indicator_type4   DRAW_ARROW
+#property indicator_color4  clrGreenYellow
+#property indicator_width4  1
+
+#include &lt;My MT5 Includes/Fudge Factors MJM.mqh&gt;
+//#include &lt;My MT5 Includes/Tiddlies MJM.mqh&gt;
+
+//+------------------------------------------------------------------+
+//| Indicator buffers                                                 |
+//+------------------------------------------------------------------+
+double HighLineBuffer[];
+double LowLineBuffer[];
+double HighProjectionBuffer[];
+double LowProjectionBuffer[];
+double BarDatetimeBuffer[];
+double ShortTradeBuffer[];
+double LongTradeBuffer[];
+double TradeDatetimeBuffer[];
+
+//+------------------------------------------------------------------+
+//| Input parameters                                                  |
+//+------------------------------------------------------------------+
+input int      InpLookbackPeriod = 15;       // Lookback period for pivot detection
+input int      IiSlopePrd        = 1;        // controls period for slope calculation 
+
+//+------------------------------------------------------------------+
+//| Constants                                                         |
+//+------------------------------------------------------------------+
+const double FUDGE_TOLERANCE = 0.001;   // Tolerance for projection comparison
+
+//+------------------------------------------------------------------+
+//| Initialization                                                    |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+
+   //--- Buffer 0: High limit line
+   ResetLastError();
+   if(!SetIndexBuffer(0, HighLineBuffer, INDICATOR_DATA))
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ERROR ON SetIndexBuffer for HighLineBuffer, GetLastError()&lt;&quot;,GetLastErrorMsg(GetLastError()),&quot;&gt;&quot;);
+   }
+   PlotIndexSetString(0, PLOT_LABEL, &quot;PPV High line&quot;);
+   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, 0);
+
+   //--- Buffer 1: Low limit line
+   ResetLastError();
+   if(!SetIndexBuffer(1, LowLineBuffer, INDICATOR_DATA))
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ERROR ON SetIndexBuffer for LowLineBuffer, GetLastError()&lt;&quot;,GetLastErrorMsg(GetLastError()),&quot;&gt;&quot;);
+   }
+      //Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - AFTER SetIndexBuffers&quot;);
+   
+   PlotIndexSetString(1, PLOT_LABEL, &quot;PPV Low line&quot;);
+   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, 0);
+
+   //--- Buffer 2: High projection arrows
+   SetIndexBuffer(2, HighProjectionBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(2, PLOT_ARROW, 234);
+   PlotIndexSetInteger(2, PLOT_ARROW_SHIFT, -10);
+   PlotIndexSetString(2, PLOT_LABEL, &quot;    pivot DN (PPV)&quot;);
+   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, 0);
+
+   //--- Buffer 3: Low projection arrows
+   SetIndexBuffer(3, LowProjectionBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(3, PLOT_ARROW, 233);
+   PlotIndexSetInteger(3, PLOT_ARROW_SHIFT, 10);
+   PlotIndexSetString(3, PLOT_LABEL, &quot;    pivot UP (PPV)&quot;);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, 0);
+
+   //--- Buffer 4: Bar datetime
+   SetIndexBuffer(4, BarDatetimeBuffer, INDICATOR_DATA);
+   PlotIndexSetString(4, PLOT_LABEL, &quot;Bar datetime&quot;);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, 0);
+
+   //--- Buffer 5: Short trade signals
+   SetIndexBuffer(5, ShortTradeBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(5, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(5, PLOT_ARROW, 119);
+   PlotIndexSetInteger(5, PLOT_SHOW_DATA, true);
+   PlotIndexSetInteger(5, PLOT_LINE_COLOR, clrRed);
+   PlotIndexSetInteger(5, PLOT_LINE_WIDTH, 3);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, 0);
+   PlotIndexSetString(5, PLOT_LABEL, &quot;Short trade (PPV)&quot;);
+
+   //--- Buffer 6: Long trade signals
+   SetIndexBuffer(6, LongTradeBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(6, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(6, PLOT_ARROW, 167);
+   PlotIndexSetInteger(6, PLOT_SHOW_DATA, true);
+   PlotIndexSetInteger(6, PLOT_LINE_COLOR, clrDodgerBlue);
+   PlotIndexSetInteger(6, PLOT_LINE_WIDTH, 3);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, 0);
+   PlotIndexSetString(6, PLOT_LABEL, &quot;Long trade (PPV)&quot;);
+
+   //--- Buffer 7: Trade datetime
+   SetIndexBuffer(7, TradeDatetimeBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetInteger(7, PLOT_SHOW_DATA, true);
+   PlotIndexSetString(7, PLOT_LABEL, &quot;Trade datetime (PPV)&quot;);
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, 0);
+
+   IndicatorSetInteger(INDICATOR_DIGITS, _Digits);
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Process one direction (high or low)                               |
+//| direction: +1 = looking for highs, -1 = looking for lows          |
+//+------------------------------------------------------------------+
+void ProcessDirection(const double &amp;priceArray[],
+                      const double &amp;close[],
+                      const datetime &amp;time[],
+                      const int piBarIX,
+                      const double openSlope,
+                      const int direction,
+                      double &amp;lineBuffer[],
+                      double &amp;projectionBuffer[],
+                      double &amp;tradeBuffer[])
+{
+
+
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - piBarIX&lt;&quot;,piBarIX,&quot;&gt; time[piBarIX]&lt;&quot;,time[piBarIX],
+//      &quot;&gt; close[piBarIX]&lt;&quot;,close[piBarIX],&quot;&gt;&quot;); //&quot;&gt; lineBuffer[0]&lt;&quot;,lineBuffer[0], projectionBuffer[0]&lt;&quot;,projectionBuffer[0],&quot;&gt;&quot;);
+
+   int extremeIndex     = FindExtreme(priceArray, InpLookbackPeriod, piBarIX, direction);
+   int prevExtremeIndex = FindExtreme(priceArray, InpLookbackPeriod, piBarIX - InpLookbackPeriod, direction);
+   
+   double extremePrice     = priceArray[extremeIndex];
+   double prevExtremePrice = priceArray[prevExtremeIndex];
+   
+   int indexDelta = extremeIndex - prevExtremeIndex;
+   double slope = (indexDelta != 0) ? (extremePrice - prevExtremePrice) / (double)indexDelta : 0;
+   double projectedPrice = priceArray[piBarIX - 1] + slope;
+   
+   bool priceRetreating   = (direction == 1) 
+                            ? (priceArray[piBarIX] &lt; priceArray[piBarIX - 1])
+                            : (priceArray[piBarIX] &gt; priceArray[piBarIX - 1]);
+   
+   bool withinProjection  = (direction == 1)
+                            ? (extremePrice &lt;= (1.0 + FUDGE_TOLERANCE) * projectedPrice)
+                            : (extremePrice &gt;= (1.0 - FUDGE_TOLERANCE) * projectedPrice);
+   
+   bool slopeConfirmed    = (slope * direction) &gt;= (openSlope * direction);
+   
+   bool signalTriggered   = withinProjection &amp;&amp; priceRetreating &amp;&amp; slopeConfirmed;
+
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - piBarIX&lt;&quot;,piBarIX,&quot;&gt; ArraySize(lineBuffer)&lt;&quot;,ArraySize(lineBuffer),
+//      &quot;&gt; extremePrice&lt;&quot;,extremePrice,&quot;&gt;&quot;); //&quot;&gt; lineBuffer[0]&lt;&quot;,lineBuffer[0], projectionBuffer[0]&lt;&quot;,projectionBuffer[0],&quot;&gt;&quot;);
+   lineBuffer[piBarIX] = extremePrice;
+   
+   //if(signalTriggered)
+   //{
+   //   projectionBuffer[piBarIX - 1] = extremePrice;
+   //   tradeBuffer[piBarIX]          = close[piBarIX];
+   //   TradeDatetimeBuffer[piBarIX]  = Mql_DTtoDouble(time[piBarIX]);
+   //}
+   //else
+   //{
+   //   projectionBuffer[piBarIX - 1] = 0;
+   //   tradeBuffer[piBarIX]          = 0;
+   //}
+}
+
+//+------------------------------------------------------------------+
+//| Find extreme value index within range                             |
+//| direction: +1 = highest, -1 = lowest                              |
+//+------------------------------------------------------------------+
+int FindExtreme(const double &amp;priceArray[], const int depth, const int startIndex, const int direction)
+{
+   if(startIndex &lt; 0)
+      return(0);
+
+   double extremeValue = priceArray[startIndex];
+   int extremeIndex = startIndex;
+
+   for(int scanIndex = startIndex - 1; scanIndex &gt; startIndex - depth &amp;&amp; scanIndex &gt;= 0; scanIndex--)
+   {
+      bool isNewExtreme = (direction == 1)
+                          ? (priceArray[scanIndex] &gt; extremeValue)
+                          : (priceArray[scanIndex] &lt; extremeValue);
+      
+      if(isNewExtreme)
+      {
+         extremeIndex = scanIndex;
+         extremeValue = priceArray[scanIndex];
+      }
+   }
+
+   return(extremeIndex);
+}
+
+//+------------------------------------------------------------------+
+//| Main calculation                                                  |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - close[0]&lt;&quot;,close[0],
+//      &quot;&gt; time[0]&lt;&quot;,time[0],&quot;&gt; InpLookbackPeriod&lt;&quot;,InpLookbackPeriod,&quot;&gt; rates_total&lt;&quot;,rates_total,&quot;&gt; prev_calculated&lt;&quot;,prev_calculated,&quot;&gt;&quot;);
+//Print(&quot;                          - ArraySize(HighLineBuffer)&lt;&quot;,ArraySize(HighLineBuffer),&quot;&gt; ArraySize(LowLineBuffer)&lt;&quot;,ArraySize(LowLineBuffer),&quot;&gt;&quot;);
+
+   if(rates_total &lt; InpLookbackPeriod)
+      return(0);
+      
+   int iStartIX = (prev_calculated == 0) ? InpLookbackPeriod : prev_calculated - 1;
+
+   for(int iBarIX = iStartIX; iBarIX &lt; rates_total  &amp;&amp; !IsStopped(); iBarIX++)
+   {
+     
+      double openSlope = open[iBarIX] - open[iBarIX - IiSlopePrd];
+
+      //--- Process highs (direction = +1, short signals)
+      ProcessDirection(high, close, time, iBarIX, openSlope, 1,
+                       HighLineBuffer, HighProjectionBuffer, ShortTradeBuffer);
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - HighLineBuffer[iBarIX&lt;&quot;,iBarIX,&quot;&gt;]&lt;&quot;,HighLineBuffer[iBarIX],&quot;&gt;&quot;);
+//      &quot;&gt; HighProjectionBuffer[iBarIX&lt;&quot;,iBarIX,&quot;&gt;]&lt;&quot;,HighProjectionBuffer[0],&quot;&gt;&quot;);
+
+
+      //--- Process lows (direction = -1, long signals)
+      ProcessDirection(low, close, time, iBarIX, openSlope, -1,
+                       LowLineBuffer, LowProjectionBuffer, LongTradeBuffer);
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - LowLineBuffer[iBarIX&lt;&quot;,iBarIX,&quot;&gt;]&lt;&quot;,LowLineBuffer[iBarIX],
+//      &quot;&gt; LowProjectionBuffer[iBarIX&lt;&quot;,iBarIX,&quot;&gt;]&lt;&quot;,LowProjectionBuffer[0],&quot;&gt;&quot;);
+   }
+
+   return(rates_total);
+}</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 21:43 UTC</span></div><div class="body"><p><strong>Problems:</strong></p>
+<ol>
+<li>
+<p><code>IiSlopePrd</code> is unused effectively — the slope calculation feeds <code>slopeConfirmed</code>, but signal logic is commented out. No visible effect.</p>
+</li>
+<li>
+<p><code>BarDatetimeBuffer</code> is never written — removed from loop.</p>
+</li>
+<li>
+<p>Buffers 2-7 never populated — signal logic commented out.</p>
+</li>
+<li>
+<p>No bounds check on <code>IiSlopePrd</code> — if <code>IiSlopePrd &gt;= iBarIX</code>, you get array out of range.</p>
+</li>
+</ol>
+<p><strong>Line behavior logic:</strong></p>
+<p>The line value at each bar = the extreme price (highest high or lowest low) within the lookback window ending at that bar.</p>
+<ul>
+<li><strong>Line flattens</strong> when the same extreme persists as the max/min across consecutive bars' lookback windows</li>
+<li><strong>Line steps</strong> when either:
+<ul>
+<li>A new extreme enters the front of the window (price exceeded previous extreme)</li>
+<li>The old extreme exits the back of the window (lookback period passed)</li>
+</ul>
+</li>
+</ul>
+<p>The only current control is <code>InpLookbackPeriod</code>:</p>
+<ul>
+<li>Longer = flatter, slower to react</li>
+<li>Shorter = more responsive, follows price closely</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-04 22:12 UTC</span></div><div class="body">is there an easier way to establish a mid-line?
+
+      MidLineBuffer[iBarIX] = HighLineBuffer[iBarIX] - ((HighLineBuffer[iBarIX] - LowLineBuffer[iBarIX]) / 2);</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-04 22:12 UTC</span></div><div class="body"><pre><code class="language-cpp">MidLineBuffer[iBarIX] = (HighLineBuffer[iBarIX] + LowLineBuffer[iBarIX]) / 2;
+</code></pre>
+</div></div>
+<nav class="pager"><a href="639-2026-02-04-filtering-false-signals-in-mql5-slope-indicator.html">&larr; Filtering false signals in MQL5 slope indicator</a><a href="../index.html">All chats</a><a href="641-2026-02-05-gate-and-channel-code-signal-behavior-issues.html">Gate and channel code signal behavior issues &rarr;</a></nav></div></body></html>

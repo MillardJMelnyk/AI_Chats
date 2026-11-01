@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SI file modifications for chart window integration</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="605-2026-01-19-awaiting-attachment-review.html">&larr; Awaiting attachment review</a><a href="../index.html">All chats</a><a href="607-2026-01-19-fixing-textgvar-cleanup-issues-in-sonnet-4-5.html">Fixing TextGVar cleanup issues in Sonnet 4.5 &rarr;</a></nav>
+<header class="top">
+<h1>SI file modifications for chart window integration</h1>
+<div class="meta">Created 2026-01-19 17:08 UTC &middot; Last updated 2026-01-19 18:14 UTC &middot; 18 messages<br>Original: <a href="https://claude.ai/chat/c7039552-db84-417e-a156-cca463375bb3">claude.ai/chat/c7039552-db84-417e-a156-cca463375bb3</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:08 UTC</span></div><div class="body"><details><summary>Attached file: unnamed</summary><pre>I need to update all my source indicators to use a new TextGVar naming scheme that includes subwindow number.
+
+**Background:**
+TextGVar objects are used for IPC between source indicators (SIs) and IndicatorSlopes (IS). The naming scheme is changing from:
+`MJM_&lt;shortname&gt;_&lt;varname&gt;` 
+to:
+`MJM_&lt;window&gt;_&lt;shortname&gt;_&lt;varname&gt;`
+
+This allows multiple instances of the same indicator in different subwindows without conflict.
+
+**Updated TextGVar MJM.mqh:**
+
+```cpp
+//+------------------------------------------------------------------+
+//| TextGVar.mqh - Text Object Variables for IPC                     |
+//+------------------------------------------------------------------+
+
+string TextGVar_BuildName(const string prefix, int window, const string shortName, const string varName)
+{
+   return prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot; + varName;
+}
+
+//+------------------------------------------------------------------+
+//| Create text object variable                                      |
+//+------------------------------------------------------------------+
+string TextGVar_Create(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string value,
+                     const int xBars = 0)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &gt;= 0)
+      ObjectDelete(0, name);
+   
+   int totalBars = Bars(Symbol(), Period());
+   int oldestBarIndex = totalBars - 1;
+   int barIndex = oldestBarIndex - xBars;
+   if(barIndex &lt; 0) barIndex = 0;
+   
+   datetime timeCoord = iTime(Symbol(), Period(), barIndex);
+   double pipSize = (Digits() == 5 || Digits() == 3) ? Point() * 10 : Point();
+   double yPrice = iHigh(Symbol(), Period(), oldestBarIndex) + (20 * pipSize);
+   
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, yPrice))
+      return &quot;&quot;;
+   
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDarkGray);
+   ObjectSetString(0, name, OBJPROP_FONT, &quot;Consolas&quot;);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   
+   return name + &quot;=&quot; + value;
+}
+
+//+------------------------------------------------------------------+
+//| Read text object value, return default if not found              |
+//+------------------------------------------------------------------+
+string TextGVar_Read(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string defaultValue = &quot;&quot;)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return defaultValue;
+   
+   return ObjectGetString(0, name, OBJPROP_TEXT);
+}
+
+//+------------------------------------------------------------------+
+//| Update existing text object value                                |
+//+------------------------------------------------------------------+
+bool TextGVar_Update(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string newValue)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return false;
+   
+   return ObjectSetString(0, name, OBJPROP_TEXT, newValue);
+}
+
+//+------------------------------------------------------------------+
+//| Delete single text object                                        |
+//+------------------------------------------------------------------+
+bool TextGVar_Delete(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return false;
+   
+   return ObjectDelete(0, name);
+}
+
+//+------------------------------------------------------------------+
+//| Delete all objects matching prefix + window + shortName          |
+//+------------------------------------------------------------------+
+int TextGVar_DeleteAll(const string prefix, int window, const string shortName)
+{
+   string pattern = prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot;;
+   int deleted = 0;
+   
+   for(int i = ObjectsTotal(0) - 1; i &gt;= 0; i--)
+   {
+      string objName = ObjectName(0, i);
+      if(StringFind(objName, pattern) == 0)
+      {
+         if(ObjectDelete(0, objName))
+            deleted++;
+      }
+   }
+   
+   return deleted;
+}
+```
+
+---
+
+**Changes required in each SI:**
+
+**OnInit changes:**
+
+1. Add this line before any TextGVar calls:
+```cpp
+int myWindow = ChartWindowFind();
+```
+
+2. Every TextGVar_Create call changes — add `myWindow` as second parameter:
+```cpp
+// OLD:
+TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+
+// NEW:
+TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+```
+
+---
+
+**OnDeinit changes:**
+
+1. Add this block at the very start of OnDeinit, before any other code:
+```cpp
+int myWindow = ChartWindowFind();
+
+//--- Clean any stale REINITs for [INDICATOR_BASE_NAME] in this window
+string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_[INDICATOR_BASE_NAME](&quot;;
+for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+{
+   string objName = ObjectName(0, obj);
+   if(StringFind(objName, pattern) == 0 &amp;&amp; StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+      ObjectDelete(0, objName);
+}
+```
+Replace `[INDICATOR_BASE_NAME]` with the indicator&#x27;s base name: `ATR`, `EMA`, `Stoch`, etc.
+
+2. TextGVar_DeleteAll changes — add `myWindow` as second parameter:
+```cpp
+// OLD:
+TextGVar_DeleteAll(&quot;MJM&quot;, ShortName);
+
+// NEW:
+TextGVar_DeleteAll(&quot;MJM&quot;, myWindow, ShortName);
+```
+
+3. TextGVar_Create for REINIT changes — add `myWindow` as second parameter:
+```cpp
+// OLD:
+TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;_REINIT&quot;, TimeToString(TimeCurrent()));
+
+// NEW:
+TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;_REINIT&quot;, TimeToString(TimeCurrent()));
+```
+
+---
+
+**I will provide my SI code files. For each one:**
+1. Apply all changes listed above
+2. Preserve all commented code
+3. Provide complete updated files for download
+
+---</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:08 UTC</span></div><div class="body"><p>Monday, January 20, 2025, 01:32 AM CST</p>
+<p>Understood. Ready to process your SI files. Provide each file and I'll apply the changes:</p>
+<ol>
+<li>Add <code>int myWindow = ChartWindowFind();</code> in OnInit</li>
+<li>Add <code>myWindow</code> parameter to all TextGVar calls</li>
+<li>Add stale REINIT cleanup block at start of OnDeinit (with correct base name)</li>
+<li>Update TextGVar_DeleteAll and REINIT TextGVar_Create calls</li>
+</ol>
+<p>Waiting for files.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:11 UTC</span></div><div class="body">I&#x27;ll give them to you now BUT FIRST TELL ME YOUR PLAN FOR EACH ONE.<p class="note">[File attached: Ind_ATR MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_Bands MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_CCI MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_DEMA MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_DeMarker MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_MA MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_MACD MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_MFI MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_Momentum MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_OsMA MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_RSI MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_Stochastic MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_TEMA MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: Ind_TRIX MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:11 UTC</span></div><div class="body"><p><strong>Plan for each indicator:</strong></p>
+<ol>
+<li>
+<p><strong>Ind_ATR_MJM.mq5</strong> - Base name: <code>ATR</code></p>
+<ul>
+<li>OnInit: Add <code>int myWindow = ChartWindowFind();</code> before first TextGVar</li>
+<li>OnInit: Add <code>myWindow</code> to all TextGVar_Create calls</li>
+<li>OnDeinit: Add stale REINIT cleanup with pattern <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_ATR(&quot;</code></li>
+<li>OnDeinit: Add <code>myWindow</code> to TextGVar_DeleteAll and REINIT TextGVar_Create</li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_Bands_MJM.mq5</strong> - Base name: <code>Bands</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_Bands(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_CCI_MJM.mq5</strong> - Base name: <code>CCI</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_CCI(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_DEMA_MJM.mq5</strong> - Base name: <code>DEMA</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_DEMA(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_DeMarker_MJM.mq5</strong> - Base name: <code>DeMarker</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_DeMarker(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_MA_MJM.mq5</strong> - Base name: <code>MA</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MA(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_MACD_MJM.mq5</strong> - Base name: <code>MACD</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MACD(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_MFI_MJM.mq5</strong> - Base name: <code>MFI</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MFI(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_Momentum_MJM.mq5</strong> - Base name: <code>Momentum</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_Momentum(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_OsMA_MJM.mq5</strong> - Base name: <code>OsMA</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_OsMA(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_RSI_MJM.mq5</strong> - Base name: <code>RSI</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_RSI(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_Stochastic_MJM.mq5</strong> - Base name: <code>Stoch</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_Stoch(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_TEMA_MJM.mq5</strong> - Base name: <code>TEMA</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_TEMA(&quot;</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Ind_TRIX_MJM.mq5</strong> - Base name: <code>TRIX</code></p>
+<ul>
+<li>Same pattern, REINIT cleanup uses <code>&quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_TRIX(&quot;</code></li>
+</ul>
+</li>
+</ol>
+<p>All comments preserved. Complete files returned.</p>
+<p>Proceed?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:12 UTC</span></div><div class="body">present downloadable files, agreed?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:12 UTC</span></div><div class="body"><p>Agreed. I will process all 14 files and present complete downloadable versions.</p>
+<p>Proceeding now.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:12 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:16 UTC</span></div><div class="body"><p>I'll process all 14 files now. Reading first to understand structure, then applying changes.</p>
+<p>Let me process all remaining files efficiently. I'll create each updated file:</p>
+<p>Let me process the remaining files more efficiently. I'll use Python to read and process all files systematically:</p>
+<p>All 14 indicators updated and ready for download. Each file has:</p>
+<ol>
+<li><code>int myWindow = ChartWindowFind();</code> added in OnInit</li>
+<li>All TextGVar_Create calls updated with <code>myWindow</code> parameter</li>
+<li>Stale REINIT cleanup block in OnDeinit with correct base name pattern</li>
+<li>TextGVar_DeleteAll and REINIT TextGVar_Create updated with <code>myWindow</code></li>
+<li>All comments preserved</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:46 UTC</span></div><div class="body">OK, got &#x27;em, they all compile, but there are still orphaned REINIT flags out there. Notice that they have double underscores.
+
+We&#x27;re just talking, no coding yet. Can you figure out what the problem is?<p class="note">[File attached: 1768844784000_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:46 UTC</span></div><div class="body"><p>Looking at the names:</p>
+<ul>
+<li><code>MJM_0_EMA(5)__REINIT</code></li>
+<li><code>MJM_0_EMA(7)__REINIT</code></li>
+</ul>
+<p>Double underscores before REINIT.</p>
+<p>The naming function builds: <code>prefix + &quot;_&quot; + window + &quot;_&quot; + shortName + &quot;_&quot; + varName</code></p>
+<p>When we call:</p>
+<pre><code class="language-cpp">TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;_REINIT&quot;, TimeToString(...));
+</code></pre>
+<p>The varName parameter is <code>&quot;_REINIT&quot;</code> (with leading underscore), but BuildName adds its own underscore separator, creating:
+<code>MJM_0_EMA(5)__REINIT</code></p>
+<p>The varName should be <code>&quot;REINIT&quot;</code> not <code>&quot;_REINIT&quot;</code>.</p>
+<p>Same issue in the cleanup pattern search - it's looking for <code>&quot;_REINIT&quot;</code> substring which technically still matches, but the naming is inconsistent with the convention.</p>
+<p>All TextGVar calls for REINIT creation need varName changed from <code>&quot;_REINIT&quot;</code> to <code>&quot;REINIT&quot;</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:57 UTC</span></div><div class="body">create a print() statement to reveal all these variables, using my &quot;&lt;&quot;, xxx,&quot;&gt; &quot; format
+
+   ShortName = methodStr + &quot;(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+   PlotIndexSetString(0, PLOT_LABEL, ShortName);</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:57 UTC</span></div><div class="body"><pre><code class="language-cpp">Print(&quot;methodStr&lt;&quot;, methodStr, &quot;&gt; InpPeriod&lt;&quot;, InpPeriod, &quot;&gt; ShortName&lt;&quot;, ShortName, &quot;&gt;&quot;);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 17:59 UTC</span></div><div class="body">same for this one, with &quot;ON OnDeinit: &quot; to start the printed line.
+
+   string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MA(&quot;;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 17:59 UTC</span></div><div class="body"><pre><code class="language-cpp">Print(&quot;ON OnDeinit: myWindow&lt;&quot;, myWindow, &quot;&gt; pattern&lt;&quot;, pattern, &quot;&gt;&quot;);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 18:00 UTC</span></div><div class="body">same for this
+
+      if(StringFind(objName, pattern) == 0 &amp;&amp; StringFind(objName, &quot;REINIT&quot;) &gt; 0)</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 18:00 UTC</span></div><div class="body"><pre><code class="language-cpp">Print(&quot;objName&lt;&quot;, objName, &quot;&gt; pattern&lt;&quot;, pattern, &quot;&gt; StringFind(objName,pattern)&lt;&quot;, StringFind(objName, pattern), &quot;&gt; StringFind(objName,REINIT)&lt;&quot;, StringFind(objName, &quot;REINIT&quot;), &quot;&gt;&quot;);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 18:14 UTC</span></div><div class="body">damn WHY DO YOU HARD CODE VARIABLE VALUES?
+
+   string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MACD(&quot;;
+
+
+This is screwing it up.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 18:14 UTC</span></div><div class="body"><p>You're right. The pattern should extract the base name from ShortName dynamically, not hardcode &quot;MACD&quot; or any specific indicator name.</p>
+<p>Should be:</p>
+<pre><code class="language-cpp">string baseName = ShortName;
+int parenPos = StringFind(ShortName, &quot;(&quot;);
+if(parenPos &gt; 0) baseName = StringSubstr(ShortName, 0, parenPos);
+string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_&quot; + baseName + &quot;(&quot;;
+</code></pre>
+<p>This extracts everything before the &quot;(&quot; from ShortName, making it work for any indicator.</p>
+</div></div>
+<nav class="pager"><a href="605-2026-01-19-awaiting-attachment-review.html">&larr; Awaiting attachment review</a><a href="../index.html">All chats</a><a href="607-2026-01-19-fixing-textgvar-cleanup-issues-in-sonnet-4-5.html">Fixing TextGVar cleanup issues in Sonnet 4.5 &rarr;</a></nav></div></body></html>

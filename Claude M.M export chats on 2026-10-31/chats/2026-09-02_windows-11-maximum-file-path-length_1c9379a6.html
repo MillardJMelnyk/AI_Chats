@@ -1,0 +1,76 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Windows 11 maximum file path length</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-09-02_preocupaciones-sobre-cl-usulas-contractuales-precarias_68a3f598.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-02_checking-apps-for-linux-alternatives_01b6551f.html">Next →</a></span></div><h1>Windows 11 maximum file path length</h1><div class="meta">Created 2026-09-02 17:03 UTC · Last updated 2026-09-02 17:23 UTC · 31 messages<br>Original: <a href="https://claude.ai/chat/1c9379a6-020b-4998-a658-3bd9be94d5ae">claude.ai/chat/1c9379a6-020b-4998-a658-3bd9be94d5ae</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:03 UTC</div><p>On Win 11, what is the max # chars allowed for a full pathfile name?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:03 UTC</div><p>260 characters by default (MAX_PATH, 259 usable), or about 32,767 if long path support is enabled in the registry and the app supports it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:04 UTC</div><p>I'm getting lots of copy errors because the resulting file names would be too long.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:04 UTC</div><p>Enable long paths, then copy with robocopy (File Explorer still chokes on them even after the switch).</p>
+<p>Registry: set <code>HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled</code> (DWORD) to 1, reboot.</p>
+<p>Or gpedit: Computer Configuration → Administrative Templates → System → Filesystem → "Enable Win32 long paths" → Enabled.</p>
+<p>Copy command: <code>robocopy "C:\source" "D:\dest" /E /COPY:DAT /R:1 /W:1</code></p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:05 UTC</div><p>Will enabling long paths have any collateral effects?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:05 UTC</div><p>Minor. Known effects:</p>
+<ul>
+<li>Older apps built without the <code>longPathAware</code> manifest flag still fail at 260 — the setting only helps apps that opt in. Explorer, cmd, many installers, and some third-party tools stay limited.</li>
+<li>Files you create beyond 260 become unreachable/undeletable by those apps, and by any tool you later run on a machine where the setting is off.</li>
+<li>Backup, sync, and antivirus software that hasn't been updated can silently skip or error on the long paths.</li>
+<li>Zip/archive tools and cloud sync clients (OneDrive, Dropbox) have their own separate limits that don't change.</li>
+</ul>
+<p>No performance or stability cost. It's a per-machine setting, not per-user, and reversible.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:06 UTC</div><p>OK, but even after enabling it, existing files with names &lt; 260 will still work the same?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:06 UTC</div><p>Yes.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:07 UTC</div><p>The only app I'm concerned about continuing to work is FreeFileSync (I'm using version 14.10)</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:07 UTC</div><p>It's unaffected either way — FreeFileSync already works around the 260 limit itself and doesn't depend on the registry setting.</p>
+<p>Two things that stay true regardless: any single folder or file name component still caps at 255 chars, and deleting to the recycle bin goes through the Windows Shell, which is still MAX_PATH-limited — use permanent deletion or versioning for those.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:09 UTC</div><p>Correct. Click OK, then reboot.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:10 UTC</div><p>sorry, it's already been set to 1. So Explorer file copy doesn't handle it correctly.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:10 UTC</div><p>Correct — Explorer's copy engine is not long-path aware and ignores the setting. Use robocopy.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:10 UTC</div><p>OK, Robocopy will only copy over data that isn't already there, right?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:10 UTC</div><p>Yes — it skips files whose size and timestamp already match, and copies everything else.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:13 UTC</div><p>OK, I want to copy all the shown folders EXCEPT OneDrive over to corresponding folders under E:\D-drive stuff last state before Win 11 reinstall 2026-08-30</p>
+<p>Give me the robocopy command(s) to do that.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:13 UTC</div><pre><code>robocopy &quot;D:\&quot; &quot;E:\D-drive stuff last state before Win 11 reinstall 2026-08-30&quot; /E /XD &quot;D:\OneDrive&quot; /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /TEE /LOG:&quot;E:\robocopy_D.log&quot;
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:14 UTC</div><p>what kind of terminal do I run that in?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:14 UTC</div><p>Windows Terminal or Command Prompt, run as Administrator. PowerShell works too.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:15 UTC</div><p>holy shit dude, it's important that you GIVE ME THE CORRECT COMMAND.</p>
+<h2>C:\WINDOWS\System32&gt;robocopy "D:\" "E:\D-drive stuff last state before Win 11 reinstall 2026-08-30" /E /XD "D:\OneDrive" /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /TEE /LOG:"E:\robocopy_D.log"</h2>
+<h2>ROBOCOPY     ::     Robust File Copy for Windows</h2>
+<p>Started : Wednesday, September 2, 2026 11:14:45 AM<br />
+   Source - D:\" E:\D-drive\<br />
+     Dest - C:\WINDOWS\System32\stuff\<br />
+    Files : last<br />
+            state<br />
+            before<br />
+            Win<br />
+            11<br />
+            reinstall<br />
+  Options : /DCOPY:DA /COPY:DAT /R:1000000 /W:30</p>
+<hr />
+<p>ERROR : Invalid Parameter #9 : "2026-08-30 /E /XD D:\OneDrive /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /TEE /LOG:E:\robocopy_D.log"<br />
+       Simple Usage :: ROBOCOPY source destination /MIR<br />
+             source :: Source Directory (drive:\path or \server\share\path).<br />
+        destination :: Destination Dir  (drive:\path or \server\share\path).<br />
+               /MIR :: Mirror a complete directory tree.<br />
+    For more usage information run ROBOCOPY /?<br />
+****  /MIR can DELETE files as well as copy them !<br />
+C:\WINDOWS\System32&gt;</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:15 UTC</div><p>My error: <code>"D:\"</code> — the trailing backslash escapes the closing quote. Drop it.</p>
+<pre><code>robocopy &quot;D:&quot; &quot;E:\D-drive stuff last state before Win 11 reinstall 2026-08-30&quot; /E /XD &quot;D:\OneDrive&quot; /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /TEE /LOG:&quot;E:\robocopy_D.log&quot;
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:17 UTC</div><p>FUCKING HELL!!!!</p>
+<p>I'VE GOT YOU ON HIGH INTELLIGENCE.</p>
+<p>FIGURE THIS THE FUCK OUT. GIVE ME A COMMAND THAT WILL COPY ONLY THE FOLDERS I SPECIFIED.</p>
+<p>WHAT THE FUCK IS THIS CRAP?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:18 UTC</div><p>Kill it with Ctrl+C. The <code>/XD</code> only excluded OneDrive; <code>$RECYCLE.BIN</code> and <code>System Volume Information</code> are hidden folders at the root that you didn't see in Explorer. Copy each folder explicitly instead:</p>
+<pre><code>set &quot;DEST=E:\D-drive stuff last state before Win 11 reinstall 2026-08-30&quot;
+robocopy &quot;D:\Archive&quot; &quot;%DEST%\Archive&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\CMPR&quot; &quot;%DEST%\CMPR&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\My Stuff&quot; &quot;%DEST%\My Stuff&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Programs&quot; &quot;%DEST%\Programs&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\PS&quot; &quot;%DEST%\PS&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Python&quot; &quot;%DEST%\Python&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Temp-D&quot; &quot;%DEST%\Temp-D&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Util&quot; &quot;%DEST%\Util&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\XFER 11-27 n 11-28-2024&quot; &quot;%DEST%\XFER 11-27 n 11-28-2024&quot; /E /COPY:DAT /DCOPY:DAT /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+</code></pre>
+<p>Delete <code>E:\D-drive stuff last state before Win 11 reinstall 2026-08-30\$RECYCLE.BIN</code> before running.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:19 UTC</div><p>I need to copy-n-paste into the command prompt window. Do I paste ALL of that above at one time?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:19 UTC</div><p>Yes — paste all 10 lines at once; they run sequentially.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:22 UTC</div><p>OK redo those commands so that everything with "\$" in its path is skipped.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:22 UTC</div><pre><code>set &quot;DEST=E:\D-drive stuff last state before Win 11 reinstall 2026-08-30&quot;
+robocopy &quot;D:\Archive&quot; &quot;%DEST%\Archive&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\CMPR&quot; &quot;%DEST%\CMPR&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\My Stuff&quot; &quot;%DEST%\My Stuff&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Programs&quot; &quot;%DEST%\Programs&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\PS&quot; &quot;%DEST%\PS&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Python&quot; &quot;%DEST%\Python&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Temp-D&quot; &quot;%DEST%\Temp-D&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\Util&quot; &quot;%DEST%\Util&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+robocopy &quot;D:\XFER 11-27 n 11-28-2024&quot; &quot;%DEST%\XFER 11-27 n 11-28-2024&quot; /E /COPY:DAT /DCOPY:DAT /XD &quot;$*&quot; /XF &quot;$*&quot; /R:1 /W:1 /XJ /NP /LOG+:&quot;E:\robocopy_D.log&quot;
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:22 UTC</div><p>I didn't say "everything with '$'" did I?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:23 UTC</div><p>Right — <code>$*</code> only matches names that start with <code>$</code>, which is exactly a <code>\$</code> in the path; it doesn't touch names with <code>$</code> elsewhere.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-02 17:23 UTC</div><p>a filename that starts with "$" would not be skipped</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-02 17:23 UTC</div><p>It would — that's what <code>/XF "$*"</code> does; <code>/XD "$*"</code> covers folders.</p></div><div class="nav"><span><a href="2026-09-02_preocupaciones-sobre-cl-usulas-contractuales-precarias_68a3f598.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-02_checking-apps-for-linux-alternatives_01b6551f.html">Next →</a></span></div></div></body></html>

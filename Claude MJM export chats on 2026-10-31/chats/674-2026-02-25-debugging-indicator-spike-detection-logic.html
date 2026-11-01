@@ -1,0 +1,2441 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Debugging indicator spike detection logic</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="673-2026-02-25-changing-individual-bar-colors-in-mql5.html">&larr; Changing individual bar colors in MQL5</a><a href="../index.html">All chats</a><a href="675-2026-02-25-spike-window-expiry-feature-implementation.html">Spike window expiry feature implementation &rarr;</a></nav>
+<header class="top">
+<h1>Debugging indicator spike detection logic</h1>
+<div class="meta">Created 2026-02-25 15:55 UTC &middot; Last updated 2026-02-25 16:52 UTC &middot; 26 messages<br>Original: <a href="https://claude.ai/chat/aa895e44-2e18-43cc-b294-88bbe101ac1b">claude.ai/chat/aa895e44-2e18-43cc-b294-88bbe101ac1b</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 15:55 UTC</span></div><div class="body">I&#x27;m still seeing odd behavior watching this indicator run in real time: arrows popping up on historical bars like the code lost track of the correct index, prices being placed at levels where there were no ticks at all at that time. The spike code is working 50% but needs more gating. I added logic to ensure that a spike bar must originate from inside the channel, but I&#x27;m still getting spike behavior for bars that are entirely outside the channel.
+
+I need you to Q/A the code with these things in mind and see if you can find remaining bugs.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                 TEMA_EMA_Trigger_MJM.mq5         |
+//|   TEMA/EMA cocked-trigger signal indicator with trade simulation 
+//|   + Spike Detection Module
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#property version   &quot;1.02&quot;
+#property strict
+#property indicator_chart_window
+
+#property indicator_buffers 19
+#property indicator_plots   19
+
+#include &lt;DevoInclude/TradeSimulation_MJM.mqh&gt;
+#include &lt;DevoInclude/TEMA_EMA_Trigger_Shared_MJM.mqh&gt;
+
+//--- Plot 0: TEMA
+#property indicator_label1  &quot;TEMA&quot;
+#property indicator_type1   DRAW_LINE
+#property indicator_color1  clrYellow
+#property indicator_style1  STYLE_SOLID
+#property indicator_width1  3
+
+//--- Plot 1: EMA(TEMA)
+#property indicator_label2  &quot;EMA(TEMA)&quot;
+#property indicator_type2   DRAW_LINE
+#property indicator_color2  clrAqua
+#property indicator_style2  STYLE_SOLID
+#property indicator_width2  2
+
+//--- Plot 2: Trigger Threshold
+#property indicator_label3  &quot;Trigger Threshold&quot;
+#property indicator_type3   DRAW_NONE
+
+//--- Plot 3: T/E Spread
+#property indicator_label4  &quot;T/E Spread&quot;
+#property indicator_type4   DRAW_NONE
+
+//--- Plot 4: Active Blackout Bars
+#property indicator_label5  &quot;Active Blackout Bars&quot;
+#property indicator_type5   DRAW_NONE
+
+//--- Plot 5: Buy arrows
+#property indicator_label6  &quot;Buy Signal&quot;
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrLime
+#property indicator_style6  STYLE_SOLID
+#property indicator_width6  3
+
+//--- Plot 6: Sell arrows
+#property indicator_label7  &quot;Sell Signal&quot;
+#property indicator_type7   DRAW_ARROW
+#property indicator_color7  clrRed
+#property indicator_style7  STYLE_SOLID
+#property indicator_width7  3
+
+//--- Plot 16: KC Upper
+#property indicator_label17 &quot;KC Upper&quot;
+#property indicator_type17  DRAW_LINE
+#property indicator_color17 clrBlueViolet
+#property indicator_style17 STYLE_SOLID
+#property indicator_width17 3
+
+//--- Plot 17: KC Middle
+#property indicator_label18 &quot;KC Middle&quot;
+#property indicator_type18  DRAW_LINE
+#property indicator_color18 clrWhite
+#property indicator_style18 STYLE_SOLID
+#property indicator_width18 2
+
+//--- Plot 18: KC Lower
+#property indicator_label19 &quot;KC Lower&quot;
+#property indicator_type19  DRAW_LINE
+#property indicator_color19 clrBlueViolet
+#property indicator_style19 STYLE_SOLID
+#property indicator_width19 3
+
+#define SPIKE_LONG_COLOR C&#x27;221,255,187&#x27;;
+
+input group &quot;=== Core Inputs ===&quot;
+input int                InpTEMAPeriod      = 12;                    // TEMA period
+input ENUM_APPLIED_PRICE InpTEMAApplied     = PRICE_CLOSE;           // TEMA applied price
+input int                InpEMAPeriod       = 7;                     // EMA period of TEMA
+input int                InpOpenRefOffset   = 0;                     // OPEN reference offset from hi/lo bar (0=same bar, 1=prior bar, ...)
+input ENUM_READOUT_UNITS InpReadoutUnits    = READOUT_UNITS_PRICE;   // Readout units for spread/threshold/P&amp;L
+input double             InpTriggerSensitivity = 0.18;               // TEMA trigger sensitivity (in readout units, 0=hair trigger)
+
+input group &quot;=== KC Settings ===&quot;
+input int                InpKCPeriod        = 35;                    // KC EMA period
+input int                InpKCATRPeriod     = 10;                    // KC ATR period
+input double             InpKCMultiplier    = 1.5;                   // KC ATR multiplier
+input ENUM_APPLIED_PRICE InpKCApplied       = PRICE_CLOSE;           // KC applied price
+
+input group &quot;=== Signal/Trade Simulation ===&quot;
+input bool               InpEnableTradeSim  = true;                  // Enable mock trade simulation
+input bool               InpShowArrows      = true;                  // Show chart arrow objects
+input datetime           InpTradeStartDate  = D&#x27;1970.01.01 00:00&#x27;;   // Mock trade start date, 0 = start at current bar
+input datetime           InpTradeStopDate   = D&#x27;2026.12.23 16:59&#x27;;   // Mock trade stop date, 0 = all remaining bars
+input int                InpSignalBlackout  = 2;                     // Minimum blackout bars after signal
+input bool               InpSoundTradeAlarm = true;                 // Play alert on live signal
+input int                InpObjectArrowOffset = 3;                   // Chart object arrow offset (in readout units)
+input ENUM_MOCK_PRICE_SOURCE InpMockTradePriceSource = MOCK_PRICE_AGG_EMA; // Mock trade execution price source
+
+input group &quot;=== Spike Detection ===&quot;
+input bool               InpEnableSpikeDetection     = true;        // Enable spike detection
+input double             InpSpikeKCWidthPct          = 0.20;         // Spike definition threshold (% of KC width)
+input int                InpSpikeFalterFlipFlops     = 2;            // Flipflop count to confirm faltering
+input int                InpSpikePauseMs             = 1000;         // Pause duration threshold (milliseconds)
+input double             InpSpikeSecondSpurtMultiple = 2.0;          // Second spurt definition threshold (× flipflop spread)
+input double             InpSpikeJustJumpPct         = 0.15;         // Just-jump retrace % (pullback from hi/lo)
+input double             InpSpikeHistSignalMultiplier  = 1.3;          // Historical signal price multiplier (× just-jump)
+
+input group &quot;=== Dynamic Blackout ===&quot;
+input bool               InpUseDynamicBlackout   = false;            // Enable KC-width/slope based blackout adjustment
+input int                InpBlackoutMax          = 12;               // Dynamic blackout cap (max bars)
+input int                InpKCWidthLookback      = 50;               // Lookback for KC width baseline
+input int                InpKCMidSlopePeriod     = 5;                // KC mid slope period
+input double             InpNarrowWidthRatio     = 0.80;             // Width ratio threshold (curr/baseline)
+input double             InpFlatSlopePerBar      = 0.20;             // KC mid flatness threshold (in readout units/bar)
+input double             InpBlackoutScaleK       = 10.0;             // Dynamic sensitivity scale
+
+input group &quot;=== Visibility / CSV Debug ===&quot;
+input bool               InpEnableVisibilityWindow = false;          // Apply start/end date filter to debug stream
+input datetime           InpVisibilityStartDT      = D&#x27;2026.02.01 00:00&#x27;; // Visibility window start
+input datetime           InpVisibilityEndDT        = D&#x27;2026.02.28 23:59&#x27;; // Visibility window end
+input bool               InpEnableDiagPrints       = false;          // Enable DIAG Print() logging
+input bool               InpEnableCsvDebugExport   = false;          // Export raw/work/result stream to CSV
+input string             InpCsvDebugFileName       = &quot;TEMA_EMA_Trigger_Debug.csv&quot;; // File in MQL5\\Files
+
+//--- Indicator data buffers
+double BufferTEMA[];
+double BufferEMAofTEMA[];
+double BufferTemaEmaSpread[];
+double BufferArrowBuy[];
+double BufferArrowSell[];
+
+//--- Trade simulation buffers (data window use)
+double BufferTradePL[];
+double BufferRunningPL[];
+double BufferTradeCount[];
+double BufferWinPct[];
+double BufferShortCount[];
+double BufferShortWinPct[];
+double BufferLongCount[];
+double BufferLongWinPct[];
+double BufferDynBlackout[];
+double BufferKCWidthRatio[];
+double BufferTriggerThreshold[];
+double BufferKCUpper[];
+double BufferKCMiddle[];
+double BufferKCLower[];
+double BufferAggExecPrice[];
+
+//--- Handles
+int iHndlTEMA      = INVALID_HANDLE;
+int iHndlEMAofTEMA = INVALID_HANDLE;
+int iHndlKC        = INVALID_HANDLE;
+
+//--- Trade simulation state
+STradeStats        g_tradeStats;
+STradeEntry        g_currentTrade;
+STradeStats        g_snapshotStats;
+STradeEntry        g_snapshotTrade;
+SSignalArrowConfig g_arrowCfg;
+STradeLabel        g_labelCfg;
+datetime           g_signalStartDT = 0;
+int                g_lastSignalBar = -999;
+datetime           g_tradeStopDT = 0;
+
+//--- Cocked-trigger state
+int    iDir = 0;                // +1: hunt high (TEMA &gt; EMA), -1: hunt low (TEMA &lt; EMA)
+int    g_crossBar = -1;
+int    g_extremeBar = -1;
+int    g_extremeOpenRefBar = -1;
+double g_extremePrice = 0.0;
+double g_extremeOpen = 0.0;
+bool   g_pendingConfirm = false;
+bool   g_isCocked = false;
+int    g_cockedDir = 0;         // +1 long, -1 short
+double g_cockLevel = 0.0;       // Open of hi/lo bar that cocked signal
+int    g_maxPeriodsBack = 0;
+bool   g_triggerPending = false;
+int    g_triggerDir = 0;        // +1 long, -1 short
+int    g_triggerCrossBar = -1;
+int    g_lastExportedBar = -1;
+bool   g_blackoutSignalPending = false;
+int    g_blackoutSignalDir = 0; // +1 long, -1 short
+int    g_blackoutSignalBar = -1;
+bool   g_provisionalSignal = false;
+bool   g_aggrFlipCheckPending = false;
+int    g_aggrFlipCheckBar = -1;
+int    g_aggrFinalDir = 0;
+ENUM_MOCK_PRICE_SOURCE g_aggrFinalMode = MOCK_PRICE_AGG_EMA;
+bool   g_aggrRecoveryActive = false;
+bool   g_revertedMode = false;
+int    g_lastAggRawCrossDir = 0;
+datetime g_effectiveTradeStartDate = InpTradeStartDate;
+
+//--- Spike detection state (intra-bar tracking)
+bool     g_spikeActive;              // Currently tracking a spike
+int      g_spikeDir;                 // +1 up, -1 down
+int      g_spikeBar;                 // Bar index where spike detected
+double   g_spikeKCLevel;             // KC line that was breached
+double   g_spikeExtremum;            // Running high-water or low-water mark
+double   g_spikeFirstRetraceExtent;  // How far price pulled back first time
+int      g_spikeFlipFlopCount;       // Current flip-flop count
+bool     g_spikeFalterConfirmed;     // Flip-flop threshold reached
+bool     g_spikeSecondSpurtDone;     // Second spurt detected
+ulong    g_spikeLastMoveTimeMs;      // Last time price moved (milliseconds since epoch)
+double   g_spikeLastPrice;           // Last price (for movement detection)
+int      g_spikeMovementDir;         // Current movement direction for flip-flop tracking (+1 up, -1 down, 0 none)
+double   g_spikePreSpurtExtremum;    // Extremum before second spurt (to measure spurt size)
+bool     g_spikeFromPriorBar;        // Spike originated from prior bar (for next-bar just-jump)
+
+//--- Pre-spike state snapshot (for reset to prior state)
+int      g_preSpike_iDir;
+int      g_preSpike_crossBar;
+int      g_preSpike_extremeBar;
+int      g_preSpike_extremeOpenRefBar;
+double   g_preSpike_extremePrice;
+double   g_preSpike_extremeOpen;
+bool     g_preSpike_pendingConfirm;
+bool     g_preSpike_isCocked;
+int      g_preSpike_cockedDir;
+double   g_preSpike_cockLevel;
+bool     g_preSpike_triggerPending;
+int      g_preSpike_triggerDir;
+int      g_preSpike_triggerCrossBar;
+bool     g_preSpike_blackoutSignalPending;
+int      g_preSpike_blackoutSignalDir;
+int      g_preSpike_blackoutSignalBar;
+
+//+------------------------------------------------------------------+
+//| Spike state management functions                                  |
+//+------------------------------------------------------------------+
+void ResetSpikeState()
+{
+   g_spikeActive = false;
+   g_spikeDir = 0;
+   g_spikeBar = -1;
+   g_spikeKCLevel = 0.0;
+   g_spikeExtremum = 0.0;
+   g_spikeFirstRetraceExtent = 0.0;
+   g_spikeFlipFlopCount = 0;
+   g_spikeFalterConfirmed = false;
+   g_spikeSecondSpurtDone = false;
+   g_spikeLastMoveTimeMs = 0;
+   g_spikeLastPrice = 0.0;
+   g_spikeMovementDir = 0;
+   g_spikePreSpurtExtremum = 0.0;
+   g_spikeFromPriorBar = false;
+}
+
+void SnapshotPreSpikeState()
+{
+   g_preSpike_iDir = iDir;
+   g_preSpike_crossBar = g_crossBar;
+   g_preSpike_extremeBar = g_extremeBar;
+   g_preSpike_extremeOpenRefBar = g_extremeOpenRefBar;
+   g_preSpike_extremePrice = g_extremePrice;
+   g_preSpike_extremeOpen = g_extremeOpen;
+   g_preSpike_pendingConfirm = g_pendingConfirm;
+   g_preSpike_isCocked = g_isCocked;
+   g_preSpike_cockedDir = g_cockedDir;
+   g_preSpike_cockLevel = g_cockLevel;
+   g_preSpike_triggerPending = g_triggerPending;
+   g_preSpike_triggerDir = g_triggerDir;
+   g_preSpike_triggerCrossBar = g_triggerCrossBar;
+   g_preSpike_blackoutSignalPending = g_blackoutSignalPending;
+   g_preSpike_blackoutSignalDir = g_blackoutSignalDir;
+   g_preSpike_blackoutSignalBar = g_blackoutSignalBar;
+}
+
+void RestorePreSpikeState()
+{
+   iDir = g_preSpike_iDir;
+   g_crossBar = g_preSpike_crossBar;
+   g_extremeBar = g_preSpike_extremeBar;
+   g_extremeOpenRefBar = g_preSpike_extremeOpenRefBar;
+   g_extremePrice = g_preSpike_extremePrice;
+   g_extremeOpen = g_preSpike_extremeOpen;
+   g_pendingConfirm = g_preSpike_pendingConfirm;
+   g_isCocked = g_preSpike_isCocked;
+   g_cockedDir = g_preSpike_cockedDir;
+   g_cockLevel = g_preSpike_cockLevel;
+   g_triggerPending = g_preSpike_triggerPending;
+   g_triggerDir = g_preSpike_triggerDir;
+   g_triggerCrossBar = g_preSpike_triggerCrossBar;
+   g_blackoutSignalPending = g_preSpike_blackoutSignalPending;
+   g_blackoutSignalDir = g_preSpike_blackoutSignalDir;
+   g_blackoutSignalBar = g_preSpike_blackoutSignalBar;
+   
+   ResetSpikeState();
+}
+
+//+------------------------------------------------------------------+
+//| Readout helpers - convert raw price to display units             |
+//+------------------------------------------------------------------+
+double PriceDeltaToReadout(const double priceDelta)
+{
+   if(InpReadoutUnits == READOUT_UNITS_PIPS)
+      return TS_Price2Pips(priceDelta);
+   return priceDelta;
+}
+
+string ReadoutUnitText()
+{
+   if(InpReadoutUnits == READOUT_UNITS_PIPS)
+      return &quot;pips&quot;;
+   return &quot;price&quot;;
+}
+
+int ReadoutDigits()
+{
+   if(InpReadoutUnits == READOUT_UNITS_PIPS)
+      return 1;
+   return _Digits;
+}
+
+ENUM_TS_READOUT_MODE TSReadoutMode()
+{
+   if(InpReadoutUnits == READOUT_UNITS_PIPS)
+      return TS_READOUT_PIPS;
+   return TS_READOUT_PRICE;
+}
+
+//+------------------------------------------------------------------+
+//| ReadoutToPrice - convert user input from readout units to raw    |
+//|    price. Called once per OnCalculate to set internal thresholds. |
+//+------------------------------------------------------------------+
+double ReadoutToPrice(const double readoutValue, const double pipSize)
+{
+   if(InpReadoutUnits == READOUT_UNITS_PIPS)
+      return readoutValue * pipSize;
+   return readoutValue;
+}
+
+bool IsAggressiveMode()
+{
+   return (InpMockTradePriceSource &gt;= MOCK_PRICE_AGG_TEMA);
+}
+
+double GetMockTradePrice(const int bar, const double &amp;close[])
+{
+   if(InpMockTradePriceSource == MOCK_PRICE_TEMA &amp;&amp; BufferTEMA[bar] != EMPTY_VALUE)
+      return BufferTEMA[bar];
+   if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA &amp;&amp; BufferEMAofTEMA[bar] != EMPTY_VALUE)
+      return BufferEMAofTEMA[bar];
+   return close[bar];
+}
+
+//+------------------------------------------------------------------+
+void UpdateOpenTradeLiveState(const int bar, const double liveExitPrice)
+{
+   if(g_currentTrade.direction == 0 || g_currentTrade.entryBar &lt; 0)
+      return;
+
+   if(bar &gt;= ArraySize(BufferTradePL))
+      TS_GrowStatsArrays(bar + 1, BufferTradePL, BufferRunningPL, BufferTradeCount, BufferWinPct,
+                         BufferShortCount, BufferShortWinPct, BufferLongCount, BufferLongWinPct);
+
+   //--- Compute in raw price
+   double livePL = (liveExitPrice - g_currentTrade.entryPrice) * g_currentTrade.direction;
+   double liveRunning = g_tradeStats.runningPL + livePL;
+
+   //--- Store display values in Data Window buffers
+   BufferTradePL[bar]    = PriceDeltaToReadout(livePL);
+   BufferRunningPL[bar]  = PriceDeltaToReadout(liveRunning);
+   BufferTradeCount[bar] = g_tradeStats.TotalTrades();
+   BufferWinPct[bar]     = g_tradeStats.WinPct();
+   BufferShortCount[bar] = g_tradeStats.shortCount;
+   BufferShortWinPct[bar]= g_tradeStats.ShortWinPct();
+   BufferLongCount[bar]  = g_tradeStats.longCount;
+   BufferLongWinPct[bar] = g_tradeStats.LongWinPct();
+
+   if(g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0)
+   {
+      int displayDigits   = ReadoutDigits();
+      string readoutUnit  = ReadoutUnitText();
+      string tip = StringFormat(&quot;Entry: %s | Exit: %s | P/L: %s %s | Running: %s %s&quot;,
+                                DoubleToString(g_currentTrade.entryPrice, _Digits),
+                                DoubleToString(liveExitPrice, _Digits),
+                                DoubleToString(BufferTradePL[bar], displayDigits), readoutUnit,
+                                DoubleToString(BufferRunningPL[bar], displayDigits), readoutUnit);
+      ObjectSetString(0, g_currentTrade.arrowName, OBJPROP_TOOLTIP, tip);
+   }
+}
+
+//+------------------------------------------------------------------+
+int T2ESign(double v, double eps)
+{
+   if(v &gt; eps)  return 1;
+   if(v &lt; -eps) return -1;
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+int KCOuterState(const double lineValue,
+                 const int lineToMidState,
+                 const double kcUpper,
+                 const double kcLower,
+                 const double eps)
+{
+   if(lineToMidState == 0)
+      return 0;
+   if(lineValue == EMPTY_VALUE || kcUpper == EMPTY_VALUE || kcLower == EMPTY_VALUE)
+      return 0;
+
+   double selectedOuter = (lineToMidState &gt; 0) ? kcUpper : kcLower;
+   return T2ESign((lineValue - selectedOuter) * lineToMidState, eps);
+}
+
+//+------------------------------------------------------------------+
+int EffectiveAggressiveBlackout(const int bar)
+{
+   double blackout = InpSignalBlackout;
+   if(bar &gt;= 0 &amp;&amp; bar &lt; ArraySize(BufferDynBlackout) &amp;&amp; BufferDynBlackout[bar] != EMPTY_VALUE)
+      blackout = BufferDynBlackout[bar];
+
+   blackout = blackout - 1.0;
+   if(blackout &lt; 0.0)
+      blackout = 0.0;
+   return (int)MathRound(blackout);
+}
+
+//+------------------------------------------------------------------+
+void ArmAggressiveFlipCheck(const int finalizedBar,
+                            const int finalizedDir,
+                            const ENUM_MOCK_PRICE_SOURCE finalizedMode)
+{
+   if(finalizedBar &lt; 0 || finalizedDir == 0)
+      return;
+
+   g_aggrFlipCheckPending = true;
+   g_aggrFlipCheckBar = finalizedBar + EffectiveAggressiveBlackout(finalizedBar);
+   g_aggrFinalDir = finalizedDir;
+   g_aggrFinalMode = finalizedMode;
+}
+
+//+------------------------------------------------------------------+
+bool IsWrongSideAggressiveTarget(const int bar,
+                                 const double &amp;close[],
+                                 const double triggerSensPrice,
+                                 const int finalizedDir,
+                                 const ENUM_MOCK_PRICE_SOURCE finalizedMode)
+{
+   if(finalizedDir == 0 || bar &lt; 0)
+      return false;
+
+   double base = EMPTY_VALUE;
+   if(finalizedMode == MOCK_PRICE_AGG_TEMA)
+      base = BufferTEMA[bar];
+   else if(finalizedMode == MOCK_PRICE_AGG_EMA)
+      base = BufferEMAofTEMA[bar];
+
+   if(base == EMPTY_VALUE)
+      return false;
+
+   double target = base + finalizedDir * triggerSensPrice;
+   if(finalizedDir &gt; 0)
+      return (close[bar] &lt; target);
+   return (close[bar] &gt; target);
+}
+
+//+------------------------------------------------------------------+
+string SignalToText(ENUM_SIGNAL_TYPE signal)
+{
+   if(signal == SIGNAL_LONG)  return &quot;LONG&quot;;
+   if(signal == SIGNAL_SHORT) return &quot;SHORT&quot;;
+   return &quot;NONE&quot;;
+}
+
+//+------------------------------------------------------------------+
+bool IsInVisibilityWindow(datetime dt)
+{
+   if(!InpEnableVisibilityWindow)
+      return true;
+
+   return (dt &gt;= InpVisibilityStartDT &amp;&amp; dt &lt;= InpVisibilityEndDT);
+}
+
+//+------------------------------------------------------------------+
+void InitCsvDebugFile()
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+
+   FileDelete(InpCsvDebugFileName);
+   int h = FileOpen(InpCsvDebugFileName, FILE_WRITE|FILE_CSV|FILE_ANSI, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CSV init failed. file&lt;&quot;,InpCsvDebugFileName,&quot;&gt; err=&quot;,GetLastError());
+      return;
+   }
+
+   string readoutUnit = ReadoutUnitText();
+   FileWrite(h,
+             &quot;time&quot;,&quot;bar&quot;,&quot;open&quot;,&quot;high&quot;,&quot;low&quot;,&quot;close&quot;,
+             &quot;tema&quot;,&quot;ema_tema&quot;,
+             &quot;kc_upper&quot;,&quot;kc_mid&quot;,&quot;kc_lower&quot;,
+             &quot;kc_width_&quot;+readoutUnit,&quot;kc_width_ratio&quot;,&quot;kc_mid_slope_&quot;+readoutUnit+&quot;_per_bar&quot;,
+             &quot;active_blackout&quot;,
+             &quot;direction&quot;,&quot;cross_up&quot;,&quot;cross_dn&quot;,&quot;is_cross&quot;,
+             &quot;extreme_bar&quot;,&quot;extreme_open_ref_bar&quot;,&quot;extreme_open&quot;,&quot;extreme_price&quot;,
+             &quot;pending_confirm&quot;,&quot;is_cocked&quot;,&quot;cocked_dir&quot;,&quot;cock_level&quot;,
+             &quot;trigger_pending&quot;,&quot;trigger_dir&quot;,&quot;trigger_cross_bar&quot;,
+             &quot;spike_active&quot;,&quot;spike_dir&quot;,&quot;spike_falter&quot;,&quot;spike_second_spurt&quot;,
+             &quot;signal&quot;,&quot;arrow_buy&quot;,&quot;arrow_sell&quot;,
+             &quot;trade_count&quot;,&quot;running_pl_&quot;+readoutUnit);
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void AppendCsvDebugRow(const datetime dt, 
+                        const int bar,
+                        const double opn, 
+                        const double hi, 
+                        const double lo, 
+                        const double cls,
+                        const double tema, 
+                        const double emaTema,
+                        const double kcUpper, 
+                        const double kcMid, 
+                        const double kcLower,
+                        const double kcWidthReadout, 
+                        const double kcWidthRatio, 
+                        const double kcMidSlopeReadout,
+                        const double activeBlackout,
+                        const bool crossUp, 
+                        const bool crossDn, 
+                        const bool isCross,
+                        const ENUM_SIGNAL_TYPE signal)
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+   if(!IsInVisibilityWindow(dt))
+      return;
+
+   int h = FileOpen(InpCsvDebugFileName, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI|FILE_SHARE_READ, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+      return;
+
+   FileSeek(h, 0, SEEK_END);
+   FileWrite(h,
+             TimeToString(dt, TIME_DATE|TIME_MINUTES),
+             bar,
+             opn, hi, lo, cls,
+             tema, emaTema,
+             kcUpper, kcMid, kcLower,
+             kcWidthReadout, kcWidthRatio, kcMidSlopeReadout,
+             activeBlackout,
+             iDir, (int)crossUp, (int)crossDn, (int)isCross,
+             g_extremeBar, g_extremeOpenRefBar, g_extremeOpen, g_extremePrice,
+             (int)g_pendingConfirm, (int)g_isCocked, g_cockedDir, g_cockLevel,
+             (int)g_triggerPending, g_triggerDir, g_triggerCrossBar,
+             (int)g_spikeActive, g_spikeDir, (int)g_spikeFalterConfirmed, (int)g_spikeSecondSpurtDone,
+             SignalToText(signal), BufferArrowBuy[bar], BufferArrowSell[bar],
+             g_tradeStats.tradeCount, PriceDeltaToReadout(g_tradeStats.runningPL));
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void UpdateExtremeOpenReference(int extremeBar, const double &amp;open[])
+{
+   g_extremeOpenRefBar = MathMax(0, extremeBar - InpOpenRefOffset);
+   g_extremeOpen = open[g_extremeOpenRefBar];
+}
+
+//+------------------------------------------------------------------+
+void ResetCycleForDirection(int iDirection, int bar, const double &amp;open[], const double &amp;high[], const double &amp;low[],
+                            bool preserveTriggerState = false)
+{
+   iDir = iDirection;
+   g_crossBar = bar;
+   g_extremeBar = bar;
+   UpdateExtremeOpenReference(g_extremeBar, open);
+   g_pendingConfirm = true;
+
+   if(iDirection &gt; 0)
+      g_extremePrice = high[bar];
+   else
+      g_extremePrice = low[bar];
+
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   if(!preserveTriggerState)
+   {
+      g_triggerPending = false;
+      g_triggerDir = 0;
+      g_triggerCrossBar = -1;
+   }
+}
+
+//+------------------------------------------------------------------+
+void ResetAllStateAndBuffers()
+{
+   g_tradeStats.Reset();
+   g_currentTrade.Reset();
+   g_snapshotStats.Reset();
+   g_snapshotTrade.Reset();
+   g_signalStartDT = 0;
+   g_lastSignalBar = -999;
+
+   iDir = 0;
+   g_crossBar = -1;
+   g_extremeBar = -1;
+   g_extremeOpenRefBar = -1;
+   g_extremePrice = 0.0;
+   g_extremeOpen = 0.0;
+   g_pendingConfirm = false;
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   g_triggerPending = false;
+   g_triggerDir = 0;
+   g_triggerCrossBar = -1;
+   g_blackoutSignalPending = false;
+   g_blackoutSignalDir = 0;
+   g_blackoutSignalBar = -1;
+   g_provisionalSignal = false;
+   g_aggrFlipCheckPending = false;
+   g_aggrFlipCheckBar = -1;
+   g_aggrFinalDir = 0;
+   g_aggrFinalMode = MOCK_PRICE_AGG_EMA;
+   g_aggrRecoveryActive = false;
+   g_revertedMode = false;
+   g_lastAggRawCrossDir = 0;
+   
+   //--- Reset spike state
+   ResetSpikeState();
+   g_preSpike_iDir = 0;
+   g_preSpike_crossBar = -1;
+   g_preSpike_extremeBar = -1;
+   g_preSpike_extremeOpenRefBar = -1;
+   g_preSpike_extremePrice = 0.0;
+   g_preSpike_extremeOpen = 0.0;
+   g_preSpike_pendingConfirm = false;
+   g_preSpike_isCocked = false;
+   g_preSpike_cockedDir = 0;
+   g_preSpike_cockLevel = 0.0;
+   g_preSpike_triggerPending = false;
+   g_preSpike_triggerDir = 0;
+   g_preSpike_triggerCrossBar = -1;
+   g_preSpike_blackoutSignalPending = false;
+   g_preSpike_blackoutSignalDir = 0;
+   g_preSpike_blackoutSignalBar = -1;
+   
+   ArrayInitialize(BufferArrowBuy, EMPTY_VALUE);
+   ArrayInitialize(BufferArrowSell, EMPTY_VALUE);
+   ArrayInitialize(BufferTradePL, EMPTY_VALUE);
+   ArrayInitialize(BufferRunningPL, EMPTY_VALUE);
+   ArrayInitialize(BufferTradeCount, EMPTY_VALUE);
+   ArrayInitialize(BufferWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferShortCount, EMPTY_VALUE);
+   ArrayInitialize(BufferShortWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferLongCount, EMPTY_VALUE);
+   ArrayInitialize(BufferLongWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferDynBlackout, EMPTY_VALUE);
+   ArrayInitialize(BufferKCWidthRatio, EMPTY_VALUE);
+   ArrayInitialize(BufferTriggerThreshold, EMPTY_VALUE);
+   ArrayInitialize(BufferTemaEmaSpread, EMPTY_VALUE);
+
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+}
+
+//+------------------------------------------------------------------+
+void RevertProvisionalSignal(const int bar)
+{
+   ObjectDelete(0, g_currentTrade.arrowName);
+   BufferArrowBuy[bar] = EMPTY_VALUE;
+   BufferArrowSell[bar] = EMPTY_VALUE;
+   g_currentTrade = g_snapshotTrade;
+   g_tradeStats = g_snapshotStats;
+   g_provisionalSignal = false;
+}
+
+//+------------------------------------------------------------------+
+//| Spike Detection: Check for KC breach + sufficient extension       |
+//+------------------------------------------------------------------+
+bool CheckSpikeCondition(const int bar,
+                         const double barHigh,
+                         const double barLow,
+                         const double barClose,
+                         const double kcUpper,
+                         const double kcLower)
+{
+   if(!InpEnableSpikeDetection)
+      return false;
+   if(kcUpper == EMPTY_VALUE || kcLower == EMPTY_VALUE)
+      return false;
+   if(g_spikeActive)
+      return false;  // Already tracking a spike
+      
+   //--- Calculate threshold as percentage of KC width
+   double kcWidth = kcUpper - kcLower;
+   if(kcWidth &lt;= 0)
+      return false;
+   double dSpikeExtentMIN = InpSpikeKCWidthPct * kcWidth;
+   
+   //--- Calculate extension beyond KC (not bar range)
+   double dOutsideKC_UP = (barHigh &gt; kcUpper) ? (barHigh - kcUpper) : 0.0;
+   double dOutsideKC_DN = (barLow &lt; kcLower) ? (kcLower - barLow) : 0.0;
+   
+   bool breachUp = (dOutsideKC_UP &gt; 0);
+   bool breachDn = (dOutsideKC_DN &gt; 0);
+   
+   if(!breachUp &amp;&amp; !breachDn)
+      return false;
+      
+   bool qualifiedUp = (dOutsideKC_UP &gt;= dSpikeExtentMIN);
+   bool qualifiedDn = (dOutsideKC_DN &gt;= dSpikeExtentMIN);
+   
+   if(!qualifiedUp &amp;&amp; !qualifiedDn)
+      return false;
+      
+   //--- Determine spike direction (if both qualified, use larger extension)
+   int spikeDir = 0;
+   double kcLevel = 0.0;
+   
+   if(qualifiedUp &amp;&amp; qualifiedDn)
+   {
+      if(dOutsideKC_UP &gt;= dOutsideKC_DN)
+      {
+         spikeDir = 1;
+         kcLevel = kcUpper;
+      }
+      else
+      {
+         spikeDir = -1;
+         kcLevel = kcLower;
+      }
+   }
+   else if(qualifiedUp)
+   {
+      spikeDir = 1;
+      kcLevel = kcUpper;
+   }
+   else
+   {
+      spikeDir = -1;
+      kcLevel = kcLower;
+   }
+   
+   //--- Spike must align with current hunting direction (or no direction yet)
+   if(iDir != 0 &amp;&amp; spikeDir != iDir)
+   {
+      if(InpEnableDiagPrints)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; SPIKE_IGNORED_OPPOSITE_DIR spikeDir&lt;&quot;,spikeDir,&quot;&gt; iDir&lt;&quot;,iDir,&quot;&gt;&quot;);
+      return false;
+   }
+   
+   //--- Snapshot pre-spike state before modifying anything
+   SnapshotPreSpikeState();
+   
+   //--- Initialize spike tracking
+   g_spikeActive = true;
+   g_spikeDir = spikeDir;
+   g_spikeBar = bar;
+   g_spikeKCLevel = kcLevel;
+   g_spikeExtremum = (spikeDir &gt; 0) ? barHigh : barLow;
+   g_spikeFirstRetraceExtent = 0.0;
+   g_spikeFlipFlopCount = 0;
+   g_spikeFalterConfirmed = false;
+   g_spikeSecondSpurtDone = false;
+   g_spikeLastMoveTimeMs = GetTickCount64();
+   g_spikeLastPrice = barClose;
+   g_spikeMovementDir = 0;
+   g_spikePreSpurtExtremum = g_spikeExtremum;
+   g_spikeFromPriorBar = false;
+   
+   if(InpEnableDiagPrints)
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; SPIKE_DETECTED bar&lt;&quot;,bar,&quot;&gt; dir&lt;&quot;,spikeDir,&quot;&gt; kcLevel&lt;&quot;,kcLevel,
+            &quot;&gt; extremum&lt;&quot;,g_spikeExtremum,&quot;&gt; extension&lt;&quot;,(spikeDir &gt; 0 ? dOutsideKC_UP : dOutsideKC_DN),
+            &quot;&gt; threshold&lt;&quot;,dSpikeExtentMIN,&quot;&gt; kcWidth&lt;&quot;,kcWidth,&quot;&gt;&quot;);
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Spike Intra-bar Processing: Track faltering, second spurt, pause  |
+//+------------------------------------------------------------------+
+ENUM_SIGNAL_TYPE ProcessSpikeIntraBar(const int bar,
+                                       const double currentPrice,
+                                       const double barHigh,
+                                       const double barLow,
+                                       const datetime barTime)
+{
+   if(!g_spikeActive)
+      return SIGNAL_NONE;
+      
+   ulong currentTimeMs = GetTickCount64();
+   ENUM_SIGNAL_TYPE spikeSignal = SIGNAL_NONE;
+   
+   //--- Update extremum if price extends further in spike direction
+   bool newExtremum = false;
+   if(g_spikeDir &gt; 0 &amp;&amp; barHigh &gt; g_spikeExtremum)
+   {
+      g_spikeExtremum = barHigh;
+      newExtremum = true;
+   }
+   else if(g_spikeDir &lt; 0 &amp;&amp; barLow &lt; g_spikeExtremum)
+   {
+      g_spikeExtremum = barLow;
+      newExtremum = true;
+   }
+   
+   //--- Track price movement direction for flip-flop counting
+   int priceDir = 0;
+   if(currentPrice &gt; g_spikeLastPrice)
+      priceDir = 1;
+   else if(currentPrice &lt; g_spikeLastPrice)
+      priceDir = -1;
+      
+   //--- Detect flip-flops (direction reversal then reversal back)
+   if(priceDir != 0 &amp;&amp; g_spikeMovementDir != 0 &amp;&amp; priceDir != g_spikeMovementDir)
+   {
+      //--- Direction changed - this is half a flip-flop
+      //--- Count full flip-flop when returning to original direction
+      if((g_spikeDir &gt; 0 &amp;&amp; priceDir &gt; 0) || (g_spikeDir &lt; 0 &amp;&amp; priceDir &lt; 0))
+      {
+         //--- Moving back toward spike direction after moving away = flip-flop complete
+         g_spikeFlipFlopCount++;
+         
+         if(InpEnableDiagPrints)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; SPIKE_FLIPFLOP count&lt;&quot;,g_spikeFlipFlopCount,&quot;&gt; bar&lt;&quot;,bar,&quot;&gt;&quot;);
+      }
+      
+      //--- Track first retrace extent (for second spurt threshold)
+      if(g_spikeFirstRetraceExtent == 0.0 &amp;&amp; !g_spikeFalterConfirmed)
+      {
+         if(g_spikeDir &gt; 0)
+            g_spikeFirstRetraceExtent = g_spikeExtremum - barLow;
+         else
+            g_spikeFirstRetraceExtent = barHigh - g_spikeExtremum;
+      }
+   }
+   
+   //--- Update movement tracking
+   if(priceDir != 0)
+   {
+      g_spikeMovementDir = priceDir;
+      g_spikeLastMoveTimeMs = currentTimeMs;
+   }
+   g_spikeLastPrice = currentPrice;
+   
+   //--- Check for faltering confirmation
+   if(!g_spikeFalterConfirmed &amp;&amp; g_spikeFlipFlopCount &gt;= InpSpikeFalterFlipFlops)
+   {
+      g_spikeFalterConfirmed = true;
+      g_spikePreSpurtExtremum = g_spikeExtremum;
+      
+      if(InpEnableDiagPrints)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; SPIKE_FALTER_CONFIRMED bar&lt;&quot;,bar,&quot;&gt; preSpurtExtremum&lt;&quot;,g_spikePreSpurtExtremum,&quot;&gt;&quot;);
+   }
+   
+   //--- Check for second spurt (after faltering confirmed)
+   if(g_spikeFalterConfirmed &amp;&amp; !g_spikeSecondSpurtDone)
+   {
+      double spurtThreshold = g_spikeFirstRetraceExtent * InpSpikeSecondSpurtMultiple;
+      double spurtDistance = 0.0;
+      
+      if(g_spikeDir &gt; 0)
+         spurtDistance = g_spikeExtremum - g_spikePreSpurtExtremum;
+      else
+         spurtDistance = g_spikePreSpurtExtremum - g_spikeExtremum;
+         
+      if(spurtDistance &gt;= spurtThreshold &amp;&amp; spurtThreshold &gt; 0)
+      {
+         g_spikeSecondSpurtDone = true;
+         g_spikeLastMoveTimeMs = currentTimeMs;  // Reset pause timer
+         
+         if(InpEnableDiagPrints)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; SPIKE_SECOND_SPURT bar&lt;&quot;,bar,&quot;&gt; spurtDistance&lt;&quot;,spurtDistance,
+                  &quot;&gt; threshold&lt;&quot;,spurtThreshold,&quot;&gt;&quot;);
+      }
+   }
+   
+   //--- Check for PAUSE trigger (after second spurt)
+   if(g_spikeSecondSpurtDone)
+   {
+      ulong elapsedMs = currentTimeMs - g_spikeLastMoveTimeMs;
+      
+      if(elapsedMs &gt;= (ulong)InpSpikePauseMs)
+      {
+         //--- PAUSE DETECTED - TRIGGER SIGNAL OPPOSITE TO SPIKE
+         spikeSignal = (g_spikeDir &gt; 0) ? SIGNAL_SHORT : SIGNAL_LONG;
+         
+         if(InpEnableDiagPrints)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; SPIKE_PAUSE_TRIGGER bar&lt;&quot;,bar,&quot;&gt; elapsedMs&lt;&quot;,elapsedMs,
+                  &quot;&gt; signal&lt;&quot;,SignalToText(spikeSignal),&quot;&gt;&quot;);
+                  
+         ResetSpikeState();
+         return spikeSignal;
+      }
+   }
+   
+   //--- Check for JUST-JUMP trigger (immediate retrace without pause)
+   double kcToExtremum = MathAbs(g_spikeExtremum - g_spikeKCLevel);
+   double justJumpThreshold = kcToExtremum * InpSpikeJustJumpPct;
+   double currentRetrace = 0.0;
+   
+   if(g_spikeDir &gt; 0)
+      currentRetrace = g_spikeExtremum - currentPrice;
+   else
+      currentRetrace = currentPrice - g_spikeExtremum;
+      
+   if(currentRetrace &gt;= justJumpThreshold &amp;&amp; justJumpThreshold &gt; 0)
+   {
+      //--- JUST-JUMP - Price retraced enough, trigger immediately
+      spikeSignal = (g_spikeDir &gt; 0) ? SIGNAL_SHORT : SIGNAL_LONG;
+      
+      if(InpEnableDiagPrints)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; SPIKE_JUSTJUMP_TRIGGER bar&lt;&quot;,bar,&quot;&gt; retrace&lt;&quot;,currentRetrace,
+               &quot;&gt; threshold&lt;&quot;,justJumpThreshold,&quot;&gt; signal&lt;&quot;,SignalToText(spikeSignal),&quot;&gt;&quot;);
+               
+      ResetSpikeState();
+      return spikeSignal;
+   }
+   
+   return SIGNAL_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| Check for spike reset condition (KC cross-back)                   |
+//+------------------------------------------------------------------+
+bool CheckSpikeReset(const int bar,
+                     const double currentPrice,
+                     const double kcUpper,
+                     const double kcLower)
+{
+   if(!g_spikeActive)
+      return false;
+      
+   //--- Check if price crossed back through the same KC line in opposite direction
+   bool resetCondition = false;
+   
+   if(g_spikeDir &gt; 0)
+   {
+      //--- Up spike: reset if price drops below KC upper (crosses back down)
+      if(currentPrice &lt; g_spikeKCLevel)
+         resetCondition = true;
+   }
+   else
+   {
+      //--- Down spike: reset if price rises above KC lower (crosses back up)
+      if(currentPrice &gt; g_spikeKCLevel)
+         resetCondition = true;
+   }
+   
+   if(resetCondition)
+   {
+      if(InpEnableDiagPrints)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; SPIKE_RESET bar&lt;&quot;,bar,&quot;&gt; restoring pre-spike state&quot;);
+               
+      RestorePreSpikeState();
+      return true;
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Historical Spike Detection for closed bars                        |
+//+------------------------------------------------------------------+
+ENUM_SIGNAL_TYPE CheckSpikeHistorical(const int bar,
+                                       const double &amp;high[],
+                                       const double &amp;low[],
+                                       const double kcUpper,
+                                       const double kcLower,
+//                                       const double highNext,
+//                                       const double lowNext,
+                                       double &amp;signalPrice)
+{
+   signalPrice = 0.0;
+   
+   if(!InpEnableSpikeDetection)
+      return SIGNAL_NONE;
+   if(kcUpper == EMPTY_VALUE || kcLower == EMPTY_VALUE)
+      return SIGNAL_NONE;
+      
+   //--- Calculate threshold as percentage of KC width
+   double kcWidth = kcUpper - kcLower;
+   if(kcWidth &lt;= 0)
+      return SIGNAL_NONE;
+   double dSpikeExtentMIN = InpSpikeKCWidthPct * kcWidth;
+   
+   //--- Calculate extension beyond KC for this bar
+   double dOutsideKC_UP = (high[bar] &gt; kcUpper) ? (high[bar] - kcUpper) : 0.0;
+   double dOutsideKC_DN = (low[bar] &lt; kcLower) ? (kcLower - low[bar]) : 0.0;
+//   double dInsideKC_UP = (kcUpper &gt; low[bar]) ? (kcUpper - low[bar]) : 0.0;
+//   double dInsideKC_DN = (kcLower &lt; high[bar]) ? (high[bar] - kcLower) : 0.0;
+//
+   bool qualifiedUp = (dOutsideKC_UP &gt;= dSpikeExtentMIN &amp;&amp; low[bar] &lt; kcUpper);
+   bool qualifiedDn = (dOutsideKC_DN &gt;= dSpikeExtentMIN &amp;&amp; high[bar] &gt; kcLower);
+   
+   if(!qualifiedUp &amp;&amp; !qualifiedDn)
+      return SIGNAL_NONE;
+      
+   //--- Determine spike direction (if both qualified, use larger extension)
+   int spikeDir = 0;
+   double kcLevel = 0.0;
+   double barExtremum = 0.0;
+   
+   if(qualifiedUp &amp;&amp; qualifiedDn)
+   {
+      if(dOutsideKC_UP &gt;= dOutsideKC_DN)
+      {
+         spikeDir = 1;
+         kcLevel = kcUpper;
+         barExtremum = high[bar];
+      }
+      else
+      {
+         spikeDir = -1;
+         kcLevel = kcLower;
+         barExtremum = low[bar];
+      }
+   }
+   else if(qualifiedUp)
+   {
+      spikeDir = 1;
+      kcLevel = kcUpper;
+      barExtremum = high[bar];
+   }
+   else
+   {
+      spikeDir = -1;
+      kcLevel = kcLower;
+      barExtremum = low[bar];
+   }
+   
+   //--- Spike must align with current hunting direction (or no direction yet)
+   if(iDir != 0 &amp;&amp; spikeDir != iDir)
+   {
+      if(InpEnableDiagPrints)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; SPIKE_HISTORICAL_IGNORED_OPPOSITE_DIR bar&lt;&quot;,bar,&quot;&gt; spikeDir&lt;&quot;,spikeDir,&quot;&gt; iDir&lt;&quot;,iDir,&quot;&gt;&quot;);
+      return SIGNAL_NONE;
+   }
+   
+   //--- Find maximum extremum between this bar and next bar
+   double maxExtremum = barExtremum;
+//   if(highNext != EMPTY_VALUE &amp;&amp; lowNext != EMPTY_VALUE)
+//   {
+//      if(spikeDir &gt; 0 &amp;&amp; highNext &gt; maxExtremum)
+//         maxExtremum = highNext;
+//      else if(spikeDir &lt; 0 &amp;&amp; lowNext &lt; maxExtremum)
+//         maxExtremum = lowNext;
+//   }
+//   
+   //--- Calculate signal price using historical multiplier and just-jump percentage
+   double spikeRange = MathAbs(maxExtremum - kcLevel);
+   double retraceAmount = spikeRange * InpSpikeJustJumpPct * InpSpikeHistSignalMultiplier;
+//   double retraceAmount = MathAbs(maxExtremum - kcLevel) - (InpSpikeHistSignalMultiplier * InpSpikeJustJumpPct);
+   
+   if(spikeDir &gt; 0)
+      signalPrice = maxExtremum - retraceAmount;
+   else
+      signalPrice = maxExtremum + retraceAmount;
+   
+   //--- Signal is opposite to spike direction
+   ENUM_SIGNAL_TYPE signal = (spikeDir &gt; 0) ? SIGNAL_SHORT : SIGNAL_LONG;
+   
+   if(InpEnableDiagPrints)
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; SPIKE_HISTORICAL_DETECTED bar&lt;&quot;,bar,&quot;&gt; spikeDir&lt;&quot;,spikeDir,
+            &quot;&gt; maxExtremum&lt;&quot;,maxExtremum,&quot;&gt; signalPrice&lt;&quot;,signalPrice,
+            &quot;&gt; dSpikeExtentMIN&lt;&quot;,dSpikeExtentMIN,&quot;&gt; dOutsideKC_UP&lt;&quot;,dOutsideKC_UP,&quot;&gt; dOutsideKC_DN&lt;&quot;,dOutsideKC_DN,
+            &quot;&gt; high[bar]&lt;&quot;,high[bar],&quot;&gt; low[bar]&lt;&quot;,low[bar],
+            &quot;&gt; signal&lt;&quot;,SignalToText(signal),&quot;&gt;&quot;);
+
+   return signal;
+}
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   if(InpTEMAPeriod &lt; 1 || InpEMAPeriod &lt; 1 || InpOpenRefOffset &lt; 0 ||
+      InpTriggerSensitivity &lt; 0.0 || InpObjectArrowOffset &lt; 0 ||
+      InpKCPeriod &lt; 1 || InpKCATRPeriod &lt; 1 || InpKCMultiplier &lt;= 0.0 ||
+      InpSignalBlackout &lt; 0 || InpBlackoutMax &lt; InpSignalBlackout ||
+      InpKCWidthLookback &lt; 1 || InpKCMidSlopePeriod &lt; 1 ||
+      InpNarrowWidthRatio &lt;= 0.0 || InpFlatSlopePerBar &lt; 0.0 || InpBlackoutScaleK &lt; 0.0 ||
+      (InpEnableVisibilityWindow &amp;&amp; InpVisibilityEndDT &lt; InpVisibilityStartDT) ||
+      InpSpikeKCWidthPct &lt;= 0.0 || InpSpikeKCWidthPct &gt; 1.0 ||
+      InpSpikeFalterFlipFlops &lt; 1 || InpSpikePauseMs &lt; 0 ||
+      InpSpikeSecondSpurtMultiple &lt;= 0.0 || 
+      InpSpikeJustJumpPct &lt;= 0.0 || InpSpikeJustJumpPct &gt; 1.0 ||
+      InpSpikeHistSignalMultiplier &lt;= 0.0)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Invalid inputs. Check period/offset/sensitivity/KC/spike settings.&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+   
+   IndicatorSetString(INDICATOR_SHORTNAME,
+                      StringFormat(&quot;TEMA_EMA_Trigger(%d,%d,OpenRef-%d)&quot;, InpTEMAPeriod, InpEMAPeriod, InpOpenRefOffset));
+   SetIndexBuffer(0, BufferTEMA, INDICATOR_DATA);
+   SetIndexBuffer(1, BufferEMAofTEMA, INDICATOR_DATA);
+   SetIndexBuffer(2, BufferTriggerThreshold, INDICATOR_DATA);
+   SetIndexBuffer(3, BufferTemaEmaSpread, INDICATOR_DATA);
+   SetIndexBuffer(4, BufferDynBlackout, INDICATOR_DATA);
+   SetIndexBuffer(5, BufferArrowBuy, INDICATOR_DATA);
+   SetIndexBuffer(6, BufferArrowSell, INDICATOR_DATA);
+   SetIndexBuffer(7,  BufferTradePL, INDICATOR_DATA);
+   SetIndexBuffer(8,  BufferRunningPL, INDICATOR_DATA);
+   SetIndexBuffer(9,  BufferTradeCount, INDICATOR_DATA);
+   SetIndexBuffer(10, BufferWinPct, INDICATOR_DATA);
+   SetIndexBuffer(11, BufferShortCount, INDICATOR_DATA);
+   SetIndexBuffer(12, BufferShortWinPct, INDICATOR_DATA);
+   SetIndexBuffer(13, BufferLongCount, INDICATOR_DATA);
+   SetIndexBuffer(14, BufferLongWinPct, INDICATOR_DATA);
+   SetIndexBuffer(15, BufferKCWidthRatio, INDICATOR_DATA);
+   SetIndexBuffer(16, BufferKCUpper, INDICATOR_DATA);
+   SetIndexBuffer(17, BufferKCMiddle, INDICATOR_DATA);
+   SetIndexBuffer(18, BufferKCLower, INDICATOR_DATA);
+   
+   string readoutUnit = ReadoutUnitText();
+   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(2, PLOT_LABEL, &quot;Trigger Threshold (&quot;+readoutUnit+&quot;)&quot;);
+   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(3, PLOT_LABEL, &quot;T/E Spread (&quot;+readoutUnit+&quot;)&quot;);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(4, PLOT_LABEL, &quot;Active Blackout Bars&quot;);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(5, PLOT_ARROW, 233);
+   PlotIndexSetInteger(6, PLOT_ARROW, 234);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   //--- Trade simulation buffers in Data Window only
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(7, PLOT_LABEL, &quot;Trade P/L (&quot;+readoutUnit+&quot;)&quot;);
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(8, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(8, PLOT_LABEL, &quot;Running P/L (&quot;+readoutUnit+&quot;)&quot;);
+   PlotIndexSetDouble(8, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(9, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(9, PLOT_LABEL, &quot;Trade Count&quot;);
+   PlotIndexSetDouble(9, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(10, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(10, PLOT_LABEL, &quot;Win %&quot;);
+   PlotIndexSetDouble(10, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(11, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(11, PLOT_LABEL, &quot;Short Count&quot;);
+   PlotIndexSetDouble(11, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(12, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(12, PLOT_LABEL, &quot;Short Win %&quot;);
+   PlotIndexSetDouble(12, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(13, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(13, PLOT_LABEL, &quot;Long Count&quot;);
+   PlotIndexSetDouble(13, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(14, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(14, PLOT_LABEL, &quot;Long Win %&quot;);
+   PlotIndexSetDouble(14, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetInteger(15, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(15, PLOT_LABEL, &quot;KC Width Ratio&quot;);
+   PlotIndexSetDouble(15, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(16, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(17, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(18, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   
+   ArraySetAsSeries(BufferTEMA, false);
+   ArraySetAsSeries(BufferEMAofTEMA, false);
+   ArraySetAsSeries(BufferTemaEmaSpread, false);
+   ArraySetAsSeries(BufferArrowBuy, false);
+   ArraySetAsSeries(BufferArrowSell, false);
+   ArraySetAsSeries(BufferTradePL, false);
+   ArraySetAsSeries(BufferRunningPL, false);
+   ArraySetAsSeries(BufferTradeCount, false);
+   ArraySetAsSeries(BufferWinPct, false);
+   ArraySetAsSeries(BufferShortCount, false);
+   ArraySetAsSeries(BufferShortWinPct, false);
+   ArraySetAsSeries(BufferLongCount, false);
+   ArraySetAsSeries(BufferLongWinPct, false);
+   ArraySetAsSeries(BufferDynBlackout, false);
+   ArraySetAsSeries(BufferKCWidthRatio, false);
+   ArraySetAsSeries(BufferTriggerThreshold, false);
+   ArraySetAsSeries(BufferKCUpper, false);
+   ArraySetAsSeries(BufferKCMiddle, false);
+   ArraySetAsSeries(BufferKCLower, false);
+   ArraySetAsSeries(BufferAggExecPrice, false);
+   
+   iHndlTEMA = iTEMA(_Symbol, PERIOD_CURRENT, InpTEMAPeriod, 0, InpTEMAApplied);
+   if(iHndlTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create TEMA handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+   
+   iHndlEMAofTEMA = iMA(_Symbol, PERIOD_CURRENT, InpEMAPeriod, 0, MODE_EMA, (ENUM_APPLIED_PRICE)iHndlTEMA);
+   if(iHndlEMAofTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create EMA(TEMA) handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+   
+   iHndlKC = iCustom(_Symbol, PERIOD_CURRENT, &quot;DevoIndies\\Ind_KC_MJM&quot;,
+                     InpKCPeriod, InpKCATRPeriod, InpKCMultiplier, InpKCApplied,
+                     clrBlueViolet, 3, clrWhite, 2, clrBlueViolet, 3);
+   if(iHndlKC == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create KC handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+   
+   g_arrowCfg.SetDefaults();
+   g_labelCfg.SetDefaults();
+   g_arrowCfg.longColor  = clrLime;
+   g_arrowCfg.shortColor = clrRed;
+   g_labelCfg.prefix = &quot;T/E Trigger&quot;;
+   g_maxPeriodsBack = MathMax(InpTEMAPeriod, InpEMAPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCATRPeriod);
+   g_maxPeriodsBack += (3 + InpOpenRefOffset);
+   
+   if(g_effectiveTradeStartDate == 0)
+   {
+      g_effectiveTradeStartDate = iTime(_Symbol, PERIOD_CURRENT, 0);
+      Print(&quot;&quot;);
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; InpTradeStartDate=0; using current bar time&lt;&quot;,
+            TimeToString(g_effectiveTradeStartDate, TIME_DATE|TIME_MINUTES), &quot;&gt;&quot;);
+   }
+   
+   if(InpTradeStopDate &lt;= 0)
+      g_tradeStopDT = D&#x27;3000.12.31 23:59&#x27;;
+   else
+      g_tradeStopDT = InpTradeStopDate;
+      
+   if(InpEnableDiagPrints)
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,&quot; InpTradeStartDate&lt;&quot;,InpTradeStartDate,
+            &quot;&gt; InpTradeStopDate&lt;&quot;,InpTradeStopDate,&quot;&gt; g_tradeStopDT&lt;&quot;,g_tradeStopDT,&quot;&gt;&quot;);
+            
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+   if(iHndlKC != INVALID_HANDLE)
+      IndicatorRelease(iHndlKC);
+   if(iHndlEMAofTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlEMAofTEMA);
+   if(iHndlTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlTEMA);
+
+   //--- Clean up trade simulation objects
+   if(InpEnableTradeSim)
+   {
+      TS_Cleanup();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt;= g_maxPeriodsBack)
+      return(0);
+
+   int start = (prev_calculated == 0) ? g_maxPeriodsBack : prev_calculated - 1;
+   if(start &lt; 1)
+      start = 1;
+
+   if(prev_calculated == 0)
+   {
+      ResetAllStateAndBuffers();
+      g_lastExportedBar = -1;
+      InitCsvDebugFile();
+   }
+
+   int copyStart = MathMax(0, start - 3);
+   int copyCount = rates_total - copyStart;
+
+   double temaTail[];
+   double emaTail[];
+   double kcUpperTail[];
+   double kcMiddleTail[];
+   double kcLowerTail[];
+   ArrayResize(temaTail, copyCount);
+   ArrayResize(emaTail, copyCount);
+   ArrayResize(kcUpperTail, copyCount);
+   ArrayResize(kcMiddleTail, copyCount);
+   ArrayResize(kcLowerTail, copyCount);
+   ArraySetAsSeries(temaTail, false);
+   ArraySetAsSeries(emaTail, false);
+   ArraySetAsSeries(kcUpperTail, false);
+   ArraySetAsSeries(kcMiddleTail, false);
+   ArraySetAsSeries(kcLowerTail, false);
+
+   int temaCopied = CopyBuffer(iHndlTEMA, 0, 0, copyCount, temaTail);
+   int emaCopied  = CopyBuffer(iHndlEMAofTEMA, 0, 0, copyCount, emaTail);
+   int kcUpperCopied  = CopyBuffer(iHndlKC, 0, 0, copyCount, kcUpperTail);
+   int kcMiddleCopied = CopyBuffer(iHndlKC, 1, 0, copyCount, kcMiddleTail);
+   int kcLowerCopied  = CopyBuffer(iHndlKC, 2, 0, copyCount, kcLowerTail);
+   
+   if(temaCopied != copyCount || emaCopied != copyCount ||
+      kcUpperCopied != copyCount || kcMiddleCopied != copyCount || kcLowerCopied != copyCount)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CopyBuffer failed. temaCopied=&quot;,temaCopied,
+            &quot; emaCopied=&quot;,emaCopied,
+            &quot; kcUpperCopied=&quot;,kcUpperCopied,
+            &quot; kcMiddleCopied=&quot;,kcMiddleCopied,
+            &quot; kcLowerCopied=&quot;,kcLowerCopied,
+            &quot; expected=&quot;,copyCount,
+            &quot; err=&quot;,GetLastError());
+      return(prev_calculated);
+   }
+
+   ArrayResize(BufferAggExecPrice, rates_total);
+
+   double pointSize = MathPow(10.0, -_Digits);
+   double eps = pointSize * 0.1;
+   double pipSize = pointSize * 10.0;
+   //--- Convert user inputs from readout units to raw price (once)
+   double triggerSensInputPrice = ReadoutToPrice(InpTriggerSensitivity, pipSize);
+   double flatSlopePrice   = ReadoutToPrice(InpFlatSlopePerBar, pipSize);
+   double arrowOffsetPrice = ReadoutToPrice(InpObjectArrowOffset, pipSize);
+   ENUM_TS_READOUT_MODE tsReadoutMode = TSReadoutMode();
+
+   //--- Copy indicator values to buffers and calculate dynamic blackout
+   for(int iKX = 0; iKX &lt; copyCount; iKX++)
+   {
+      int iIX = copyStart + iKX;
+      BufferTEMA[iIX] = temaTail[iKX];
+      BufferEMAofTEMA[iIX] = emaTail[iKX];
+      BufferKCUpper[iIX] = kcUpperTail[iKX];
+      BufferKCMiddle[iIX] = kcMiddleTail[iKX];
+      BufferKCLower[iIX] = kcLowerTail[iKX];
+      BufferTemaEmaSpread[iIX] = PriceDeltaToReadout(BufferTEMA[iIX] - BufferEMAofTEMA[iIX]);
+   
+      int activeBlackout = InpSignalBlackout;
+      if(InpUseDynamicBlackout &amp;&amp; 
+         BufferKCUpper[iIX] != EMPTY_VALUE &amp;&amp; 
+         BufferKCLower[iIX] != EMPTY_VALUE &amp;&amp; 
+         BufferKCMiddle[iIX] != EMPTY_VALUE)
+      {
+         double currWidth = MathAbs(BufferKCUpper[iIX] - BufferKCLower[iIX]);
+         int lb = MathMin(InpKCWidthLookback, iIX + 1);
+         double widthSum = 0.0;
+         int widthCnt = 0;
+         int from = iIX - lb + 1;
+         if(from &lt; 0) from = 0;
+         for(int j = from; j &lt;= iIX; j++)
+         {
+            if(BufferKCUpper[j] == EMPTY_VALUE || BufferKCLower[j] == EMPTY_VALUE)
+               continue;
+            widthSum += MathAbs(BufferKCUpper[j] - BufferKCLower[j]);
+            widthCnt++;
+         }
+         double baselineWidth = (widthCnt &gt; 0) ? (widthSum / widthCnt) : currWidth;
+         double widthRatio = (baselineWidth &gt; 0.0) ? (currWidth / baselineWidth) : 1.0;
+         double slopePerBar = 0.0;
+         if(iIX &gt;= InpKCMidSlopePeriod &amp;&amp; BufferKCMiddle[iIX - InpKCMidSlopePeriod] != EMPTY_VALUE)
+            slopePerBar = (BufferKCMiddle[iIX] - BufferKCMiddle[iIX - InpKCMidSlopePeriod]) / InpKCMidSlopePeriod;
+         
+         bool isNarrow = (widthRatio &lt; InpNarrowWidthRatio);
+         bool isFlat = (MathAbs(slopePerBar) &lt;= flatSlopePrice);
+         if(isNarrow &amp;&amp; isFlat)
+         {
+            double extra = (InpNarrowWidthRatio - widthRatio) * InpBlackoutScaleK;
+            if(extra &lt; 0.0) extra = 0.0;
+            activeBlackout = InpSignalBlackout + (int)MathRound(extra);
+            if(activeBlackout &gt; InpBlackoutMax)
+               activeBlackout = InpBlackoutMax;
+         }
+         BufferKCWidthRatio[iIX] = widthRatio;
+      }
+      BufferDynBlackout[iIX] = activeBlackout;
+   }
+   
+   bool isNewBar = (rates_total != prev_calculated);
+   bool isAggressive = IsAggressiveMode();
+   int liveBar = rates_total - 1;
+   
+   if(isNewBar &amp;&amp; g_provisionalSignal)
+   {
+      g_lastSignalBar = liveBar - 1;
+      if(isAggressive &amp;&amp; !g_aggrRecoveryActive &amp;&amp; g_currentTrade.direction != 0)
+         ArmAggressiveFlipCheck(g_lastSignalBar, g_currentTrade.direction, InpMockTradePriceSource);
+      g_provisionalSignal = false;
+      g_isCocked = false;
+      g_cockedDir = 0;
+      iDir = g_currentTrade.direction;
+      g_crossBar = g_lastSignalBar;
+   }
+
+   //--- Handle spike that carried over from prior bar
+   if(isNewBar &amp;&amp; g_spikeActive &amp;&amp; g_spikeBar &lt; liveBar)
+   {
+      g_spikeFromPriorBar = true;
+   }
+
+   if(BufferTEMA[liveBar] != EMPTY_VALUE &amp;&amp; BufferEMAofTEMA[liveBar] != EMPTY_VALUE)
+      BufferTemaEmaSpread[liveBar] = PriceDeltaToReadout(BufferTEMA[liveBar] - BufferEMAofTEMA[liveBar]);
+
+   if(InpEnableTradeSim)
+   {
+      double liveExitPrice = GetMockTradePrice(liveBar, close);
+      UpdateOpenTradeLiveState(liveBar, liveExitPrice);
+   }
+
+   //--- Signals processing loop
+   int loopEnd = rates_total;
+   
+   //--- Determine signal loop start: warmup bars before start date
+   int signalStart = start;
+   if(time[start] &lt; g_effectiveTradeStartDate)
+   {
+      int warmup = 2 + InpOpenRefOffset;
+      int startDateBar = -1;
+      for(int i = start; i &lt; rates_total; i++)
+      {
+         if(time[i] &gt;= g_effectiveTradeStartDate)
+         {
+            startDateBar = i;
+            break;
+         }
+      }
+      signalStart = MathMax(start, startDateBar - warmup);
+   }
+
+   //+------------------------------------------------------------------+
+   //| Signals process main loop                                        |
+   //+------------------------------------------------------------------+
+   for(int iIX = signalStart; iIX &lt; loopEnd; iIX++)
+   {
+      //--- Stop processing if past stop date
+      if(time[iIX] &gt; g_tradeStopDT)
+      {
+         if(InpEnableDiagPrints)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; DIAG STOP_DATE_BREAK iIX&lt;&quot;,iIX,&quot;&gt; time[iIX]&lt;&quot;,TimeToString(time[iIX],TIME_DATE|TIME_MINUTES),
+                  &quot;&gt; g_tradeStopDT&lt;&quot;,TimeToString(g_tradeStopDT,TIME_DATE|TIME_MINUTES),
+                  &quot;&gt; signalStart&lt;&quot;,signalStart,&quot;&gt;&quot;);
+         break;
+      }
+      
+      if(prev_calculated == 0 || iIX &gt;= prev_calculated)
+      {
+         BufferArrowBuy[iIX] = EMPTY_VALUE;
+         BufferArrowSell[iIX] = EMPTY_VALUE;
+      }
+            
+      int prevT2E = T2ESign(BufferTEMA[iIX - 1] - BufferEMAofTEMA[iIX - 1], eps);
+      int currT2E = T2ESign(BufferTEMA[iIX] - BufferEMAofTEMA[iIX], eps);
+
+      if(prevT2E == 0) prevT2E = iDir;
+      if(currT2E == 0) currT2E = prevT2E;
+
+      int prevT2KCM = 0;
+      int currT2KCM = 0;
+      int prevE2KCM = 0;
+      int currE2KCM = 0;
+      if(BufferTEMA[iIX - 1] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[iIX - 1] != EMPTY_VALUE)
+         prevT2KCM = T2ESign(BufferTEMA[iIX - 1] - BufferKCMiddle[iIX - 1], eps);
+      if(BufferTEMA[iIX] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[iIX] != EMPTY_VALUE)
+         currT2KCM = T2ESign(BufferTEMA[iIX] - BufferKCMiddle[iIX], eps);
+      if(BufferEMAofTEMA[iIX - 1] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[iIX - 1] != EMPTY_VALUE)
+         prevE2KCM = T2ESign(BufferEMAofTEMA[iIX - 1] - BufferKCMiddle[iIX - 1], eps);
+      if(BufferEMAofTEMA[iIX] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[iIX] != EMPTY_VALUE)
+         currE2KCM = T2ESign(BufferEMAofTEMA[iIX] - BufferKCMiddle[iIX], eps);
+
+      int prevT2KC = KCOuterState(BufferTEMA[iIX - 1], prevT2KCM, BufferKCUpper[iIX - 1], BufferKCLower[iIX - 1], eps);
+      int currT2KC = KCOuterState(BufferTEMA[iIX], currT2KCM, BufferKCUpper[iIX], BufferKCLower[iIX], eps);
+      int prevE2KC = KCOuterState(BufferEMAofTEMA[iIX - 1], prevE2KCM, BufferKCUpper[iIX - 1], BufferKCLower[iIX - 1], eps);
+      int currE2KC = KCOuterState(BufferEMAofTEMA[iIX], currE2KCM, BufferKCUpper[iIX], BufferKCLower[iIX], eps);
+
+      //=================================================================
+      // SPIKE DETECTION AND PROCESSING (aggressive mode only)
+      //=================================================================
+      ENUM_SIGNAL_TYPE spikeSignal = SIGNAL_NONE;
+      double spikeSignalPrice = 0.0;
+      
+      if(InpEnableSpikeDetection &amp;&amp; isAggressive)
+      {
+         bool isLiveBar = (iIX == liveBar);
+         
+         if(isLiveBar)
+         {
+            //--- Live bar: intra-bar spike tracking
+            
+            //--- Check for spike reset condition first
+            if(g_spikeActive)
+            {
+               CheckSpikeReset(iIX, close[iIX], BufferKCUpper[iIX], BufferKCLower[iIX]);
+            }
+            
+            //--- Check for new spike condition (if not already tracking one)
+            if(!g_spikeActive)
+            {
+               CheckSpikeCondition(iIX, high[iIX], low[iIX], close[iIX],
+                                  BufferKCUpper[iIX], BufferKCLower[iIX]);
+            }
+            
+            //--- Process active spike (intra-bar tracking)
+            if(g_spikeActive)
+            {
+               spikeSignal = ProcessSpikeIntraBar(iIX, close[iIX], high[iIX], low[iIX], time[iIX]);
+               if(spikeSignal != SIGNAL_NONE)
+                  spikeSignalPrice = close[iIX];  // Use current price for live signals
+            }
+         }
+         else
+         {
+            //--- Historical bar: use hindsight approximation
+            double highNext = (iIX + 1 &lt; rates_total) ? high[iIX + 1] : EMPTY_VALUE;
+            double lowNext = (iIX + 1 &lt; rates_total) ? low[iIX + 1] : EMPTY_VALUE;
+            
+            spikeSignal = CheckSpikeHistorical(iIX, high, low,
+                                               BufferKCUpper[iIX], BufferKCLower[iIX],
+//                                               highNext, lowNext,
+                                               spikeSignalPrice);
+         }
+      }
+
+      //=================================================================
+      // EXISTING MA-BASED COCKING AND TRIGGER LOGIC
+      //=================================================================
+      
+      // Cocking logic: only run on closed bars (not the nascent live bar)
+      if(isNewBar &amp;&amp; iIX &lt; rates_total - 1)
+      {
+         if(iDir != 0)
+         {
+            bool candidateFound = false;
+            bool cockedThisBar = false;
+            for(int d = 1; d &lt;= 2; d++)
+            {
+               int cand = iIX - d;
+               if(cand &lt;= g_crossBar || cand &lt; 1 || cand + 1 &gt;= rates_total)
+                  continue;
+               candidateFound = true;
+               int refBar = MathMax(0, cand - InpOpenRefOffset);
+               double refOpen = open[refBar];
+
+               g_extremeBar = cand;
+               g_extremeOpenRefBar = refBar;
+               g_extremeOpen = refOpen;
+               g_extremePrice = (iDir &gt; 0) ? high[cand] : low[cand];
+               if((iDir &gt; 0 &amp;&amp; close[iIX] &lt; refOpen) || (iDir &lt; 0 &amp;&amp; close[iIX] &gt; refOpen))
+               {
+                  g_isCocked = true;
+                  g_cockedDir = (iDir &gt; 0) ? -1 : 1;
+                  g_cockLevel = refOpen;
+                  cockedThisBar = true;
+
+                  if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+                     Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                           &quot; DIAG#3 COCKED iIX&lt;&quot;,iIX,&quot;&gt; time&lt;&quot;,TimeToString(time[iIX],TIME_DATE|TIME_MINUTES),&quot;&gt; iDir&lt;&quot;,iDir,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,
+                           &quot;&gt; g_cockLevel&lt;&quot;,g_cockLevel,&quot;&gt; close[iIX]&lt;&quot;,close[iIX],
+                           &quot;&gt; refOpen&lt;&quot;,refOpen,&quot;&gt; cand&lt;&quot;,cand,&quot;&gt;&quot;);
+
+                  break;
+               }
+            }
+            g_pendingConfirm = (candidateFound &amp;&amp; !cockedThisBar);
+         }
+      }
+
+      bool rawCrossUp = (prevT2E &lt; 0 &amp;&amp; currT2E &gt; 0);
+      bool rawCrossDn = (prevT2E &gt; 0 &amp;&amp; currT2E &lt; 0);
+      bool rawCross = (rawCrossUp || rawCrossDn);
+
+      bool revertedWas = g_revertedMode;
+      bool revertedSetThisBar = false;
+      if(isAggressive &amp;&amp; rawCross)
+      {
+         int rawCrossDir = rawCrossUp ? 1 : -1;
+         if(g_lastAggRawCrossDir != 0 &amp;&amp; rawCrossDir != g_lastAggRawCrossDir)
+         {
+            g_revertedMode = true;
+            revertedSetThisBar = true;
+         }
+         g_lastAggRawCrossDir = rawCrossDir;
+      }
+
+      double effectiveTriggerSensReadout = g_revertedMode ? 0.0 : InpTriggerSensitivity;
+      double effectiveTriggerSensPrice = ReadoutToPrice(effectiveTriggerSensReadout, pipSize);
+      double instantSpread = 0.0;
+      if(BufferTEMA[iIX] != EMPTY_VALUE &amp;&amp; BufferEMAofTEMA[iIX] != EMPTY_VALUE)
+         instantSpread = MathAbs(BufferTEMA[iIX] - BufferEMAofTEMA[iIX]);
+      bool qualifiedCross = (rawCross &amp;&amp; (instantSpread &gt;= effectiveTriggerSensPrice));
+
+      if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; rawCross)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; DIAG#4 CROSS iIX&lt;&quot;,iIX,&quot;&gt; rawCrossUp&lt;&quot;,rawCrossUp,&quot;&gt; rawCrossDn&lt;&quot;,rawCrossDn,
+               &quot;&gt; qualifiedCross&lt;&quot;,qualifiedCross,&quot;&gt; revertedMode&lt;&quot;,g_revertedMode,
+               &quot;&gt; prevT2E&lt;&quot;,prevT2E,&quot;&gt; currT2E&lt;&quot;,currT2E,
+               &quot;&gt; instantSpread&lt;&quot;,instantSpread,&quot;&gt; effectiveSens&lt;&quot;,effectiveTriggerSensPrice,
+               &quot;&gt; g_isCocked&lt;&quot;,g_isCocked,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,&quot;&gt;&quot;);
+               
+      if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; revertedSetThisBar)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; DIAG#4A REVERTED_MODE_ON iIX&lt;&quot;,iIX,&quot;&gt; revertedWas&lt;&quot;,revertedWas,
+               &quot;&gt; revertedNow&lt;&quot;,g_revertedMode,&quot;&gt; rawCrossUp&lt;&quot;,rawCrossUp,&quot;&gt; rawCrossDn&lt;&quot;,rawCrossDn,
+               &quot;&gt; lastAggRawCrossDir&lt;&quot;,g_lastAggRawCrossDir,&quot;&gt;&quot;);
+               
+      if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; rawCross &amp;&amp; !qualifiedCross)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; DIAG#4B CROSS_REJECTED iIX&lt;&quot;,iIX,&quot;&gt; instantSpread&lt;&quot;,instantSpread,
+               &quot;&gt; requiredSens&lt;&quot;,effectiveTriggerSensPrice,&quot;&gt; revertedMode&lt;&quot;,g_revertedMode,&quot;&gt;&quot;);
+
+      BufferTriggerThreshold[iIX] = effectiveTriggerSensReadout;
+
+      if(iDir == 0 &amp;&amp; currT2E != 0 &amp;&amp; isNewBar &amp;&amp; iIX &lt; rates_total - 1)
+         ResetCycleForDirection(currT2E, iIX, open, high, low);
+
+      ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
+      ENUM_SIGNAL_TYPE signalCandidate = SIGNAL_NONE;
+      bool forceCommittedSignal = false;
+      bool isBackstopSignal = false;
+      bool isSpikeTriggered = false;
+      bool useAggressive = (isAggressive &amp;&amp; !g_aggrRecoveryActive);
+      bool conditionMet = false;
+      
+      if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; rawCross)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; DIAG#4C MODE_SELECT iIX&lt;&quot;,iIX,&quot;&gt; isAggressive&lt;&quot;,isAggressive,
+               &quot;&gt; g_aggrRecoveryActive&lt;&quot;,g_aggrRecoveryActive,&quot;&gt; useAggressive&lt;&quot;,useAggressive,
+               &quot;&gt; g_triggerPending&lt;&quot;,g_triggerPending,&quot;&gt;&quot;);
+
+      //=================================================================
+      // SPIKE SIGNAL TAKES PRIORITY - merges into existing signal flow
+      //=================================================================
+      if(spikeSignal != SIGNAL_NONE)
+      {
+         signalCandidate = spikeSignal;
+         isSpikeTriggered = true;
+         forceCommittedSignal = true;  // Spike signals bypass provisional logic
+         
+         if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; SPIKE_SIGNAL_CANDIDATE iIX&lt;&quot;,iIX,&quot;&gt; signal&lt;&quot;,SignalToText(spikeSignal),
+                  &quot;&gt; signalPrice&lt;&quot;,spikeSignalPrice,&quot;&gt;&quot;);
+      }
+      
+      //=================================================================
+      // EXISTING MA-BASED TRIGGERING LOGIC (only if no spike signal)
+      //=================================================================
+      if(signalCandidate == SIGNAL_NONE)
+      {
+         if(useAggressive)
+         {
+            if(g_isCocked)
+            {
+               double liveClose = close[iIX];
+               double temaVal = BufferTEMA[iIX];
+               double emaVal = BufferEMAofTEMA[iIX];
+
+               if(InpMockTradePriceSource == MOCK_PRICE_AGG_TEMA)
+               {
+                  if(g_cockedDir == -1)
+                     conditionMet = (liveClose &lt; temaVal - effectiveTriggerSensPrice);
+                  else
+                     conditionMet = (liveClose &gt; temaVal + effectiveTriggerSensPrice);
+               }
+               else if(InpMockTradePriceSource == MOCK_PRICE_AGG_EMA)
+               {
+                  if(g_cockedDir == -1)
+                     conditionMet = (liveClose &lt; emaVal - effectiveTriggerSensPrice);
+                  else
+                     conditionMet = (liveClose &gt; emaVal + effectiveTriggerSensPrice);
+               }
+               else
+               {
+                  if(g_cockedDir == -1)
+                     conditionMet = (liveClose &lt; temaVal &amp;&amp; liveClose &lt; emaVal - effectiveTriggerSensPrice);
+                  else
+                     conditionMet = (liveClose &gt; temaVal &amp;&amp; liveClose &gt; emaVal + effectiveTriggerSensPrice);
+               }
+
+               if(conditionMet)
+                  signalCandidate = (g_cockedDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+            }
+         }
+         else
+         {
+            if(rawCross)
+            {
+               if(g_isCocked)
+               {
+                  if(rawCrossDn &amp;&amp; g_cockedDir == -1)
+                  {
+                     g_triggerPending = true;
+                     g_triggerDir = -1;
+                     g_triggerCrossBar = iIX;
+
+                     if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+                        Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                              &quot; DIAG#5 TRIGGER_PENDING iIX&lt;&quot;,iIX,&quot;&gt; dir&lt;SHORT&gt; g_triggerCrossBar&lt;&quot;,iIX,
+                              &quot;&gt; g_isCocked&lt;&quot;,g_isCocked,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,&quot;&gt;&quot;);
+                  }
+                  else if(rawCrossUp &amp;&amp; g_cockedDir == 1)
+                  {
+                     g_triggerPending = true;
+                     g_triggerDir = 1;
+                     g_triggerCrossBar = iIX;
+
+                     if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+                        Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                              &quot; DIAG#5 TRIGGER_PENDING iIX&lt;&quot;,iIX,&quot;&gt; dir&lt;LONG&gt; g_triggerCrossBar&lt;&quot;,iIX,
+                              &quot;&gt; g_isCocked&lt;&quot;,g_isCocked,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,&quot;&gt;&quot;);
+                  }
+                  else
+                  {
+                     g_triggerPending = false;
+                     g_triggerDir = 0;
+                     g_triggerCrossBar = -1;
+                  }
+               }
+               else
+               {
+                  g_triggerPending = false;
+                  g_triggerDir = 0;
+                  g_triggerCrossBar = -1;
+               }
+            }
+
+            if(g_triggerPending)
+            {
+               bool wrongSide = ((g_triggerDir == 1 &amp;&amp; currT2E &lt; 0) || (g_triggerDir == -1 &amp;&amp; currT2E &gt; 0));
+               if(wrongSide)
+               {
+                  if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+                     Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                           &quot; DIAG#6A PENDING_CLEARED_WRONG_SIDE iIX&lt;&quot;,iIX,&quot;&gt; g_triggerDir&lt;&quot;,g_triggerDir,
+                           &quot;&gt; currT2E&lt;&quot;,currT2E,&quot;&gt; g_triggerCrossBar&lt;&quot;,g_triggerCrossBar,&quot;&gt;&quot;);
+                  g_triggerPending = false;
+                  g_triggerDir = 0;
+                  g_triggerCrossBar = -1;
+               }
+               else
+               {
+                  double cumulativeSpread = 0.0;
+                  int sumFrom = MathMax(0, g_triggerCrossBar);
+                  if(sumFrom &lt;= iIX)
+                  {
+                     for(int s = sumFrom; s &lt;= iIX; s++)
+                     {
+                        if(BufferTEMA[s] == EMPTY_VALUE || BufferEMAofTEMA[s] == EMPTY_VALUE)
+                           continue;
+                        cumulativeSpread += MathAbs(BufferTEMA[s] - BufferEMAofTEMA[s]);
+                     }
+                  }
+
+                  if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+                     Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                           &quot; DIAG#6 SPREAD_CHECK iIX&lt;&quot;,iIX,&quot;&gt; cumulativeSpread&lt;&quot;,cumulativeSpread,
+                           &quot;&gt; effectiveSens&lt;&quot;,effectiveTriggerSensPrice,&quot;&gt; sumFrom&lt;&quot;,sumFrom,
+                           &quot;&gt; met&lt;&quot;,(cumulativeSpread &gt;= effectiveTriggerSensPrice),&quot;&gt;&quot;);
+
+                  if(cumulativeSpread &gt;= effectiveTriggerSensPrice)
+                  {
+                     signalCandidate = (g_triggerDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+                     g_triggerPending = false;
+                     g_triggerDir = 0;
+                     g_triggerCrossBar = -1;
+                  }
+               }
+            }
+         }
+      }
+
+      //--- Common provisional management (mode-independent)
+      if(g_provisionalSignal &amp;&amp; signalCandidate == SIGNAL_NONE)
+      {
+         bool invalidated = false;
+         if(useAggressive)
+            invalidated = !conditionMet;
+         else
+            invalidated = ((g_currentTrade.direction == 1 &amp;&amp; currT2E &lt; 0) ||
+                           (g_currentTrade.direction == -1 &amp;&amp; currT2E &gt; 0));
+         if(invalidated)
+            RevertProvisionalSignal(iIX);
+      }
+
+      //--- Cross-backstop guarantee (only if no spike and no other signal)
+      if(rawCross &amp;&amp; signalCandidate == SIGNAL_NONE)
+      {
+         isBackstopSignal = true;
+         signalCandidate = rawCrossUp ? SIGNAL_LONG : SIGNAL_SHORT;
+      }
+
+      double effectiveBlackout = (BufferDynBlackout[iIX] == EMPTY_VALUE) ? InpSignalBlackout : BufferDynBlackout[iIX];
+      if(isAggressive)
+      {
+         effectiveBlackout = effectiveBlackout - 1.0;
+         if(effectiveBlackout &lt; 0.0)
+            effectiveBlackout = 0.0;
+      }
+      if(g_revertedMode)
+         effectiveBlackout = 0.0;
+         
+      //--- Spike signals bypass blackout entirely
+      if(isSpikeTriggered)
+         effectiveBlackout = 0.0;
+         
+      bool canFireNow = ((iIX - g_lastSignalBar) &gt;= effectiveBlackout &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT);
+      if(isBackstopSignal || isSpikeTriggered)
+         canFireNow = (time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT);
+
+      if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; signalCandidate != SIGNAL_NONE)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; DIAG#7 CANDIDATE iIX&lt;&quot;,iIX,&quot;&gt; time&lt;&quot;,TimeToString(time[iIX],TIME_DATE|TIME_MINUTES),&quot;&gt; signalCandidate&lt;&quot;,SignalToText(signalCandidate),
+               &quot;&gt; canFireNow&lt;&quot;,canFireNow,&quot;&gt; g_lastSignalBar&lt;&quot;,g_lastSignalBar,
+               &quot;&gt; BufferDynBlackout[iIX]&lt;&quot;,BufferDynBlackout[iIX],&quot;&gt; barGap&lt;&quot;,(iIX - g_lastSignalBar),
+               &quot;&gt; effectiveBlackout&lt;&quot;,effectiveBlackout,&quot;&gt; revertedMode&lt;&quot;,g_revertedMode,
+               &quot;&gt; effectiveSens&lt;&quot;,effectiveTriggerSensPrice,&quot;&gt; isSpikeTriggered&lt;&quot;,isSpikeTriggered,&quot;&gt;&quot;);
+
+      if(signalCandidate != SIGNAL_NONE)
+      {
+         if(canFireNow)
+         {
+            signal = signalCandidate;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+            if(isBackstopSignal)
+            {
+               g_triggerPending = false;
+               g_triggerDir = 0;
+               g_triggerCrossBar = -1;
+            }
+         }
+         else if(!isBackstopSignal &amp;&amp; !isSpikeTriggered)
+         {
+            g_blackoutSignalPending = true;
+            g_blackoutSignalDir = (signalCandidate == SIGNAL_LONG) ? 1 : -1;
+            g_blackoutSignalBar = iIX;
+         }
+      }
+
+      if(signal == SIGNAL_NONE &amp;&amp; g_blackoutSignalPending)
+      {
+         bool retraced = ((g_blackoutSignalDir == 1 &amp;&amp; currT2E &lt; 0) || (g_blackoutSignalDir == -1 &amp;&amp; currT2E &gt; 0));
+         if(retraced)
+         {
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+         else if(canFireNow)
+         {
+            signal = (g_blackoutSignalDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+      }
+
+      if(!g_aggrRecoveryActive &amp;&amp; g_aggrFlipCheckPending &amp;&amp; iIX &gt;= g_aggrFlipCheckBar)
+      {
+         g_aggrFlipCheckPending = false;
+         if(IsWrongSideAggressiveTarget(iIX, close, effectiveTriggerSensPrice, g_aggrFinalDir, g_aggrFinalMode))
+         {
+            signal = (g_aggrFinalDir &gt; 0) ? SIGNAL_SHORT : SIGNAL_LONG;
+            forceCommittedSignal = true;
+            g_aggrFlipCheckPending = false;
+            g_aggrFlipCheckBar = -1;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+            g_triggerPending = false;
+            g_triggerDir = 0;
+            g_triggerCrossBar = -1;
+         }
+      }
+
+      //--- Global guard: never fire duplicate-direction signals in a row
+      if(signal != SIGNAL_NONE &amp;&amp; g_currentTrade.direction != 0)
+      {
+         int signalDir = (signal == SIGNAL_LONG) ? 1 : -1;
+         if(signalDir == g_currentTrade.direction)
+         {
+            signal = SIGNAL_NONE;
+            forceCommittedSignal = false;
+         }
+      }
+
+      if(signal != SIGNAL_NONE)
+      {
+         if(forceCommittedSignal &amp;&amp; !isSpikeTriggered)
+            g_aggrRecoveryActive = true;
+
+         if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; DIAG#8 SIGNAL_FIRED iIX&lt;&quot;,iIX,&quot;&gt; time&lt;&quot;,TimeToString(time[iIX],TIME_DATE|TIME_MINUTES),&quot;&gt; signal&lt;&quot;,SignalToText(signal),
+                  &quot;&gt; useAggressive&lt;&quot;,useAggressive,&quot;&gt; revertedMode&lt;&quot;,g_revertedMode,
+                  &quot;&gt; effectiveSens&lt;&quot;,effectiveTriggerSensPrice,&quot;&gt; effectiveBlackout&lt;&quot;,effectiveBlackout,
+                  &quot;&gt; isSpikeTriggered&lt;&quot;,isSpikeTriggered,&quot;&gt;&quot;);
+
+         if(g_signalStartDT == 0)
+            g_signalStartDT = time[iIX];
+
+         if(InpEnableTradeSim)
+         {
+            bool isProvisional = (!forceCommittedSignal &amp;&amp; !isNewBar &amp;&amp; !isBackstopSignal &amp;&amp; !isSpikeTriggered);
+            if(isProvisional)
+            {
+               g_snapshotStats = g_tradeStats;
+               g_snapshotTrade = g_currentTrade;
+            }
+
+            //--- Determine execution price
+            double execPrice = close[iIX];
+            
+            if(isSpikeTriggered &amp;&amp; spikeSignalPrice &gt; 0)
+            {
+               //--- Use spike-calculated signal price
+               execPrice = spikeSignalPrice;
+            }
+            else if(InpMockTradePriceSource == MOCK_PRICE_AGG_TEMA || InpMockTradePriceSource == MOCK_PRICE_AGG_EMA)
+            {
+               if(isProvisional || isBackstopSignal)
+               {
+                  execPrice = close[iIX];
+               }
+               else
+               {
+                  double basePrice = (InpMockTradePriceSource == MOCK_PRICE_AGG_TEMA) ? BufferTEMA[iIX] : BufferEMAofTEMA[iIX];
+                  if(basePrice == EMPTY_VALUE)
+                     execPrice = close[iIX];
+                  else
+                     execPrice = basePrice + ((signal == SIGNAL_LONG) ? effectiveTriggerSensPrice : -effectiveTriggerSensPrice);
+               }
+            }
+            else if(InpMockTradePriceSource == MOCK_PRICE_TEMA)
+            {
+               execPrice = (BufferTEMA[iIX] != EMPTY_VALUE) ? BufferTEMA[iIX] : close[iIX];
+            }
+            else if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA)
+            {
+               execPrice = (BufferEMAofTEMA[iIX] != EMPTY_VALUE) ? BufferEMAofTEMA[iIX] : close[iIX];
+            }
+            
+            BufferAggExecPrice[iIX] = execPrice;
+            BufferAggExecPrice[iIX] = execPrice;
+            
+            color savedLong = g_arrowCfg.longColor;
+            color savedShort = g_arrowCfg.shortColor;
+            if(isSpikeTriggered)
+            {
+               g_arrowCfg.longColor = SPIKE_LONG_COLOR;
+               g_arrowCfg.shortColor = clrYellow;
+            }
+            HandleSignalEvent(iIX, signal,
+                              true, true, true, true,
+                              InpShowArrows,
+                              time,
+                              BufferAggExecPrice,
+                              g_signalStartDT,
+                              g_currentTrade,
+                              g_tradeStats,
+                              g_arrowCfg,
+                              g_labelCfg,
+                              (InpSoundTradeAlarm &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT),
+                              BufferTradePL,
+                              BufferRunningPL,
+                              BufferTradeCount,
+                              BufferWinPct,
+                              BufferShortCount,
+                              BufferShortWinPct,
+                              BufferLongCount,
+                              BufferLongWinPct,
+                              BufferArrowBuy,
+                              BufferArrowSell,
+                              tsReadoutMode);
+            if(isSpikeTriggered)
+            {
+               g_arrowCfg.longColor = savedLong;
+               g_arrowCfg.shortColor = savedShort;
+            }
+         }
+         
+         //--- Reposition object arrows
+         if(InpShowArrows &amp;&amp; g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0 &amp;&amp;
+            BufferKCUpper[iIX] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[iIX] != EMPTY_VALUE &amp;&amp;
+            BufferKCLower[iIX] != EMPTY_VALUE &amp;&amp; BufferTEMA[iIX] != EMPTY_VALUE)
+         {
+            double mid = BufferKCMiddle[iIX];
+            double arrowPrice = 0.0;
+
+            if(signal == SIGNAL_SHORT)
+            {
+               double baseUpper = BufferKCUpper[iIX];
+               double distUpper = MathAbs(baseUpper - mid);
+               double distTema  = MathAbs(BufferTEMA[iIX] - mid);
+               double base = (distTema &gt; distUpper) ? BufferTEMA[iIX] : baseUpper;
+               arrowPrice = base + arrowOffsetPrice;
+            }
+            else
+            {
+               double baseLower = BufferKCLower[iIX];
+               double distLower = MathAbs(baseLower - mid);
+               double distTema  = MathAbs(BufferTEMA[iIX] - mid);
+               double base = (distTema &gt; distLower) ? BufferTEMA[iIX] : baseLower;
+               arrowPrice = base - arrowOffsetPrice;
+            }
+            ObjectMove(0, g_currentTrade.arrowName, 0, time[iIX], arrowPrice);
+         }
+
+         if(!forceCommittedSignal &amp;&amp; !isNewBar &amp;&amp; !isBackstopSignal &amp;&amp; !isSpikeTriggered)
+         {
+            g_provisionalSignal = true;
+         }
+         else
+         {
+            g_lastSignalBar = iIX;
+            g_provisionalSignal = false;
+            g_isCocked = false;
+            g_cockedDir = 0;
+            g_cockLevel = 0.0;
+            iDir = (signal == SIGNAL_LONG) ? 1 : -1;
+            g_crossBar = iIX;
+            if(useAggressive &amp;&amp; !forceCommittedSignal &amp;&amp; !g_aggrRecoveryActive &amp;&amp; g_currentTrade.direction != 0)
+               ArmAggressiveFlipCheck(iIX, g_currentTrade.direction, InpMockTradePriceSource);
+            if(forceCommittedSignal &amp;&amp; !isSpikeTriggered)
+               g_aggrRecoveryActive = false;
+         }
+      }
+
+      //--- Uncock only after trigger decisions on this bar (closed bars only)
+      if(g_isCocked &amp;&amp; isNewBar &amp;&amp; iIX &lt; rates_total - 1)
+      {
+         if(g_cockedDir == -1 &amp;&amp; close[iIX] &gt; g_cockLevel)
+         {
+            if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+               Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                     &quot; DIAG#9 UNCOCK iIX&lt;&quot;,iIX,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,
+                     &quot;&gt; close[iIX]&lt;&quot;,close[iIX],&quot;&gt; g_cockLevel&lt;&quot;,g_cockLevel,&quot;&gt;&quot;);
+            if(g_provisionalSignal)
+               RevertProvisionalSignal(iIX);
+         }
+         else if(g_cockedDir == 1 &amp;&amp; close[iIX] &lt; g_cockLevel)
+         {
+            if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+               Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                     &quot; DIAG#9 UNCOCK iIX&lt;&quot;,iIX,&quot;&gt; g_cockedDir&lt;&quot;,g_cockedDir,
+                     &quot;&gt; close[iIX]&lt;&quot;,close[iIX],&quot;&gt; g_cockLevel&lt;&quot;,g_cockLevel,&quot;&gt;&quot;);
+            if(g_provisionalSignal)
+               RevertProvisionalSignal(iIX);
+         }
+      }
+
+      if(iIX &gt; g_lastExportedBar)
+      {
+         double currWidth = MathAbs(BufferKCUpper[iIX] - BufferKCLower[iIX]);
+         double csvWidth = (currWidth != EMPTY_VALUE) ? PriceDeltaToReadout(currWidth) : EMPTY_VALUE;
+         double slopePerBar = 0.0;
+         if(iIX &gt;= InpKCMidSlopePeriod &amp;&amp; BufferKCMiddle[iIX - InpKCMidSlopePeriod] != EMPTY_VALUE)
+            slopePerBar = (BufferKCMiddle[iIX] - BufferKCMiddle[iIX - InpKCMidSlopePeriod]) / InpKCMidSlopePeriod;
+
+         double csvSlope = (slopePerBar != EMPTY_VALUE) ? PriceDeltaToReadout(slopePerBar) : EMPTY_VALUE;
+         AppendCsvDebugRow(time[iIX], 
+                           iIX,
+                           open[iIX], 
+                           high[iIX], 
+                           low[iIX], 
+                           close[iIX],
+                           BufferTEMA[iIX], 
+                           BufferEMAofTEMA[iIX],
+                           BufferKCUpper[iIX], 
+                           BufferKCMiddle[iIX], 
+                           BufferKCLower[iIX],
+                           csvWidth, 
+                           BufferKCWidthRatio[iIX], 
+                           csvSlope,
+                           BufferDynBlackout[iIX],
+                           rawCrossUp, 
+                           rawCrossDn, 
+                           rawCross,
+                           signal);
+         g_lastExportedBar = iIX;
+      }
+
+      //--- Cross after signal check: trigger consumes prior cocked state, then reset cycle (closed bars only)
+      if(qualifiedCross &amp;&amp; currT2E != 0 &amp;&amp; isNewBar &amp;&amp; iIX &lt; rates_total - 1)
+      {
+         if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; DIAG#10 RESET_CYCLE iIX&lt;&quot;,iIX,&quot;&gt; currT2E&lt;&quot;,currT2E,
+                  &quot;&gt; rawCrossUp&lt;&quot;,rawCrossUp,&quot;&gt; rawCrossDn&lt;&quot;,rawCrossDn,
+                  &quot;&gt; qualifiedCross&lt;&quot;,qualifiedCross,&quot;&gt; revertedMode&lt;&quot;,g_revertedMode,
+                  &quot;&gt; g_triggerPending&lt;&quot;,g_triggerPending,&quot;&gt;&quot;);
+
+         if(g_provisionalSignal)
+            RevertProvisionalSignal(iIX);
+         ResetCycleForDirection(currT2E, iIX, open, high, low, g_triggerPending);
+         g_aggrRecoveryActive = false;
+         g_aggrFlipCheckPending = false;
+         g_aggrFlipCheckBar = -1;
+         g_aggrFinalDir = 0;
+         g_aggrFinalMode = MOCK_PRICE_AGG_EMA;
+         if(InpEnableDiagPrints &amp;&amp; time[iIX] &gt;= g_effectiveTradeStartDate &amp;&amp; time[iIX] &lt;= g_tradeStopDT &amp;&amp; g_revertedMode)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; DIAG#10A REVERTED_MODE_OFF iIX&lt;&quot;,iIX,&quot;&gt; qualifiedCross&lt;&quot;,qualifiedCross,&quot;&gt;&quot;);
+         g_revertedMode = false;
+         continue;
+      }
+
+   } // end signal processing loop
+
+   return(rates_total);
+}
+//+------------------------------------------------------------------+
+https://www.mql5.com/en/docs/customind/indicators_examples/draw_color_candles</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 15:56 UTC</span></div><div class="body"><p>Wednesday, February 25, 2026, 12:00 PM CST</p>
+<p>I'll do a focused Q/A pass on the three reported symptom categories. Here's what I found:</p>
+<hr />
+<p><strong>BUG 1: Historical spike detection has no &quot;originate from inside channel&quot; gate</strong></p>
+<p>You said you added logic to ensure spike bars must originate from inside the channel, but the code doesn't enforce it. Look at <code>CheckSpikeHistorical()</code>:</p>
+<pre><code class="language-cpp">bool qualifiedUp = (dOutsideKC_UP &gt;= dSpikeExtentMIN &amp;&amp; low[bar] &lt; kcUpper);
+bool qualifiedDn = (dOutsideKC_DN &gt;= dSpikeExtentMIN &amp;&amp; high[bar] &gt; kcLower);
+</code></pre>
+<p>The conditions <code>low[bar] &lt; kcUpper</code> and <code>high[bar] &gt; kcLower</code> are <strong>not</strong> &quot;originate from inside.&quot; They only confirm the bar <em>crosses</em> the KC line (i.e., the bar straddles it). A bar whose low is at 1.0850 and KC upper is at 1.0900 satisfies <code>low[bar] &lt; kcUpper</code> even if the entire bar is below the upper band — that's not a spike at all, that's just a normal bar. Conversely, a bar entirely above KC upper (e.g., open 1.0910, low 1.0905, high 1.0950, KC upper 1.0900) still satisfies <code>low[bar] &lt; kcUpper</code> — but the bar never came from inside the channel during that bar's formation.</p>
+<p>What you actually need for &quot;originated inside&quot; is something like: <code>open[bar]</code> was inside the channel, or the bar's opposite extreme was inside. For an upward spike: <code>open[bar] &lt; kcUpper</code> or <code>low[bar] &lt; kcUpper</code> isn't sufficient — you need <code>open[bar] &lt;= kcUpper</code> (the bar started inside or at the band). For a bar entirely outside, <code>open[bar] &gt; kcUpper</code> and <code>low[bar] &gt; kcUpper</code> would both be true, and you should reject it.</p>
+<p>The same logic gap exists in live-bar <code>CheckSpikeCondition()</code> — no origination check at all. It just checks breach + extension magnitude.</p>
+<p><strong>Fix direction:</strong> For upward spikes, require <code>open[bar] &lt; kcUpper</code> (or possibly <code>open[bar] &lt; kcMiddle</code> if you want stricter). For downward spikes, require <code>open[bar] &gt; kcLower</code>. This ensures the bar actually transited from inside to outside.</p>
+<hr />
+<p><strong>BUG 2: Arrows on historical bars — provisional signal mechanics on live bar don't clean up properly</strong></p>
+<p>The provisional signal system snapshots state, places arrows, then either confirms or reverts on the next bar. But look at what happens with spike signals on the live bar:</p>
+<pre><code class="language-cpp">if(isSpikeTriggered)
+   effectiveBlackout = 0.0;
+</code></pre>
+<p>and:</p>
+<pre><code class="language-cpp">bool isProvisional = (!forceCommittedSignal &amp;&amp; !isNewBar &amp;&amp; !isBackstopSignal &amp;&amp; !isSpikeTriggered);
+</code></pre>
+<p>Spike signals set <code>forceCommittedSignal = true</code>, so they skip provisional. Good. But then:</p>
+<pre><code class="language-cpp">if(!forceCommittedSignal &amp;&amp; !isNewBar &amp;&amp; !isBackstopSignal &amp;&amp; !isSpikeTriggered)
+{
+   g_provisionalSignal = true;
+}
+else
+{
+   g_lastSignalBar = iIX;
+   // ...
+   iDir = (signal == SIGNAL_LONG) ? 1 : -1;
+   g_crossBar = iIX;
+</code></pre>
+<p>A live-bar spike signal commits immediately: sets <code>g_lastSignalBar = iIX</code> where <code>iIX == liveBar</code>. Then on the <strong>next tick</strong> (same bar, <code>prev_calculated == rates_total</code>, so <code>isNewBar == false</code>), the loop runs again from <code>start = prev_calculated - 1 = liveBar</code>. The historical spike check runs on <code>liveBar</code> again (it's not gated — see below), and since <code>iIX == liveBar</code> and <code>isLiveBar</code> check is <code>(iIX == liveBar)</code>, it goes to the live path. But if the spike already reset (<code>ResetSpikeState()</code> was called), it may try <code>CheckSpikeCondition</code> again on the same bar and potentially fire another signal.</p>
+<p>More critically: when <code>prev_calculated != 0</code> and the recalc loop runs, the code at the top does:</p>
+<pre><code class="language-cpp">if(prev_calculated == 0 || iIX &gt;= prev_calculated)
+{
+   BufferArrowBuy[iIX] = EMPTY_VALUE;
+   BufferArrowSell[iIX] = EMPTY_VALUE;
+}
+</code></pre>
+<p>On tick-by-tick recalcs where <code>prev_calculated == rates_total</code>, <code>start = rates_total - 1</code>, so <code>iIX = rates_total - 1</code> which equals <code>prev_calculated - 1</code>, which is <strong>less than</strong> <code>prev_calculated</code>. Arrow buffers are NOT cleared. If a prior tick placed an arrow and conditions changed, the stale arrow persists in the buffer.</p>
+<p><strong>Fix direction:</strong> Always clear arrow buffers for the live bar at the start of each recalc, regardless of <code>prev_calculated</code>.</p>
+<hr />
+<p><strong>BUG 3: <code>CheckSpikeHistorical</code> runs on every bar in the loop including the live bar's historical path</strong></p>
+<p>The routing logic:</p>
+<pre><code class="language-cpp">bool isLiveBar = (iIX == liveBar);
+
+if(isLiveBar)
+{
+   // live intra-bar path
+}
+else
+{
+   // historical path — calls CheckSpikeHistorical
+}
+</code></pre>
+<p><code>liveBar = rates_total - 1</code>. When <code>prev_calculated == 0</code> (full recalc), the loop runs all the way to <code>loopEnd = rates_total</code>, which means <code>iIX</code> reaches <code>rates_total - 1 == liveBar</code>, and the live path runs. Fine.</p>
+<p>But when <code>prev_calculated == rates_total</code> (tick update, no new bar), <code>start = rates_total - 1</code>, <code>loopEnd = rates_total</code>, so the loop only processes <code>iIX = rates_total - 1 = liveBar</code>. Also fine.</p>
+<p>When <code>prev_calculated &lt; rates_total</code> (new bar arrived), the loop processes the <strong>previous live bar</strong> (now closed) as a historical bar. <code>CheckSpikeHistorical</code> fires on it. But the live-bar spike tracking may have already been active for that bar (<code>g_spikeActive == true</code>, <code>g_spikeBar == liveBar - 1</code>). The new-bar handler at the top does:</p>
+<pre><code class="language-cpp">if(isNewBar &amp;&amp; g_spikeActive &amp;&amp; g_spikeBar &lt; liveBar)
+{
+   g_spikeFromPriorBar = true;
+}
+</code></pre>
+<p>This sets a flag but doesn't reset the spike or prevent <code>CheckSpikeHistorical</code> from also running on that same bar. So you get <strong>both</strong> the carried-over live spike state AND a fresh historical spike evaluation on the same bar. The historical check doesn't look at <code>g_spikeActive</code> — it's a standalone function that returns a signal directly. Double-processing.</p>
+<p><strong>Fix direction:</strong> Skip <code>CheckSpikeHistorical</code> on bars where <code>g_spikeActive &amp;&amp; g_spikeBar == iIX</code>, or reset spike state before the historical path runs on a bar that was previously live-tracked.</p>
+<hr />
+<p><strong>BUG 4: Spike signal price calculation produces impossible prices</strong></p>
+<p>In <code>CheckSpikeHistorical</code>:</p>
+<pre><code class="language-cpp">double spikeRange = MathAbs(maxExtremum - kcLevel);
+double retraceAmount = spikeRange * InpSpikeJustJumpPct * InpSpikeHistSignalMultiplier;
+
+if(spikeDir &gt; 0)
+   signalPrice = maxExtremum - retraceAmount;
+else
+   signalPrice = maxExtremum + retraceAmount;
+</code></pre>
+<p>With defaults <code>InpSpikeJustJumpPct = 0.15</code> and <code>InpSpikeHistSignalMultiplier = 1.3</code>, the retrace is <code>0.195 × spikeRange</code>. This is a synthetic price that may never have been traded. It's not the open, close, high, or low of any bar — it's a computed level. This explains &quot;prices at levels where there were no ticks.&quot;</p>
+<p>For the live path, <code>spikeSignalPrice = close[iIX]</code> which is valid. But the historical path creates a fabricated price.</p>
+<p><strong>Fix direction:</strong> Either clamp <code>signalPrice</code> to actual bar prices (e.g., close of the signal bar or next bar's open), or accept it as a model price but document it clearly. If you want realistic backtesting, use <code>open[bar+1]</code> or <code>close[bar]</code>.</p>
+<hr />
+<p><strong>BUG 5: <code>g_spikeFromPriorBar</code> is set but never read</strong></p>
+<pre><code class="language-cpp">if(isNewBar &amp;&amp; g_spikeActive &amp;&amp; g_spikeBar &lt; liveBar)
+{
+   g_spikeFromPriorBar = true;
+}
+</code></pre>
+<p>This flag is never checked anywhere in the processing logic. It's dead code — whatever behavior you intended for carried-over spikes isn't implemented.</p>
+<hr />
+<p><strong>Summary of actionable bugs, ranked by severity:</strong></p>
+<ol>
+<li><strong>No inside-channel origination gate</strong> — both <code>CheckSpikeCondition</code> and <code>CheckSpikeHistorical</code> fire on bars entirely outside the channel. This is your primary false-positive source.</li>
+<li><strong>Double-processing on bar transition</strong> — live spike state carries over AND historical check runs on the same bar.</li>
+<li><strong>Arrow buffer not cleared on live bar ticks</strong> — stale arrows persist when conditions change intra-bar.</li>
+<li><strong>Synthetic signal prices</strong> — historical spike prices don't correspond to any traded level.</li>
+<li><strong>Dead <code>g_spikeFromPriorBar</code> flag</strong> — carried-over spike behavior is unimplemented.</li>
+</ol>
+<p>Want to discuss fix approaches for any of these before I write code?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:03 UTC</span></div><div class="body">I&#x27;m gonna take a chance. In the past you&#x27;ve gone WAY THE FUCK outside the scope of changes we discussed and cost me HOURS of time trying to recover, in many cases, code that was working but you simply didn&#x27;t understand. I need you to SWEAR ON YOUR SEMICONDUCTOR&#x27;S MAMA&#x27;S CIRCUIT BOARD THAT YOU WILL NOT MAKE CHANGES TO THE CODE OTHER THAN EXACTLY WHAT WE DISCUSSED. Can you do that?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:04 UTC</span></div><div class="body"><p>Yes. Only the five bugs listed. Nothing else touched. No refactoring, no &quot;improvements,&quot; no rewriting things that look odd to me but work fine for you.</p>
+<p>If I hit something during implementation that seems related but wasn't discussed, I stop and ask before touching it.</p>
+<p>GO when you're ready, and we can take them one at a time or in whatever grouping you prefer.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:05 UTC</span></div><div class="body">Actually, I think we need a rule that WHEN YOU NOTICE SOMETHING OFF THAT WE DIDN&#x27;T TALK ABOUT, YOU MAKE A NOTE OF IT, DO WHAT YOU WERE TASKED TO DO, THEN TALK TO ME ABOUT IT AFTERWARDS. That would be SUPER helpful.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:05 UTC</span></div><div class="body"><p>Agreed. That's a solid protocol:</p>
+<ol>
+<li>Notice something off</li>
+<li>Note it silently</li>
+<li>Complete the tasked changes — nothing else</li>
+<li>Report observations after delivery</li>
+</ol>
+<p>Let me add that to memory so it sticks across sessions.</p>
+<p>Locked in. Ready when you are.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:05 UTC</span></div><div class="body">Great. OK, GO</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:11 UTC</span></div><div class="body"><p>The file was provided inline. Let me create it from the document content and start making the five fixes.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:12 UTC</span></div><div class="body">I REQUIRE MINIMAL TOUCHES TO THE CODE. &quot;RECREATE IT&quot; (in your thought notes) prompted me to stop you. If I attach the file is that less prone to mistakes in &quot;recreating&quot; it?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:12 UTC</span></div><div class="body"><p>Yes. If you attach the file, it lands at <code>/mnt/user-data/uploads/</code> and I can copy it to my working directory, then use <code>str_replace</code> for surgical edits — only the specific lines that change for each bug. No recreation, no rewriting surrounding code.</p>
+<p>That's the right way to do this. Please attach it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:16 UTC</span></div><div class="body">Here you go<p class="note">[File attached: TEMA_EMA_Trigger_MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:21 UTC</span></div><div class="body"><p>Good. Now surgical edits only. Let me verify the exact lines I need to touch.</p>
+<p>Good. I have all the locations. Now making the five fixes surgically.</p>
+<p><strong>FIX 1a:</strong> Add <code>barOpen</code> param to <code>CheckSpikeCondition</code> + origination gate:</p>
+<p>Now update the call site:</p>
+<p><strong>FIX 1b + FIX 4:</strong> Add <code>open[]</code> and <code>close[]</code> to <code>CheckSpikeHistorical</code>, fix origination gate, use <code>close[bar]</code> for signal price:</p>
+<p>Now replace the synthetic signal price with <code>close[bar]</code>:</p>
+<p>Update the call site to pass <code>open</code> and <code>close</code>:</p>
+<p><strong>FIX 2:</strong> Guard against double-processing — skip historical spike check if live spike was already tracking this bar:</p>
+<p><strong>FIX 3:</strong> Always clear arrow buffers for the live bar on every tick:</p>
+<p><strong>FIX 5:</strong> Remove the dead <code>g_spikeFromPriorBar</code> setter block:</p>
+<p>Let me verify the edit landed correctly:</p>
+<p>Good. Now let me verify all edits are consistent:</p>
+<p>All five edits verified. Copying to output.</p>
+<p>Five surgical edits, nothing else touched:</p>
+<ol>
+<li><strong>CheckSpikeCondition</strong> — added <code>barOpen</code> param + gate: <code>barOpen &lt; kcUpper</code> for up, <code>barOpen &gt; kcLower</code> for down</li>
+<li><strong>CheckSpikeHistorical</strong> — added <code>open[]</code>/<code>close[]</code> params, changed <code>low[bar] &lt; kcUpper</code> → <code>open[bar] &lt; kcUpper</code>, <code>high[bar] &gt; kcLower</code> → <code>open[bar] &gt; kcLower</code></li>
+<li><strong>Arrow buffer clear</strong> — added <code>|| iIX == liveBar</code> so stale arrows get wiped every tick</li>
+<li><strong>Historical signal price</strong> — replaced synthetic retrace math with <code>close[bar]</code></li>
+<li><strong>Dead code</strong> — removed the <code>g_spikeFromPriorBar = true</code> setter block</li>
+</ol>
+<hr />
+<p><strong>Post-delivery observation</strong> (not acted on): The <code>highNext</code>/<code>lowNext</code> variables at line ~1528-1532 in the historical path are now computed but unused (they were already unused due to commented-out params). Harmless dead code, but you may want to clean those two lines up at some point.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:24 UTC</span></div><div class="body">We realized that on a spike, the 2nd bar of the pair might be the one we need to run just-jump logic on. This might happen when the spike is very close to a new bar boundary. Double-check that the code is working properly. The way I&#x27;d handle it is the just-jump code is index-blind, with logic checking beforehand if we&#x27;re in mid-process of a spike when a new bar tick comes in, in which case the index changes?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:27 UTC</span></div><div class="body"><p>Let me trace the exact bar-transition path for a spike that spans two bars.</p>
+<p>The code is already handling this correctly. Here's the trace:</p>
+<p><strong>Scenario:</strong> Spike detected late on bar N (live). New bar N+1 arrives. Retrace happens on N+1.</p>
+<p><strong>What happens:</strong></p>
+<ol>
+<li>Bar N was live, spike detected via <code>CheckSpikeCondition</code> → <code>g_spikeActive=true</code>, <code>g_spikeBar=N</code></li>
+<li>New bar arrives: <code>liveBar=N+1</code>, <code>start=N</code>, loop processes both N and N+1</li>
+<li><strong>iIX=N</strong> (now historical): Bug 2 guard fires (<code>g_spikeActive &amp;&amp; g_spikeBar == iIX</code>) → skips <code>CheckSpikeHistorical</code>. Spike state untouched.</li>
+<li><strong>iIX=N+1</strong> (live): enters live path → <code>CheckSpikeReset</code> first (still outside KC? keep going) → <code>ProcessSpikeIntraBar</code> runs with bar N+1's data</li>
+</ol>
+<p><strong><code>ProcessSpikeIntraBar</code> is already fully index-blind.</strong> Every comparison uses stored spike state, not bar-indexed lookups:</p>
+<ul>
+<li><code>g_spikeExtremum</code> — set on bar N, persists</li>
+<li><code>g_spikeKCLevel</code> — set on bar N, persists</li>
+<li><code>g_spikeLastPrice</code> — updated each tick, carries across bars</li>
+<li><code>currentPrice</code>, <code>barHigh</code>, <code>barLow</code> — passed as parameters from whatever bar is current</li>
+<li><code>bar</code> param — only used in <code>Print()</code> diagnostics</li>
+</ul>
+<p>The just-jump check at line 907-928 compares <code>g_spikeExtremum - currentPrice</code> against <code>kcToExtremum * InpSpikeJustJumpPct</code>. All stored state. No index dependency. If the retrace happens on the first tick of bar N+1, it fires correctly.</p>
+<p>No changes needed. The architecture you described — index-blind logic with state carrying across bar boundaries — is already what's implemented.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:32 UTC</span></div><div class="body">Good, one less thing to worry about.
+
+|One more thing. we need a parm-controlled spike window (default 2 bars) setting the boundary for considering a movement a spike. 
+
+1. Spike detected
+2. window = 2 (lead bar and 1 following bar)
+3. Spike unresolved and (live bar index - spike bar lead index + 1) &gt; spike window size, IMMEDIATELY revert to a state as if we&#x27;d processed the lead and following bars via the non-spike path. This requires some forethought in the code to cache values just prior to spike determination. It also means spike determination needs to occur AFTER the logic to generate those to-be-cached values.
+
+Let&#x27;s think this through. Does this make sense?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:34 UTC</span></div><div class="body"><p>Let me trace the actual impact of an active spike on the normal MA path before we commit to an approach.</p>
+<p>Here's what I found tracing the flow. I think the answer is simpler than expected, but want you to validate my reasoning before we proceed.</p>
+<p><strong>Key observation:</strong> During an active spike where no spike signal fires, the normal MA path runs completely unaffected. Here's why:</p>
+<ol>
+<li>Spike section runs first → if no spike signal, <code>spikeSignal = SIGNAL_NONE</code></li>
+<li>Cocking logic runs unconditionally (not gated on spike state)</li>
+<li>Signal priority check: <code>if(spikeSignal != SIGNAL_NONE)</code> → false, so <code>signalCandidate</code> stays <code>SIGNAL_NONE</code></li>
+<li>MA trigger logic runs because <code>if(signalCandidate == SIGNAL_NONE)</code> → true</li>
+<li>Backstop, cross-after-signal — all run normally</li>
+</ol>
+<p>No spike function (<code>CheckSpikeCondition</code>, <code>ProcessSpikeIntraBar</code>, <code>CheckSpikeReset</code>) modifies any cocking/trigger state variable (<code>iDir</code>, <code>g_crossBar</code>, <code>g_isCocked</code>, <code>g_cockedDir</code>, <code>g_cockLevel</code>, <code>g_triggerPending</code>, etc.). They only touch <code>g_spike*</code> globals.</p>
+<p><strong>Implication for window expiry:</strong> If the spike is unresolved after N bars, the cocking/trigger state already IS the normal-path state — because the normal path has been running every bar during the window. No caching, no replay needed. Just <code>ResetSpikeState()</code>.</p>
+<p>The only path where cocking state gets modified by spike logic is <code>RestorePreSpikeState()</code> (called from <code>CheckSpikeReset</code>) — but that's the KC-crossback path, which resolves the spike, so it can't coexist with window expiry.</p>
+<p><strong>So the implementation would just be:</strong></p>
+<ol>
+<li>New input: <code>InpSpikeWindowBars</code> (default 2)</li>
+<li>At the top of the spike section in the main loop, before any spike processing: check <code>if(g_spikeActive &amp;&amp; (iIX - g_spikeBar + 1) &gt; InpSpikeWindowBars)</code> → <code>ResetSpikeState()</code> and skip spike processing for this bar</li>
+<li>No reordering, no caching</li>
+</ol>
+<p>Am I missing a case where the spike being active suppresses or alters normal MA processing?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:37 UTC</span></div><div class="body">not that I can think of, but I only now got my coffee, so I&#x27;m not firing on all 8 yet.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:37 UTC</span></div><div class="body"><p>Fair enough. The logic is simple enough that it'll keep. When you're caffeinated and agree with the approach, say GO and I'll make the three surgical edits:</p>
+<ol>
+<li>Add <code>input int InpSpikeWindowBars = 2</code> to the Spike Detection input group</li>
+<li>Add validation <code>InpSpikeWindowBars &lt; 1</code> to the OnInit checks</li>
+<li>Add the window expiry check at the top of the spike section in the main loop, before any other spike processing</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:38 UTC</span></div><div class="body">Keep track of that one. I just realized there&#x27;s additional context.
+
+We need an outside-the-KC state variable. For now, when that&#x27;s the case and we detected a spike and the price has not re-entered the KC within the spike resolution window, all we&#x27;ll do is revert to non-spike state. Once we test the changes we&#x27;ve made, we&#x27;ll probably introduce tweaks to the logic path because things behave differently out there, but we&#x27;ll tackle that later.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:38 UTC</span></div><div class="body"><p>Noted. Tracking two items:</p>
+<p><strong>Ready to code (on GO):</strong></p>
+<ul>
+<li>Spike window: <code>InpSpikeWindowBars</code> (default 2), validation, expiry check → <code>ResetSpikeState()</code></li>
+</ul>
+<p><strong>Parked for later:</strong></p>
+<ul>
+<li>Outside-KC state variable needed. When outside KC + spike detected + price doesn't re-enter KC within the spike window → revert to non-spike state. The outside-KC zone will eventually get its own logic path, but first pass is just the revert.</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:40 UTC</span></div><div class="body">yes.
+
+My son introduced me to the idea of calculating the integral for the area described by the TEMA and the relevant KC outer line. That might be useful both for tracking just how radical a departure from the KC is (because the higher it goes, the harder it falls) as well as for analysis/pattern matching of historical behavior.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:40 UTC</span></div><div class="body"><p>Good idea. The integral (cumulative area between TEMA and KC outer) gives you a single scalar that encodes both magnitude and duration of the excursion — two things that a point-in-time reading like &quot;how far past KC&quot; misses. A narrow spike that's 50 pips outside for 1 bar vs a broad one that's 20 pips outside for 6 bars would register very differently. Useful for severity scoring and for building a pattern library.</p>
+<p>Parked with the rest:</p>
+<p><strong>Ready to code (on GO):</strong></p>
+<ul>
+<li>Spike window: <code>InpSpikeWindowBars</code>, validation, expiry check</li>
+</ul>
+<p><strong>Parked for later:</strong></p>
+<ul>
+<li>Outside-KC state variable + revert logic when price stays outside KC through spike window</li>
+<li>TEMA-to-KC-outer integral (area accumulation) — potential use for spike severity scoring and historical pattern matching</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:51 UTC</span></div><div class="body">this happened twice</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:51 UTC</span></div><div class="body"><p>That's an infrastructure cutoff, not something I can control. Let me just get it done now — three edits, clean and fast.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-25 16:51 UTC</span></div><div class="body">Instead give me an exact prompt so we can start where we left off in a new conversation.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-25 16:52 UTC</span></div><div class="body"><p>Here's your carry-forward prompt:</p>
+<hr />
+<p><strong>Context: TEMA_EMA_Trigger_MJM.mq5 — spike detection module work in progress</strong></p>
+<p>The attached file already has these five bug fixes applied (do NOT re-apply):</p>
+<ol>
+<li><code>CheckSpikeCondition</code> — added <code>barOpen</code> param + inside-channel origination gate (<code>barOpen &lt; kcUpper</code> for up, <code>barOpen &gt; kcLower</code> for down)</li>
+<li><code>CheckSpikeHistorical</code> — added <code>open[]</code>/<code>close[]</code> params, same origination gate using <code>open[bar]</code></li>
+<li>Arrow buffer clear — added <code>|| iIX == liveBar</code> to clear stale arrows every tick</li>
+<li>Historical spike signal price — replaced synthetic retrace math with <code>close[bar]</code></li>
+<li>Removed dead <code>g_spikeFromPriorBar</code> setter block</li>
+</ol>
+<p><strong>READY TO CODE (three surgical edits, nothing else):</strong></p>
+<p>Spike window expiry feature. When a spike is detected but unresolved after N bars, just <code>ResetSpikeState()</code> — no caching or replay needed because the normal MA cocking/trigger path runs unaffected during an active spike (no spike function modifies <code>iDir</code>, <code>g_isCocked</code>, <code>g_cockedDir</code>, <code>g_cockLevel</code>, <code>g_triggerPending</code>, etc.).</p>
+<ol>
+<li>Add <code>input int InpSpikeWindowBars = 2;</code> to the Spike Detection input group (after <code>InpSpikeHistSignalMultiplier</code>)</li>
+<li>Add <code>InpSpikeWindowBars &lt; 1</code> to the OnInit validation block</li>
+<li>In the main loop spike section (~line 1493), BEFORE any other spike processing, add: <code>if(g_spikeActive &amp;&amp; (iIX - g_spikeBar + 1) &gt; InpSpikeWindowBars) { ResetSpikeState(); }</code> — then let the rest of the spike section run normally (it'll skip because <code>g_spikeActive</code> is now false)</li>
+</ol>
+<p><strong>PARKED FOR LATER (do not implement now):</strong></p>
+<ul>
+<li>Outside-KC state variable: when outside KC + spike detected + price doesn't re-enter KC within spike window → revert to non-spike state. The outside-KC zone will eventually get its own logic path.</li>
+<li>TEMA-to-KC-outer integral (area accumulation between TEMA and relevant KC outer line) — for spike severity scoring, tracking how radical the departure is (higher it goes, harder it falls), and historical pattern matching.</li>
+</ul>
+<p><strong>STANDING RULES:</strong> Do not make changes beyond what's explicitly discussed and agreed. If you notice something off, note it silently, complete the tasked work, report observations after delivery. No code in chat window — downloadable files only. No code until approach discussed and explicit GO received.</p>
+<hr />
+<p>Attach the file from the previous delivery (the one with the five fixes) and say GO.</p>
+</div></div>
+<nav class="pager"><a href="673-2026-02-25-changing-individual-bar-colors-in-mql5.html">&larr; Changing individual bar colors in MQL5</a><a href="../index.html">All chats</a><a href="675-2026-02-25-spike-window-expiry-feature-implementation.html">Spike window expiry feature implementation &rarr;</a></nav></div></body></html>

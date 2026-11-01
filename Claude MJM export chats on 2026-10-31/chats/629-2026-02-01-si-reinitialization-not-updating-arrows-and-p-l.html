@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SI reinitialization not updating arrows and P/L</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="628-2026-02-01-remove-commented-print-statements.html">&larr; Remove commented print statements</a><a href="../index.html">All chats</a><a href="630-2026-02-01-untitled.html">Untitled &rarr;</a></nav>
+<header class="top">
+<h1>SI reinitialization not updating arrows and P/L</h1>
+<div class="meta">Created 2026-02-01 16:37 UTC &middot; Last updated 2026-02-01 16:45 UTC &middot; 8 messages<br>Original: <a href="https://claude.ai/chat/d5e9e821-f744-4604-8cc2-7f81986178ec">claude.ai/chat/d5e9e821-f744-4604-8cc2-7f81986178ec</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-01 16:39 UTC</span></div><div class="body">This code is removing but not recalculating arrows and P/L stats when an SI is REINITed, i.e., by changing its non-cosmetic parameters. Why?<p class="note">[File attached: IndicatorSlopes MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-01 16:40 UTC</span></div><div class="body"><p>Sunday, February 2, 2026, 12:14 AM CST</p>
+<p>Let me see the REINIT detection logic and the arrow clearing code:</p>
+<p>Found it. The problem is in the <code>RecalculateAfterReinit()</code> function.</p>
+<p><strong>The Issue:</strong></p>
+<p>When an SI is REINITed with a structural change (non-cosmetic parameter):</p>
+<ol>
+<li><code>ResetSignalState()</code> is called at line 1061 (from <code>Reinit_ApplyUpdates</code>) — this deletes arrows and sets <code>g_historyProcessed = false</code></li>
+<li><code>RecalculateAfterReinit()</code> is then called — this recalculates the slope buffers</li>
+<li><code>RecalculateAfterReinit()</code> ends with just <code>ChartRedraw(0)</code> at line 1671</li>
+</ol>
+<p><strong>But signal/arrow recalculation in <code>OnCalculate()</code> only happens when:</strong></p>
+<pre><code class="language-cpp">if(!g_historyProcessed &amp;&amp; prev_calculated == 0)   // line 1982
+</code></pre>
+<p>The problem: <code>ChartRedraw(0)</code> doesn't reset <code>prev_calculated</code> to 0. So on the next <code>OnCalculate()</code> call, <code>prev_calculated &gt; 0</code>, and the signal detection block is skipped — even though <code>g_historyProcessed</code> is now <code>false</code>.</p>
+<p><strong>Compare with <code>FullRescanAndRebuild()</code></strong> (lines 1333-1351), which correctly uses:</p>
+<pre><code class="language-cpp">ChartSetSymbolPeriod(0, _Symbol, _Period);   // line 1347
+</code></pre>
+<p>This forces a full recalculation with <code>prev_calculated = 0</code>.</p>
+<p><strong>Fix:</strong></p>
+<p>In <code>RecalculateAfterReinit()</code>, replace or supplement <code>ChartRedraw(0)</code> with <code>ChartSetSymbolPeriod(0, _Symbol, _Period)</code>:</p>
+<pre><code class="language-cpp">//--- Force full recalculation (resets prev_calculated to 0) so signals get regenerated
+ChartSetSymbolPeriod(0, _Symbol, _Period);
+</code></pre>
+<p>Or, alternatively, call the signal detection logic directly within <code>RecalculateAfterReinit()</code> after recalculating the slopes.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-01 16:42 UTC</span></div><div class="body">What does `ChartSetSymbolPeriod(0, _Symbol, _Period)`   do?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-01 16:42 UTC</span></div><div class="body"><p>It forces the chart to reload by &quot;setting&quot; its symbol and period to the same values it already has. This triggers MT5's internal chart refresh mechanism, which:</p>
+<ol>
+<li>Reinitializes the indicator (calls <code>OnDeinit</code> then <code>OnInit</code>)</li>
+<li>Calls <code>OnCalculate</code> with <code>prev_calculated = 0</code></li>
+</ol>
+<p>It's essentially a hack to force a full indicator recalculation. MT5 doesn't provide a direct &quot;reset prev_calculated&quot; function, so this is the workaround — you pretend to change the chart's symbol/timeframe, but actually keep them the same, and MT5 treats it as if the chart was freshly loaded.</p>
+<p>The side effect is that it reinitializes <em>all</em> indicators on the chart, not just yours. That's why <code>FullRescanAndRebuild()</code> uses it (you want everything reset anyway), but it may be heavier than needed for a single-SI REINIT case.</p>
+<p><strong>Alternative fix</strong> that avoids the full chart reload: call the signal detection logic directly at the end of <code>RecalculateAfterReinit()</code>:</p>
+<pre><code class="language-cpp">//--- Reprocess signals since buffers changed
+datetime time[];
+double open[], close[];
+ArraySetAsSeries(time, false);
+ArraySetAsSeries(open, false);
+ArraySetAsSeries(close, false);
+CopyTime(_Symbol, _Period, 0, rates_total, time);
+CopyOpen(_Symbol, _Period, 0, rates_total, open);
+CopyClose(_Symbol, _Period, 0, rates_total, close);
+
+int startBar = iBarShiftREG(_Symbol, PERIOD_CURRENT, InpSignalStartDate);
+for(int bar = startBar; bar &lt; rates_total; bar++)
+{
+   ENUM_SIGNAL_TYPE signal = DetectSignalUP_DN(bar, ARROW_TRADE_ENTRY_LONG, ARROW_TRADE_ENTRY_SHORT, 
+                                                time, close, InpSignalPercentMIN, g_signalDirection);
+   if(signal != SIGNAL_NONE)
+      HandleMockTrades(bar, -g_signalDirection, g_signalDirection, open, close);
+}
+g_historyProcessed = true;
+</code></pre>
+<p>This recalculates signals immediately without forcing all chart indicators to reinitialize.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-01 16:44 UTC</span></div><div class="body">we&#x27;re talking about a parameter change that already works correctly. Why would we use a &quot;fix&quot; that far exceeds the scope of the problem? The only problem is with arrows and P/L calculation. DON&#x27;T FIX WHAT AIN&#x27;T BROKE DUDE.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-01 16:44 UTC</span></div><div class="body"><p>You're right. The fix is just adding the signal reprocessing at the end of <code>RecalculateAfterReinit()</code>:</p>
+<pre><code class="language-cpp">//--- Reprocess signals since buffers changed
+datetime time[];
+double open[], close[];
+ArraySetAsSeries(time, false);
+ArraySetAsSeries(open, false);
+ArraySetAsSeries(close, false);
+CopyTime(_Symbol, _Period, 0, rates_total, time);
+CopyOpen(_Symbol, _Period, 0, rates_total, open);
+CopyClose(_Symbol, _Period, 0, rates_total, close);
+
+int startBar = iBarShiftREG(_Symbol, PERIOD_CURRENT, InpSignalStartDate);
+for(int bar = startBar; bar &lt; rates_total; bar++)
+{
+   ENUM_SIGNAL_TYPE signal = DetectSignalUP_DN(bar, ARROW_TRADE_ENTRY_LONG, ARROW_TRADE_ENTRY_SHORT, 
+                                                time, close, InpSignalPercentMIN, g_signalDirection);
+   if(signal != SIGNAL_NONE)
+      HandleMockTrades(bar, -g_signalDirection, g_signalDirection, open, close);
+}
+g_historyProcessed = true;
+</code></pre>
+<p>Insert after line 1671 (<code>ChartRedraw(0)</code>), before the function ends.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-01 16:44 UTC</span></div><div class="body">Just give me the entire function, fixed, here in the chat.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-01 16:45 UTC</span></div><div class="body"><pre><code class="language-cpp">//+------------------------------------------------------------------+
+//| Recalculate slopes after REINIT (called from ReinitSingleIndicator)|
+//| Gets price data and calls CalculateSlopesForLine for reinited lines|
+//+------------------------------------------------------------------+
+void RecalculateAfterReinit(const int &amp;matchingLines[])
+{
+   //--- Get current bar count
+   int rates_total = Bars(_Symbol, _Period);
+   if(rates_total &lt; InpSlopePeriod)
+      return;
+
+   //--- Get close prices for ScaledSlope calculation
+   double close[];
+   ArraySetAsSeries(close, false);
+   int copied = CopyClose(_Symbol, _Period, 0, rates_total, close);
+   if(copied != rates_total)
+   {
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+//      &quot; CopyClose failed: requested&lt;&quot;, rates_total,&quot;&gt; got&lt;&quot;, copied,&quot;&gt;&quot;);
+      return;
+   }
+
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+//      &quot; Recalculating &quot;, ArraySize(matchingLines),&quot; lines after REINIT, rates_total&lt;&quot;, rates_total,&quot;&gt;&quot;);
+
+   //--- Track earliest bar for summary buffer update
+   int summaryStartBar = rates_total;
+
+   //--- Calculate slopes for each reinited line
+   for(int m = 0; m &lt; ArraySize(matchingLines); m++)
+   {
+      int lineIX = matchingLines[m];
+
+      //--- Force full recalc since ReinitIt was set
+      int startBar = CalculateSlopesForLine(lineIX, rates_total, 0, close, true);
+
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+//      &quot; Calculated lineIX&lt;&quot;, lineIX,&quot;&gt; shortName&lt;&quot;, g_SI_line[lineIX].indicatorShortName,
+//      &quot;&gt; startBar&lt;&quot;, startBar,&quot;&gt;&quot;);
+
+      if(startBar &lt; summaryStartBar)
+         summaryStartBar = startBar;
+   }
+
+   //--- Update summary buffers
+   if(g_totalBuffers &gt; 0 &amp;&amp; summaryStartBar &lt; rates_total)
+   {
+      CalculateSummaryBuffers(summaryStartBar, rates_total);
+   }
+
+   //--- Reprocess signals since buffers changed
+   datetime time[];
+   double open[];
+   ArraySetAsSeries(time, false);
+   ArraySetAsSeries(open, false);
+   CopyTime(_Symbol, _Period, 0, rates_total, time);
+   CopyOpen(_Symbol, _Period, 0, rates_total, open);
+
+   int signalStartBar = iBarShiftREG(_Symbol, PERIOD_CURRENT, InpSignalStartDate);
+   for(int bar = signalStartBar; bar &lt; rates_total; bar++)
+   {
+      ENUM_SIGNAL_TYPE signal = DetectSignalUP_DN(bar, ARROW_TRADE_ENTRY_LONG, ARROW_TRADE_ENTRY_SHORT, 
+                                                   time, close, InpSignalPercentMIN, g_signalDirection);
+      if(signal != SIGNAL_NONE)
+         HandleMockTrades(bar, -g_signalDirection, g_signalDirection, open, close);
+   }
+   g_historyProcessed = true;
+
+   //--- Force chart to redraw with new buffer values
+   ChartRedraw(0);
+
+//Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+//      &quot; RecalculateAfterReinit COMPLETE&quot;);
+}
+</code></pre>
+</div></div>
+<nav class="pager"><a href="628-2026-02-01-remove-commented-print-statements.html">&larr; Remove commented print statements</a><a href="../index.html">All chats</a><a href="630-2026-02-01-untitled.html">Untitled &rarr;</a></nav></div></body></html>

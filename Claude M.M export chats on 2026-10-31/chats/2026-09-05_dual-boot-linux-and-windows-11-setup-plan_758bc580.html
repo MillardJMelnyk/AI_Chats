@@ -1,0 +1,367 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dual-boot Linux and Windows 11 setup plan</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-09-05_ethernet-cable-affecting-internet-speed_d89e1fda.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-05_nvidia-screen-capture-region-selection_ac2c313e.html">Next →</a></span></div><h1>Dual-boot Linux and Windows 11 setup plan</h1><div class="meta">Created 2026-09-05 15:53 UTC · Last updated 2026-09-09 20:38 UTC · 70 messages<br>Original: <a href="https://claude.ai/chat/758bc580-99ac-49f9-9b34-981f6e616d35">claude.ai/chat/758bc580-99ac-49f9-9b34-981f6e616d35</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:53 UTC</div><p>read the "Disabling drives during Windows installation" chat.</p>
+<p>Evaluate the image. </p>
+<p>I want to:</p>
+<ol>
+<li>Create a bootable stick (I:) to reinstall Windows from scratch.</li>
+<li>Partition my C: drive so that I can have a dual-boot machine, Linux and Win 11. Linux will be my primary, so I want the bulk of disk space devoted to it. Win 11 will run apps that I need but can't find Linux equivalents for. My created content/data will be stored on non-C: drives.</li>
+</ol>
+<p>I need bare-bones, exact instructions for doing this.</p>
+<p>We need to discuss this and create a plan before doing anything.</p>
+<p>I want guidance on what Linux product to use for this machine. I've attached a Belarc report for specs.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:55 UTC</div><h2>What the image shows</h2>
+<table>
+<thead>
+<tr>
+<th>Disk</th>
+<th>Hardware</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Disk 0</td>
+<td>HGST 6 TB HDD</td>
+<td>Data HDD (E:) 2048 GB, Data n Backup HDD (F:) 3541 GB — data only</td>
+</tr>
+<tr>
+<td>Disk 1</td>
+<td>Samsung 970 EVO Plus 2 TB</td>
+<td>529 MB Recovery + <strong>99 MB EFI (stray, still there)</strong> + D: 1862 GB</td>
+</tr>
+<tr>
+<td>Disk 2</td>
+<td>Samsung 990 PRO 1 TB</td>
+<td>100 MB EFI + <strong>C: 930.66 GB</strong> + 751 MB Recovery — Windows lives here</td>
+</tr>
+<tr>
+<td>Disk 3</td>
+<td>Bitdefender virtual disk</td>
+<td>Not real hardware, ignore</td>
+</tr>
+<tr>
+<td>Disk 4</td>
+<td>Your USB stick, 117.19 GB removable</td>
+<td>5 MB FAT (I:) + 2.82 GB unallocated + 114.36 GB unreadable partition — leftover junk from a previous ISO write</td>
+</tr>
+</tbody>
+</table>
+<p>Three things the image tells me that matter:</p>
+<ol>
+<li><strong>The stray EFI and Recovery partitions on Disk 1 were never deleted.</strong> They're still there. Windows setup can still put your new bootloader on the wrong drive.</li>
+<li><strong>I: is not the stick.</strong> I: is a 5 MB scrap on the stick. The whole of Disk 4 has to be wiped clean before it can be made bootable.</li>
+<li><strong>C: has about 560 GB of data on it.</strong> Wiping it destroys that. Back it up first or lose it.</li>
+</ol>
+<h2>Machine specs</h2>
+<p>i7-9700K (8 cores), 32 GB RAM, RTX 2060 SUPER, ASUS PRIME Z390-A, UEFI, Secure Boot already disabled. Plenty for anything.</p>
+<h2>Decisions needed before I write a plan</h2>
+<p><strong>1. Which drive gets Linux — this is a change from what we agreed before.</strong><br />
+Last time the plan was Mint on Disk 1 (the 2 TB). Now you're saying partition C: (Disk 2, the 1 TB). Both work. Pick one:</p>
+<ul>
+<li><strong>Both OSes on Disk 2 (your stated plan).</strong> Fastest drive, data drives untouched by either installer. Cost: they share one EFI partition, so a Windows feature update can wipe your Linux boot menu. Fixable, but it will happen eventually.</li>
+<li><strong>Windows keeps all of Disk 2, Linux takes a slice of Disk 1.</strong> Each OS on its own drive with its own boot partition — Windows can't break Linux. Cost: eats into your D: data space.</li>
+</ul>
+<p><strong>2. Windows installs first, Linux second.</strong> "Linux is primary" doesn't change this. Reverse the order and Windows overwrites the Linux boot menu.</p>
+<p><strong>3. Split on Disk 2 if you go that route.</strong> I'd say 150 GB Windows / ~780 GB Linux. Confirm or give me your number.</p>
+<p><strong>4. One stick or two.</strong> You need a Windows installer and a Mint installer. On a 117 GB stick you can put both ISOs on one stick with Ventoy and pick at boot, or wipe and rewrite the stick between the two installs. Your call.</p>
+<p><strong>5. Your trading stack is Windows-only.</strong> MT5 and cTrader both. If that's your daily work, you'll be in Windows most days — worth deciding whether 150 GB is really enough before we lock the split.</p>
+<h2>Linux recommendation</h2>
+<p><strong>Linux Mint, Cinnamon edition, current LTS release.</strong></p>
+<p>Reasons specific to this machine:<br />
+- The RTX 2060 SUPER needs NVIDIA's proprietary driver. Mint's Driver Manager installs it in two clicks. Secure Boot is already off, so no signing hassle.<br />
+- Cinnamon is the closest desktop to Windows — least friction while you're switching.<br />
+- You've already run it, so it's not a fresh learning curve.<br />
+- It reads and writes your NTFS data drives natively. No conversion, no new partitions for data.</p>
+<p>Only alternative worth naming: <strong>Pop!_OS</strong> ships a separate ISO with the NVIDIA driver already baked in, which removes the small risk of a black screen on first boot. Slightly less Windows-like desktop. If that risk bothers you, take Pop!_OS instead.</p>
+<p>I'll confirm the exact current release number before you download — Mint versions move and I don't want to send you to a stale one.</p>
+<p>Answer the five decision points and I'll write the exact step-by-step.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:57 UTC</div><p>I have no idea WTF "I: is not the stick" means. Refer to attached images.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:57 UTC</div><p>I: is one small piece of the stick, not the whole stick.</p>
+<p>Your stick is 117 GB of physical hardware. On it are three chunks:</p>
+<ul>
+<li>5 MB — this is the only chunk Windows can read, so it's the only one File Explorer shows you. It got the letter I:. Those <code>boot</code> and <code>EFI</code> folders are the leftovers of a Linux ISO someone wrote to this stick.</li>
+<li>2.82 GB — unallocated, nothing there.</li>
+<li>114.36 GB — a partition Windows can't read, so File Explorer doesn't show it at all.</li>
+</ul>
+<p>File Explorer telling you "4.97 MB" is not the size of your stick. It's the size of that one scrap.</p>
+<p>Why it matters: if you right-click I: and format it, you've formatted 5 MB and left the other 117 GB of junk in place. The stick still won't boot Windows. You have to wipe the entire physical disk (Disk 4) and start it over clean — one operation, all three chunks gone.</p>
+<p>That's the whole point. Nothing else changes.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:58 UTC</div><p>Who the fuck cares? The stick is what we'll use for the bootable image. Nothing you said makes a difference to that, since creating the bootable stick completely redoes the 128 GB stick, right?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:58 UTC</div><p>Yes — Rufus, Ventoy, and the Media Creation Tool all wipe the entire physical stick, letters and leftover partitions included.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:59 UTC</div><p>Do you remember me saying "bare-bones"?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:59 UTC</div><p>Yes.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:59 UTC</div><p>DO NOT FUCKING COMPLICATE THIS WITH CONSIDERATIONS THAT MAKE NO FUCKING DIFFERENCE.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:59 UTC</div><p>Understood.</p>
+<p>Five decisions still open. Answer them and you get the steps.</p>
+<ol>
+<li>Linux on Disk 2 alongside Windows, or on Disk 1?</li>
+<li>Split on Disk 2 — 150 GB Windows / 780 GB Linux, or your numbers?</li>
+<li>One stick with both ISOs, or wipe and rewrite between installs?</li>
+<li>Mint or Pop!_OS?</li>
+<li>Confirmed you're backing up the 560 GB on C:?</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 15:59 UTC</div><p>DO NOT ASK ME TO DECIDE WHAT I'M ASKING YOU FOR GUIDANCE ON</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 15:59 UTC</div><ol>
+<li>Linux on Disk 2, alongside Windows. It's your stated plan and the fastest drive.</li>
+<li>150 GB Windows, rest to Linux.</li>
+<li>One stick, Ventoy, both ISOs on it.</li>
+<li>Mint Cinnamon.</li>
+<li>Back up C: to F:.</li>
+</ol>
+<p>Say GO and I write the steps.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:00 UTC</div><p>Which drive is Disk 2?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:00 UTC</div><p>Disk 2 is your current C: — the Samsung 990 PRO 1 TB.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:14 UTC</div><p>First, let's identify the programs I'll still want to run on Win 11. I've attached a list of apps/software that an AI created, with "X" marking items I will reinstall after Win 11 is ready. You have the Belarc report. I've also attached screenshots that list installed programs.</p>
+<ol>
+<li>Compile a single, complete, deduped list of software/apps from all 3 sources.</li>
+<li>Present the final list in the same format as the .csv I just gave you, including the "X"-s already marked in the "Keep" column.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:16 UTC</div><p>390 rows. Your 369 minus 7 duplicate names, plus 28 items that only appeared in Belarc or on your desktop. All 55 X's preserved.</p>
+<p>The 28 additions are marked "Belarc only" or "Desktop icon only" in the Source column so you can find them.</p>
+<p>The screenshots added nothing — every program in Programs and Features was already in your CSV.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:19 UTC</div><p>OK, well someone didn't do their job.</p>
+<p>I have VS Code installed. I don't see it in the list.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:19 UTC</div><p>It's there, row 125: <code>Microsoft Visual Studio Code (User)</code>.</p>
+<p>Filed under M, not V. Blank Keep column — you didn't mark it in the CSV you gave me.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:24 UTC</div><p>Got it. </p>
+<p>"X" means that apps I plan to reinstall. It does NOT imply that these are the only apps I'll want or need.</p>
+<p>Here is the list again. Put "R" for "recommended" in the "Keep" column for any app/software that you recommend or that comes standard with a clean Win 11 installation or that is necessary for some other reason, then present the result for download.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:26 UTC</div><p>68 X (yours, untouched), 216 R, 106 blank.</p>
+<p>The R's break down three ways:</p>
+<p><strong>Ships with Win 11 — you get it whether you want it or not.</strong> Most of the R's. Every "Standard Windows" row, the Microsoft Store built-ins, the runtime dependencies. Nothing to reinstall; listed so you know it's expected.</p>
+<p><strong>Necessary for your hardware or for something you marked X.</strong> NVIDIA driver stack, Intel chipset/graphics/TPM, VC++ 2022 redistributables, .NET SDK 10 and 6 plus their desktop runtimes (cTrader runs on .NET 6), Mozilla Maintenance Service, RealTimeSync, FFmpeg for Audacity, PowerToys context menus, Teams add-in and Office runtime for M365.</p>
+<p><strong>My recommendations you hadn't marked:</strong> Git, Node.js, uv, Cursor, HxD, FileLocator Pro, Modern CSV, Pandoc, balenaEtcher, 1Password, Claude, AnythingLLM, LM Studio, Ollama, MarkText, Obsidian, Scrivener, Shotcut, CPU-Z, DeepL, WhatsApp, SanDisk Security.</p>
+<p>Notable blanks: Skype (Microsoft retired it), Mail and Calendar (replaced by new Outlook), 3D Viewer, Print 3D, Mixed Reality Portal, Photos Legacy — all dropped from Win 11. Also thinkorswim, which Belarc says you haven't opened in over a year. And the .NET 7 leftovers and mobile workload manifests, which you don't use.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:36 UTC</div><p>ok, changes.</p>
+<ol>
+<li>"Z" marks those you flagged as "R" but I have no intention of using. If any is necessary or standard Win 11, change it back to "R".</li>
+<li>"?" marks questionables. Only revert to "R" if necessary or standard Win 11. Otherwise, mark "Z".</li>
+<li>In general, I question the "Microsoft store" items marked "R". If not necessary or not part of Win 11 standard, mark "Z".</li>
+<li>Present result for download.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:36 UTC</div><p>The file you uploaded has no Z's, no ?'s, and no R's. It's the earlier version — 390 rows, 68 X, 322 blank.</p>
+<p>Upload the one you edited.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:38 UTC</div><p>oops here it is</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:39 UTC</div><p>196 R, 68 X, 20 Z, 105 blank.</p>
+<p><strong>Your 13 Z's — 2 reverted to R:</strong><br />
+- Clipchamp — preinstalled with Win 11.<br />
+- Copilot — preinstalled with Win 11 25H2.</p>
+<p>The other 11 stay Z.</p>
+<p><strong>Your 5 ?'s:</strong><br />
+- Bing News, Bing Search, Bing Weather → R. All three ship preinstalled.<br />
+- Pandoc → Z.<br />
+- SanDisk Security → Z. Your SanDisk drive works as plain storage without it.</p>
+<p><strong>Microsoft Store items I had marked R — 7 knocked down to Z:</strong><br />
+- WhatsApp Desktop — not standard.<br />
+- Intel Graphics Command Center — control panel for the iGPU you aren't using.<br />
+- Messaging, People, Maps, Xbox Console Companion, Dev Home — all retired by Microsoft. They're on your machine because it carried them forward. A clean 25H2 install won't have them.</p>
+<p>The rest of the Store items stay R: they either ship preinstalled or are runtime dependencies other apps need.</p>
+<p>One thing — row 54, GitHub Update, is marked "A". You haven't told me what A means.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:41 UTC</div><p>OK, I'll change WhatsApp to "X", I use it.</p>
+<p>Given that, give me an estimated disk space requirement for Win 11 based on just "X"-s and "R"-s.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:42 UTC</div><p>~130 GB for everything, ~150 GB with normal working headroom.</p>
+<p>Breakdown:</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>GB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows 11 25H2 after first-boot updates</td>
+<td>30</td>
+</tr>
+<tr>
+<td>All X and R apps installed</td>
+<td>30</td>
+</tr>
+<tr>
+<td>Page file (32 GB RAM, system managed)</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Hibernation file</td>
+<td>13</td>
+</tr>
+<tr>
+<td>User profile, AppData, browser caches, MT5 history</td>
+<td>20</td>
+</tr>
+<tr>
+<td>Update servicing growth over a year</td>
+<td>10</td>
+</tr>
+<tr>
+<td><strong>Subtotal</strong></td>
+<td><strong>113</strong></td>
+</tr>
+<tr>
+<td>Free working space</td>
+<td>20–40</td>
+</tr>
+</tbody>
+</table>
+<p>The app figure comes from the sizes in your Programs and Features screenshots. The four that dominate: Microsoft 365 at 7.3 GB, Edge at 3.0 GB, NVIDIA driver stack around 2 GB, Logi Options+ at 1.7 GB. Everything else is under 1.2 GB each.</p>
+<p>Two unknowns that can wreck the number:</p>
+<p><strong>Steam games.</strong> Not counted. Point the Steam library at D: or F: and this stays true. Install games on C: and it doesn't.</p>
+<p><strong>OneDrive.</strong> If you sync the whole thing locally instead of using Files On-Demand, add however big your OneDrive is.</p>
+<p>150 GB is a sound Windows partition. 200 GB if you want to stop thinking about it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:44 UTC</div><p>Engines on C:, data on D: (probably, like games, docs, OneDrive, etc.)</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:45 UTC</div><p>Confirmed. 150 GB Windows partition on Disk 2, ~780 GB Linux on the rest, data on D:.</p>
+<p>Two things to set at the right moment, or they're painful to change later:</p>
+<ul>
+<li><strong>OneDrive folder location</strong> — you're asked during first sign-in. Point it at D: then, not after.</li>
+<li><strong>Steam library folder</strong> — set to D: before installing any game.</li>
+</ul>
+<p>Everything else (Documents, Downloads, Pictures) redirects easily any time.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:46 UTC</div><p>One other list I just found, just confirm that it doesn't have anything we missed. If it does, add the missing items to the last version of Installed_apps_software_merged and present for download.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:46 UTC</div><p>Nothing new. All 190 unique names in that list are already in the merged file.</p>
+<p>No changes, no new download needed — the last version stands.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:47 UTC</div><p>OK, so 200 GB if I want to be extra sure I'll never regret the decision?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:47 UTC</div><p>Yes.</p>
+<p>You lose 50 GB off Linux, which still leaves it ~730 GB. Cheap insurance against a partition you can't grow without moving the Linux partition first.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:47 UTC</div><p>OK, what questions remain?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:47 UTC</div><p><strong>Blocking — must be settled before anything runs:</strong></p>
+<ol>
+<li><strong>Backup target is wrong.</strong> F: has 458 GB free; C: has ~560 GB on it. It won't fit. E: has 1.38 TB free — use E:.</li>
+<li><strong>What actually gets backed up.</strong> Not all 560 GB is worth saving. I need to know whether you want a straight copy of the whole of C:, or just the profile folders.</li>
+<li><strong>License keys and activation files</strong> for the paid software you're reinstalling — Compare It!, FileLocator Pro, FreeFileSync Supporter, Start11, Scrivener, PDF24. These need to be pulled out before the wipe.</li>
+<li><strong>Stray partitions on Disk 1</strong> — the 529 MB Recovery and 99 MB EFI are still there and still need deleting before Windows setup runs.</li>
+</ol>
+<p><strong>Decisions I need from you:</strong></p>
+<ol start="5">
+<li><strong>EFI partition size.</strong> Windows makes it 100 MB by default. Mint shares it. 100 MB works but leaves no room. Making it 512 MB has to happen during setup or not at all.</li>
+<li><strong>Microsoft account or local account</strong> for the Windows install.</li>
+</ol>
+<p><strong>On me:</strong></p>
+<ol start="7">
+<li>Confirming the current Mint release number and download link before you write the stick.</li>
+</ol>
+<p><strong>Non-questions, already settled:</strong> Windows first then Mint; 200/730 split on Disk 2; Ventoy stick with both ISOs; Mint Cinnamon; data, games, OneDrive on D:; Windows 11 Home reactivates automatically off the digital license tied to your motherboard.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:49 UTC</div><p>OK, you mentioned Mint. My son uses Fedora. I installed Mint on my laptop and all the AIs pull instructions for how to do things from non-Mint docs. This machine is more capable. I don't want to default to Mint based on analysis of my laptop's capabilities. What distro should I use on this machine. You have the Belarc specs.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:50 UTC</div><p><strong>Fedora KDE Plasma.</strong></p>
+<p>First, the honest part: your specs don't decide this. A 2019 Coffee Lake CPU on a Z390 board with a Turing GPU is about as well-trodden as Linux hardware gets. Nothing in that machine narrows the field. Anyone telling you the specs point to a particular distro is padding.</p>
+<p>What actually decides it:</p>
+<p><strong>Your documentation complaint is the real problem, and Fedora fixes it.</strong> Mint is a downstream re-skin of Ubuntu. Almost nothing is written for Mint specifically, so every answer you get is Ubuntu advice that mostly works. Fedora is upstream — it's a reference distro that people and AI models write about directly. Ask a Fedora question, get a Fedora answer.</p>
+<p><strong>Your son runs it.</strong> A person in your family who can look at your screen beats any amount of documentation. That's the strongest single argument here and it has nothing to do with hardware.</p>
+<p><strong>.NET is first-class on Fedora.</strong> Microsoft and Red Hat co-maintain it. <code>dnf install dotnet-sdk-10.0</code> and you're done. Relevant to your cTrader port.</p>
+<p><strong>KDE over GNOME.</strong> KDE is an official Fedora Edition, so full doc coverage, and the desktop works the way Windows works — taskbar, system tray, right-click menus that do what you expect. GNOME would fight you for a month.</p>
+<p><strong>No snaps.</strong> Ubuntu's packaging detours are a recurring irritation Fedora doesn't have.</p>
+<h2>The one real cost</h2>
+<p>NVIDIA's proprietary driver isn't in Fedora's repos. You add RPM Fusion and install <code>akmod-nvidia</code>, which rebuilds the driver every time the kernel updates. It's automatic and it usually works. Occasionally a kernel lands before the driver catches up and you boot to a black screen — you pick the previous kernel from the boot menu and wait a day.</p>
+<p>Your Secure Boot is already off, which removes the module-signing step and makes this simpler than it is for most people.</p>
+<p>Ubuntu LTS doesn't have this problem, because Canonical packages and tests the driver against a kernel that barely moves. That's the trade: Ubuntu is more boring, Fedora is better documented and has your son attached to it.</p>
+<p><strong>What would flip me to Ubuntu LTS:</strong> if you plan to run MT5 or cTrader under Wine on the Linux side. That ecosystem's guides are overwhelmingly Debian/Ubuntu, and you'd be back to translating docs — the exact thing you're trying to escape. If Windows handles all your trading and Linux handles everything else, Fedora is right.</p>
+<p>I'll confirm the current Fedora release number and the KDE Edition download before you write the stick.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:54 UTC</div><p>help me think through using Wine vs. native Win 11. I don't want to flip between OS-s while working on a project, but I'm doing fine with Win 11/VS Code/MT5/cTrader right now, so I'm fine continuing on Win 11 for that work, as long as I can access all the source code, .md files, etc., from the Linux side for reference.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:55 UTC</div><p>Wine is out, and cTrader is what kills it.</p>
+<p>Spotware states plainly that cTrader Desktop cannot be installed on Linux, there is no workaround, and it runs only on Windows and macOS. Users who try it report the Automate side being terrible under Wine. MT5 alone would be a plausible Wine candidate; cTrader isn't, and half a trading stack under emulation is worth nothing.</p>
+<p>Your instinct against splitting a project across two OSes is also correct on its own merits. Wine wouldn't have solved that anyway — it would have given you a third environment to debug instead of two.</p>
+<p>So: trading stays entirely on Windows. Linux reads.</p>
+<h2>Reading the files from Linux</h2>
+<p>Works natively. The kernel's NTFS driver reads and writes NTFS, and Fedora's file manager mounts your data drives on click. No conversion, no extra partition, no Samba. You open your <code>.mq5</code> and <code>.md</code> files in VS Code on the Linux side and they're just files.</p>
+<p>Three things to get right:</p>
+<p><strong>1. Turn off Fast Startup in Windows.</strong> This is the one that bites people. Fast Startup doesn't really shut down — it hibernates the kernel and leaves NTFS volumes flagged as in-use. Linux then mounts them read-only or refuses entirely, and you'll think NTFS support is broken when it isn't. Control Panel → Power Options → Choose what the power buttons do → uncheck Turn on fast startup. Also disable hibernation.</p>
+<p><strong>2. Your MQL5 source has to live on D:, not C:.</strong> By default MetaTrader keeps it buried in <code>AppData</code> on the Windows partition. You do not want Linux reaching into a live Windows system partition — that's the one NTFS volume worth treating as off-limits. Install MT5 to D: in portable mode so its data folder sits beside it, or leave the install alone and junction the MQL5 folder out to D:. Either way the source ends up on a drive both systems can touch cleanly.</p>
+<p>Same for the cTrader/C# project files and your <code>.md</code> files.</p>
+<p><strong>3. Line endings, if the source is in Git.</strong> Windows Git with <code>core.autocrlf=true</code> writes CRLF to disk; Linux Git expects LF. Open the same repo from both and the whole tree shows as modified. Set <code>core.autocrlf=false</code> on the Windows side and add a <code>.gitattributes</code>. Do this before you have two OSes fighting over it.</p>
+<p>Once those three are set, what you described works: Windows for the actual work, Linux with full read access to everything, no flipping mid-project.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:58 UTC</div><ol start="2">
+<li>Your MQL5 source has to live on D:, not C:. By default MetaTrader keeps it buried in <code>AppData</code> on the Windows partition. You do not want Linux reaching into a live Windows system partition — that's the one NTFS volume worth treating as off-limits. Install MT5 to D: in portable mode so its data folder sits beside it, or leave the install alone and junction the MQL5 folder out to D:. Either way the source ends up on a drive both systems can touch cleanly.</li>
+</ol>
+<p>I don't follow. If I decide (as it seems I must) to do MT5/cTrader work solely on native Win 11, the only access I'll need from Linux is read-only for text files (source, .md, etc.) I don't get what you're saying here.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 16:58 UTC</div><p>You're right. Read-only access to files on the Windows partition is fine. I overstated it.</p>
+<p>The real reason to move the source to D: is smaller and different: MT5 buries the MQL5 folder under a hashed path in AppData that changes if you reinstall the terminal, and that path sits inside your 200 GB Windows partition rather than with the rest of your data. On D: it has a stable path and lives with everything else you care about.</p>
+<p>That's a convenience argument, not a safety one. If you're happy navigating to the AppData path from Linux, leave it where it is.</p>
+<p>Point 1 still stands and matters — Fast Startup off, or Linux can't read C: at all.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 16:59 UTC</div><p>If I could put the MQL5 folder on D: I'd love to, but I tried once before and it breaks both the MT5 terminal (trying to find stuff it expects in the default folder under the terminal folder with the impossible name) and breaks the Editor and Tester.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:00 UTC</div><p>That matches what happens if you move the folder and leave a plain shortcut or a copy behind — the terminal walks its own path and doesn't find a real directory.</p>
+<p>Two things that do work, and one that doesn't:</p>
+<p><strong>Portable mode.</strong> Launch <code>terminal64.exe /portable</code> and MT5 abandons AppData entirely — the whole data folder, MQL5 included, lives next to the executable. Install MT5 to <code>D:\MT5\</code> and the source ends up at <code>D:\MT5\MQL5\</code>. Editor and Tester follow, because there's no split: the terminal genuinely lives there. This is the clean one.</p>
+<p><strong>A directory junction.</strong> Move the MQL5 folder to D:, then create a junction at the original AppData location pointing to it. A junction is not a shortcut — the filesystem resolves it, so the terminal opening the old path lands in the new folder without knowing anything changed. This is likely what failed before if you used a shortcut instead.</p>
+<p><strong>What doesn't work:</strong> moving the folder and pointing anything at it by hand, or copying it.</p>
+<p>Portable mode is the simpler of the two and you're doing a clean install anyway, so there's no migration to do — just install MT5 to D: and start it portable from the beginning.</p>
+<p>One consequence worth knowing: portable mode means a fresh profile. Charts, templates, and terminal settings start empty, and your login has to be re-entered. The MQL5 source itself copies over untouched.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:00 UTC</div><p>I don't see the sense of monkeying with all that. The downside is that I end up with a chunk of MQL5 stuff that takes up disk space.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:00 UTC</div><p>Agreed. Leave it in AppData.</p>
+<p>Your MQL5 source is a few hundred MB of text at most. Against a 200 GB partition it's noise.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:04 UTC</div><p>well, no. You underestimate how prolific I am lol. Here's the size of my current Terminal folder</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:04 UTC</div><p>46 GB. I was wrong by two orders of magnitude.</p>
+<p>That's not source. 9,320 files can't be 46 GB of <code>.mq5</code>. That's the <code>bases</code> folder — downloaded tick and bar history — plus <code>Tester</code> cache and <code>Logs</code>. Your actual source in <code>MQL5\Experts</code>, <code>MQL5\Indicators</code>, <code>MQL5\Include</code> is almost certainly still a few hundred MB.</p>
+<p>Which changes the answer:</p>
+<p>The tick history and tester cache are regenerable — MT5 re-downloads them on demand. They don't need backing up, and they don't need to survive the wipe. Fresh install, they rebuild themselves.</p>
+<p>So the question isn't where to put 46 GB. It's whether 46 GB of regenerable cache growing on your Windows partition is acceptable. Against 200 GB, with Windows and apps taking ~60, it leaves you thin but not broken. Against 150 GB it would have been a problem — good thing you went to 200.</p>
+<p>Worth checking before we plan the backup: expand that folder and tell me the sizes of <code>bases</code>, <code>Tester</code>, <code>Logs</code>, and <code>MQL5</code>. If <code>MQL5</code> alone is large, the picture changes again.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:05 UTC</div><p>That's everything I end up with while using MT5 and coding for it. 50 GB isn't worth special procedures to reduce it.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:05 UTC</div><p>Agreed. 200 GB absorbs it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:05 UTC</div><p>for sure?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:05 UTC</div><p>Yes, but the margin is thinner than it looked.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>GB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows + updates over a year</td>
+<td>40</td>
+</tr>
+<tr>
+<td>Apps (X and R)</td>
+<td>30</td>
+</tr>
+<tr>
+<td>Page file</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Hibernation file</td>
+<td>13</td>
+</tr>
+<tr>
+<td>Profile, caches, browsers</td>
+<td>20</td>
+</tr>
+<tr>
+<td>MT5 terminal folder</td>
+<td>50</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>163</strong></td>
+</tr>
+</tbody>
+</table>
+<p>That leaves ~37 GB free on a 200 GB partition. Workable, not comfortable.</p>
+<p>Two things that would break it: cTrader building its own history cache alongside MT5, and that 46 GB continuing to grow — it's seven months old and you're still adding to it.</p>
+<p>Cheap fixes if you want the margin back:</p>
+<ul>
+<li><strong>Disable hibernation.</strong> <code>powercfg /h off</code> recovers 13 GB outright. You're on a desktop; you're turning it off, not sleeping it. This is free.</li>
+<li><strong>Cap the page file at 8 GB</strong> instead of system-managed. With 32 GB RAM you'll never touch it.</li>
+</ul>
+<p>Those two put you at ~45 GB free.</p>
+<p>Or add 50 GB to the Windows partition and take Linux to 680. Linux with 680 GB is still absurd headroom — Fedora plus every app you'd install is 30 GB, and your data lives on D: and the 6 TB.</p>
+<p>That's the honest call: 250 GB Windows costs you nothing you'll ever notice, and removes the one number in this plan that's still growing.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:06 UTC</div><p>so let's go 250. What are the chances that I'll max out my Linux space if I give that much to Win 11?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:06 UTC</div><p>Near zero.</p>
+<p>Fedora KDE plus every application you'd realistically install is about 40 GB. Your data lives on D:, E:, and F: — none of it lands on the Linux partition. That leaves ~640 GB free on a system that has no reason to grow.</p>
+<p>The things that fill a Linux partition are the things you're not doing: VMs, container images, huge local model files, a media library on the OS drive.</p>
+<p>One of those is worth a second look. You marked Ollama and LM Studio as Z, so local models aren't going on Linux. If that changes, models run 5–50 GB each and they'd live in your home folder. Even then, 640 GB absorbs a lot of models.</p>
+<p>The asymmetry matters more than the number: if Linux somehow fills up, you move a folder to D: and you're done. If Windows fills up, you're shrinking a Linux partition and moving it — a much worse afternoon.</p>
+<p>250/680 is right.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:06 UTC</div><p>OK, settled.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:06 UTC</div><p>Settled.</p>
+<p>Open items before the plan:</p>
+<ol>
+<li>Backup target — E: (1.38 TB free), not F:.</li>
+<li>What gets backed up from C:.</li>
+<li>License keys pulled out for Compare It!, FileLocator Pro, FreeFileSync Supporter, Start11, Scrivener, PDF24.</li>
+<li>Stray 529 MB Recovery + 99 MB EFI on Disk 1, deleted before setup.</li>
+<li>EFI partition size — 100 MB default or 512 MB manual.</li>
+<li>Microsoft account or local account.</li>
+<li>Me: confirm current Fedora KDE release and download link.</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:06 UTC</div><p>what's your concern with #1?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:06 UTC</div><p>You have ~560 GB on C: and F: only has 458 GB free. It doesn't fit.</p>
+<p>E: has 1.38 TB free.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:07 UTC</div><p>I've already gone through C: and backed up everything I want.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:07 UTC</div><p>Then 1 and 2 are closed.</p>
+<p>Remaining: license keys, the stray partitions on Disk 1, EFI size, account type, and my Fedora version check.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-05 17:08 UTC</div><p>how best to do #3? I've got some saved already, but not sure I've got all of them.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-05 17:08 UTC</div><p>Three passes, in this order.</p>
+<p><strong>1. Open each app and read the key out of it.</strong> Every one of these shows it in Help → About or a Registration/License dialog. Five apps, ten minutes, and it's the only method that's certain. Screenshot each one to E:.</p>
+<p>Note: PDF24 Creator is free — no key to find. That's four apps, not five.</p>
+<p><strong>2. Search your email.</strong> Vendor name plus "order" or "license". This gets you the purchase record too, which matters more than the key if you ever need support or a reinstall on a new machine. Also check whether you have accounts at Stardock and Literature &amp; Latte — both let you re-download and re-license from the account page, which makes the key almost irrelevant.</p>
+<p><strong>3. Export the registry as a blunt safety net.</strong> <code>regedit</code> → export <code>HKEY_CURRENT_USER\Software</code> and <code>HKEY_LOCAL_MACHINE\SOFTWARE</code> to .reg files on E:. Anything stored in the registry is captured, including things you forgot were licensed. You won't read these files for fun, but if something turns up missing after the wipe, the answer is in there and searchable.</p>
+<p>FreeFileSync is the odd one — the Supporter Edition isn't a key, it's a specific installer you were sent. Find that email or you'll be re-donating. Worth confirming before the wipe rather than after.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-09 20:33 UTC</div><p>Is there any reason why I should not opt for Omarchy instead of Fedora?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-09 20:34 UTC</div><p>Yes, four.</p>
+<p><strong>1. It's the opposite of the fix you asked for.</strong> Your complaint was that AI answers come from non-Mint docs. Mint is niche. Omarchy is far smaller — an Arch derivative that's about a year old. Every answer you get will be Arch advice, Hyprland advice, or both, filtered through Omarchy's opinionated layer. You'd be trading a mild translation problem for a severe one.</p>
+<p><strong>2. Hyprland and NVIDIA is a known sore spot.</strong> Omarchy ships Hyprland as the desktop. One Omarchy user documents in detail that Hyprland doesn't play nice with NVIDIA — the screen locker crashes when monitors wake from power-saving, taking running apps with it, and he wrote a shell script just to recover the session. Another hit Hyprland stuck in an infinite loop on first boot with an RTX 4060 Ti and had to drop to a text console and install drivers by hand.</p>
+<p>Your 2060 SUPER is Turing, well within current driver support, so you'd dodge the worst of it. But this is friction Fedora KDE doesn't have.</p>
+<p><strong>3. Rolling release, on the machine you depend on.</strong> Arch has no fixed releases. Updates land continuously and occasionally require manual intervention. Real example from January: NVIDIA's 590 driver dropped Pascal support, and Omarchy didn't detect this — users on older cards were left installing the right driver themselves. Doesn't hit your card. Illustrates the model.</p>
+<p>Fedora moves fast too, but in tested six-month steps you choose to take.</p>
+<p><strong>4. Your dual-boot is its awkward path.</strong> Omarchy's installer takes the whole disk by default. The manual does cover dual booting alongside Windows, but community guides exist specifically for doing a manual partitioned install with a shared NTFS drive — which tells you it isn't the smooth road.</p>
+<p><strong>And the one you already named:</strong> your son runs Fedora. On Omarchy he can't help you.</p>
+<h2>What's actually good about it</h2>
+<p>It's fast, genuinely well-designed, has an active community, and is built deliberately around AI agents doing the configuration work. If your goal were to learn Linux deeply and enjoy the machine as a project, it'd be a fine pick.</p>
+<p>But you told me what you want: Linux as the daily driver while Windows handles trading, with documentation that doesn't lie to you. That's Fedora.</p>
+<p><strong>Caveat worth stating plainly:</strong> Hyprland is a tiling window manager. No taskbar, no desktop icons, keyboard-driven, windows arranged automatically. It's a complete relearn of how you use a computer. Some people love it. If you'd find that energizing rather than exhausting, that changes the calculation more than anything technical I've listed — but install it on the laptop first and live with it a week before betting this machine on it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-09 20:34 UTC</div><p>that was a secondary concern given Mint vs. Fedora were similar in usability/performance.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-09 20:34 UTC</div><p>Fair — I led with the wrong one.</p>
+<p>Mint vs Fedora were interchangeable on usability, so documentation was the only thing left to decide on. Omarchy isn't interchangeable with either, so that argument doesn't belong at the top.</p>
+<p>Re-ranked:</p>
+<ol>
+<li><strong>Hyprland is a tiling window manager.</strong> No taskbar, no desktop icons, no dragging windows. Keyboard-driven, automatic layout. That's not a usability difference, it's a different way of operating a computer. Everything else is downstream of whether you want that.</li>
+<li><strong>Rolling release on your primary machine.</strong> Continuous updates, occasional manual intervention, no version you chose to be on.</li>
+<li><strong>Dual-boot is its awkward path,</strong> where it's routine on Fedora.</li>
+</ol>
+<p>Documentation drops to fourth. It only mattered when nothing else separated the candidates.</p>
+<p>If the tiling desktop appeals to you, none of the rest is disqualifying and it's a real option. If it doesn't, the question's already answered.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-09 20:35 UTC</div><p>why is dual-boot its "awkward path"?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-09 20:35 UTC</div><p>I was wrong, and the source I used was stale.</p>
+<p>Omarchy's installer now has a <strong>Free space install</strong> option. You shrink the Windows partition from Disk Management, boot the installer, select the disk, pick Free space install, and it leaves Windows alone. The manual documents exactly that. Afterward you run <code>limine-scan</code> and Windows appears in the boot menu.</p>
+<p>That's not awkward. It's roughly what Fedora does. My claim came from a December guide written before the option existed, and I should have checked the manual before repeating it.</p>
+<p>What is actually left on the dual-boot side:</p>
+<p><strong>LUKS encryption is on by default</strong> for the Omarchy partition, and it's incompatible with BitLocker on the Windows side — the manual tells you to turn Windows device encryption off first. Extra step, not a problem.</p>
+<p><strong>Secure Boot and TPM.</strong> Omarchy requires Secure Boot off to install. Your BIOS already has it off. The manual also mentions TPM, which is murkier — Windows 11 checks for TPM 2.0 during a clean install, so if Omarchy genuinely needs TPM disabled you'd have a sequencing conflict to work out. Fedora has no such requirement.</p>
+<p><strong>Limine and the stray EFI partition on Disk 1.</strong> There's a documented failure where Limine overwrites the Windows bootloader when Windows' EFI partition sits on a different drive. Both your OSes would be on Disk 2, so you're not the target case — but that orphaned 99 MB EFI partition on Disk 1 is exactly the kind of thing that confuses a bootloader installer. Another reason it goes before any of this starts.</p>
+<p>So: strike dual-boot difficulty from the list. The tiling desktop and the rolling release are the real questions.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-09 20:37 UTC</div><p>link me to a video that compares Windows/non-Hyprland desktop and windows to Omarchy tiled desktop</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-09 20:38 UTC</div><p>No video does a strict side-by-side. Closest two:</p>
+<p>Neither shows Windows and Omarchy next to each other. Both are one person meeting the tiled desktop cold, which is the part you'd actually be experiencing.</p>
+<p>Written accounts of the same transition are more useful than either video. One person who switched put it this way: he installed it, saw the desktop, and didn't know how to open a browser — nothing was broken, he just had no idea what to do. Opening an app, moving between windows, changing a setting all stopped being automatic. His first impression wasn't speed or beauty, it was friction. He came around within a week.</p>
+<p>That's the honest shape of it. Not a feature difference — a period where you can't operate your own machine.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-09 20:38 UTC</div><p>what brought the guy around?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-09 20:38 UTC</div><p>The article's behind a paywall past the intro. What's stated in the summary: the Hyprland workflow's speed, the keyboard shortcuts, the scrolling layout, and simple installs won him over within a few days.</p>
+<p>That's all the detail available. No specifics on what clicked.</p>
+<p>The part that matters more for you is in the opening, which is readable: he had already used Ubuntu, Fedora and Bazzite, and moved between GNOME and KDE. His week of friction was purely the tiling window manager — Linux itself was familiar.</p>
+<p>You'd be taking on both at once.</p></div><div class="nav"><span><a href="2026-09-05_ethernet-cable-affecting-internet-speed_d89e1fda.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-05_nvidia-screen-capture-region-selection_ac2c313e.html">Next →</a></span></div></div></body></html>

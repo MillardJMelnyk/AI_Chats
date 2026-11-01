@@ -1,0 +1,89 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unified warm-up control and start time handling</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-11_trade-entry-rules-clarification_e14c1cc1.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-10_indy-processing-window-start-time-calculation_0662b974.html">Next →</a></span></div><h1>Unified warm-up control and start time handling</h1><div class="meta">Created 2026-07-11 13:03 UTC · Last updated 2026-07-11 13:06 UTC · 2 messages<br>Original: <a href="https://claude.ai/chat/6a97a171-4f89-4f8b-b65d-903345cba876">claude.ai/chat/6a97a171-4f89-4f8b-b65d-903345cba876</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 13:03 UTC</div><p>Is this change plan correct and will it result in the indy handling start times and warm up start times proplerly?</p>
+<p>Change plan</p>
+<ol>
+<li>Add one shared warm-up control function.<br />
+   * LIVE and CSV main logic will only call this function.<br />
+   * No warm-up dates, mode decisions, checks, start-line work, prints, or stopping decisions will remain inline.</li>
+<li>The shared function will determine:<br />
+   * Indy warm-up start datetime.<br />
+   * Ratio warm-up start datetime.<br />
+   * Start line datetime.<br />
+   * Whether both warm-ups have sufficient data.<br />
+   * Whether to proceed, wait for more CSV data, or stop with an error.</li>
+<li>Date range on, LIVE or CSV:<br />
+   * Start line datetime = <code>InpProcessStartDateTime</code>.<br />
+   * Calculate each warm-up start datetime backward from the start line datetime.<br />
+   * Use actual existing bars when counting backward.<br />
+   * CSV will read and process rows needed before the start line instead of skipping those warm-up rows.</li>
+<li>Date range off, LIVE:<br />
+   * Start line datetime = current tick datetime.<br />
+   * Calculate each warm-up start datetime backward from that datetime.<br />
+   * Load and check the required terminal history.</li>
+<li>Date range off, CSV:<br />
+   * Begin both warm-ups at the first replayed CSV tick.<br />
+   * Work forward through the CSV.<br />
+   * The first tick where both warm-ups are complete becomes the start line datetime.<br />
+   * No backward CSV calculation will be used.</li>
+<li>Keep the two warm-ups separate.<br />
+   * Indy warm-up must prove the indy lines, slopes, and spreads are ready.<br />
+   * Ratio warm-up must prove the ratios and ratio slopes are ready.<br />
+   * One warm-up completing will not stand in for the other.</li>
+<li>Check data sufficiency in both modes.<br />
+   * Date range on: data must reach both calculated warm-up start datetimes.<br />
+   * LIVE with date range off: terminal history must reach both calculated warm-up start datetimes.<br />
+   * CSV with date range off: the file must continue until both warm-ups complete.<br />
+   * CSV ending before both complete will be an error.</li>
+<li>On insufficient data, print:<br />
+   * Feed mode.<br />
+   * Start line datetime.<br />
+   * Required Indy warm-up start datetime.<br />
+   * Required ratio warm-up start datetime.<br />
+   * Actual available data start and end datetimes.<br />
+   * Which warm-up failed.<br />
+   * Then stop the run.</li>
+<li>On sufficient data:<br />
+   * Complete both warm-ups.<br />
+   * Plant the start line.<br />
+   * Print the same warm-up and start-line information in LIVE and CSV.<br />
+   * Allow signal detection and trading only from the start line datetime.</li>
+<li>Remove the present CSV warm-up bypasses and the separate combined-history shortcut.</li>
+<li>Do not change signal rules, trade rules, CSV columns, DLOG columns, replay chunking, or buffer meanings.</li>
+<li>Update both changed file headers and raise <code>PROGRAM_VERSION</code> from <code>1.69</code> to <code>1.70</code>.</li>
+<li>Verify all six cases:<br />
+   * LIVE, date range on, sufficient data.<br />
+   * LIVE, date range on, insufficient data.<br />
+   * LIVE, date range off.<br />
+   * CSV, date range on, sufficient data.<br />
+   * CSV, date range on, insufficient data.<br />
+   * CSV, date range off, both sufficient and insufficient endings.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 13:06 UTC</div><p>No — not as written. The plan matches the code's structure, but four gaps will stop it from producing correct start times:</p>
+<ol>
+<li>
+<p><strong>The indy warm-up has no defined length.</strong> Right now the indy lines are simply computed over every bar on the chart; nowhere in the file is there a required indy bar count. The shared function cannot calculate an "indy warm-up start datetime" backward until you first decide how many bars the indy lines need to be considered ready. The plan assumes that number exists. It doesn't. This must be ruled on before the plan can work.</p>
+</li>
+<li>
+<p><strong>LIVE and CSV build the indy lines from different data.</strong> LIVE builds them from chart bars; CSV replay builds them from the replayed ticks (the code says so explicitly, and CSV mode never runs the bar-based indy pass). One shared function must judge indy readiness two different ways, and the plan doesn't say how. Point 6 ("Indy warm-up must prove the indy lines are ready") is stated as one rule, but it's two different proofs.</p>
+</li>
+<li>
+<p><strong>CSV sufficiency also depends on chart bars, not just CSV rows.</strong> Replayed ticks land on chart bars; any tick older than the chart's first bar is dropped. A CSV file that reaches back far enough will still fail if the chart doesn't cover those dates. The plan's sufficiency check (point 7) looks only at the file.</p>
+</li>
+<li>
+<p><strong>LIVE with date range off has no "wait" outcome.</strong> Point 2 allows proceed, wait-for-CSV, or stop. If terminal tick history doesn't reach the calculated warm-up starts, point 8 says stop the run — where the current build keeps gathering ticks forward with a progress meter. If stop-on-error is what you want there, fine, but the plan changes that behavior without saying so.</p>
+</li>
+</ol>
+<p>One thing I can't verify: the CSV row skipping, the replay feed, and the row filtering all live in the CsvTickFeed include files, which weren't uploaded — so points 3, 5, 7, and 10 of the plan can't be checked against actual code from here. Point 12 says "both changed file headers"; there are five CSV include files, so which second file changes is also unconfirmed.</p>
+<p>What checks out: the version is 1.69 as stated; the CSV bypasses named in point 10 exist exactly as described (CSV never sets the warm-up-complete latch, and CSV signal start uses a single combined tick-history check standing in for both warm-ups); and points 3–5's start-line definitions are consistent with the existing window logic.</p></div><div class="nav"><span><a href="2026-07-11_trade-entry-rules-clarification_e14c1cc1.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-10_indy-processing-window-start-time-calculation_0662b974.html">Next →</a></span></div></div></body></html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 template tester thin lines issue</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-07_fable-claude-extension-malfunctioning-in-vs-code_a7788469.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-04_tick-level-jitter-in-trading-algorithms_4c1752a3.html">Next →</a></span></div><h1>MQL5 template tester thin lines issue</h1><div class="meta">Created 2026-07-06 13:52 UTC · Last updated 2026-07-06 14:05 UTC · 6 messages<br>Original: <a href="https://claude.ai/chat/8ee32a7f-5a93-474b-af28-b91181a95d68">claude.ai/chat/8ee32a7f-5a93-474b-af28-b91181a95d68</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-06 13:52 UTC</div><p>Image 1 is the attached MQL5 template tester.tpl, on a live chart window. This is the template used by the Strategy tester. Image two is that same template during a strategy tester run. Same chart bars are shown.</p>
+<p>Look at the .tpl and find out why in the ST the template paints thin lines from high to high and low to low.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-06 13:54 UTC</div><p>Read the tpl. Facts from the file:</p>
+<pre><code>bidline=1
+askline=0
+lastline=0
+askline_color=255        ← pure red
+bidline_color=10061943   ← gray-blue (same value as grid_color)
+</code></pre>
+<p>The upper thin red line in the tester shot matches <code>askline_color=255</code> exactly; the lower gray line matches <code>bidline_color</code>. Those two lines are the chart's <strong>Ask line and Bid line</strong>, not anything from your indicator (all 5 BarID graph plots have <code>draw=0</code> = DRAW_NONE, and the tpl contains no other indicators or line objects).</p>
+<p>Why they look like high-to-high / low-to-low polylines only in the Strategy Tester: on a live chart, bid/ask lines are horizontal lines at the current price, so Image 1 looks clean. The visual tester instead renders them as historical polylines — per bar it plots the extreme ask (≈ high + spread, hugging the highs, red) and the extreme bid (the lows, gray). Note the tester ignores <code>askline=0</code> and draws the ask line anyway when the bid line display is active — that's tester behavior, not something in your file.</p>
+<p>Fix in the tpl: set <code>bidline=0</code> (and leave/keep <code>askline=0</code>), save, rerun. Or in the running tester chart: Properties → Show → untick Bid/Ask price lines.</p>
+<p>Hypothesis (only unproven part): that the tester force-enables the ask line; everything else above is straight from the file and the pixel colors.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-06 14:03 UTC</div><p>changed the setting, the lines still appear.</p>
+<p>See image. What is "show ticker"?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-06 14:03 UTC</div><p>"Show ticker" = the symbol info line in the chart's top-left corner ("XAUUSD, M1: Gold vs US Dollar") — nothing to do with ticks or the status box.</p>
+<p>On the lines still showing: if you changed this dialog on the live chart, it won't touch the tester — the tester rebuilds its chart from tester.tpl on disk each run. If you changed it on the tester chart itself and the lines survived, my ask/bid hypothesis is dead — say which chart you changed and I'll dig further.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-06 14:05 UTC</div><p>I changed and saved the template on a live chart. You can't change that kind of thing on a chart in the ST itself.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-06 14:05 UTC</div><p>Then my hypothesis is unproven and the flag change disproves half of it. Two isolation tests, one rerun each:</p>
+<ol>
+<li>
+<p>In tester.tpl set <code>askline_color</code> and <code>bidline_color</code> to garish values (e.g. 65280 = lime, 65535 = yellow), rerun. Colors change → the lines ARE bid/ask lines and the tester ignores the on/off flags. Colors unchanged → not bid/ask lines at all.</p>
+</li>
+<li>
+<p>If test 1 comes back unchanged: delete the entire BarID <code>&lt;indicator&gt;</code> block from tester.tpl, rerun. Lines gone → the tester is force-drawing those buffers despite <code>draw=0</code>. Lines remain → they're hard tester rendering, not controllable from the template.</p>
+</li>
+</ol>
+<p>Also confirm the saved file actually landed as <code>MQL5\Profiles\Templates\tester.tpl</code> and now reads <code>bidline=0</code> — worth 10 seconds before trusting either test.</p></div><div class="nav"><span><a href="2026-07-07_fable-claude-extension-malfunctioning-in-vs-code_a7788469.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-04_tick-level-jitter-in-trading-algorithms_4c1752a3.html">Next →</a></span></div></div></body></html>

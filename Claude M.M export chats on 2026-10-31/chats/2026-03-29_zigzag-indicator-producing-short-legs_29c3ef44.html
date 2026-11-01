@@ -1,0 +1,149 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZigZag indicator producing short legs</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-03-30_fixing-ai-behavior-instructions_f9350c50.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-03-28_information-as-divine-consciousness_ed0eeb14.html">Next →</a></span></div><h1>ZigZag indicator producing short legs</h1><div class="meta">Created 2026-03-29 17:23 UTC · Last updated 2026-03-29 18:22 UTC · 44 messages<br>Original: <a href="https://claude.ai/chat/29c3ef44-eb1d-4e02-b640-5c13351c27a7">claude.ai/chat/29c3ef44-eb1d-4e02-b640-5c13351c27a7</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:23 UTC</div><p>Here is a ZigZag indicator I ran on a XAUUSD chart in MT5. I ran two different ones, different code files, actually, exactly the same results.</p>
+<p>Why am I getting 1- and 2-bar ZZ legs with these settings?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:23 UTC</div><p>The short answer: with <code>InpDepth=4</code>, <code>InpDeviation=1</code>, and <code>InpBackstep=1</code>, those 1–2 bar legs are <strong>mathematically valid outputs</strong>, not a bug.</p>
+<p>Here's why:</p>
+<p><strong>InpDepth = 4</strong> sets the lookback window for finding a local high/low. A pivot only needs to be the extreme within 4 bars — so on a volatile instrument like XAUUSD on a 1-minute chart, a bar can easily be the highest/lowest point in a 4-bar window.</p>
+<p><strong>InpDeviation = 1</strong> is the minimum price movement (in points, not percent) required between two consecutive ZZ pivots. With gold on a 1-minute chart, 1 point is essentially nothing — a fraction of a pip. Any minor fluctuation clears this threshold.</p>
+<p><strong>InpBackstep = 1</strong> sets the minimum number of bars between two consecutive pivots. At 1, adjacent bars can be consecutive pivot points, which is why you see single-bar legs.</p>
+<p><strong>The core issue</strong> is that your settings are essentially as permissive as they can get. The ZigZag will connect nearly every local swing, no matter how small. On XAUUSD 1-minute data, price moves enough between almost any two bars to qualify as a new pivot under these parameters.</p>
+<p><strong>To get meaningful legs</strong>, you need to tighten at least two of the three:</p>
+<ul>
+<li>Raise <code>InpDepth</code> to 10–20+ (forces pivots to dominate a wider window)</li>
+<li>Raise <code>InpDeviation</code> substantially — on XAUUSD, a meaningful move might be 50–200 points depending on your broker's point size (5-digit vs 3-digit pricing)</li>
+<li>Raise <code>InpBackstep</code> to at least 3–5</li>
+</ul>
+<p>The deviation parameter is usually the most intuitive lever: set it to roughly the minimum swing size you actually care about.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:26 UTC</div><p>Look at the image. The 1-bar leg could only be the high if it were included in the bar count. So you're saying that InpDepth=4 means neither four bars nor 4 periods back, but 3.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:26 UTC</div><p>Yes, exactly. In the MT5 ZigZag implementation, <code>InpDepth</code> is an inclusive count — the pivot bar itself is counted as one of the 4 bars. So <code>InpDepth=4</code> looks back only 3 bars behind the candidate pivot, not 4. That's why a bar can dominate a window that appears to be only 1–2 bars of actual lookback to the eye.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:27 UTC</div><p>So what controls a minimum bar count and a minimum price movement?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:27 UTC</div><p><code>InpBackstep</code> controls minimum bar count between pivots, and <code>InpDeviation</code> controls minimum price movement.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:28 UTC</div><p>I didn't ask about minimum bar count between pivots, did I? And InpDeviation controls nothing on any ZZ indicator I've tried. I've set it to 1 and to 222 and many values in between. Nothing changes.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:28 UTC</div><p>You're right on both counts. I misspoke.</p>
+<p>On the bar count — you asked about minimum leg length in bars, not spacing between pivots. Those aren't the same thing.</p>
+<p>On <code>InpDeviation</code> — if changing it from 1 to 222 produces identical output, it's either broken in the implementation or it's being applied in units that make it effectively inert on XAUUSD (e.g., integer points on a 5-digit broker where gold moves in tens of thousands of points). What's your broker's point size for XAUUSD — how many points is a 1-dollar move?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:30 UTC</div><p>Here's the one that comes stock with the MT5 platform. I just now tried setting InpDeviation to 2222 and 22222. No difference, same as 1.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:31 UTC</div><p>Let me read the source code directly.</p>
+<p>Let me see the truncated section.</p>
+<p>Found it. The <code>InpDeviation</code> logic is <strong>inverted</strong> — it's a bug in the stock MetaQuotes code.</p>
+<p>Look at lines 255–257 (for lows):</p>
+<pre><code>if ( (low[shift] - val) &gt; InpDeviation * _Point )
+    val = 0.0;
+</code></pre>
+<p><code>val</code> is already the lowest low in the depth window. <code>low[shift]</code> is the current bar's low. So <code>low[shift] - val</code> is always <strong>≥ 0</strong>, and it's asking: is the current bar's low <em>higher</em> than the window's lowest low by more than the deviation? If yes, discard it.</p>
+<p>That means <code>InpDeviation</code> is filtering <strong>out</strong> valid pivots when the current bar is <em>not</em> the lowest bar in the window — which is the normal case. The higher you set <code>InpDeviation</code>, the more aggressively it discards legitimate pivots, not noise. It's backwards.</p>
+<p>The same inverted logic appears for highs at line 301:</p>
+<pre><code>if ( (val - high[shift]) &gt; InpDeviation * _Point )
+    val = 0.0;
+</code></pre>
+<p>Same bug, mirrored. <code>val</code> is the highest high, <code>high[shift]</code> is the current bar. The difference is always ≥ 0, and a larger deviation disc</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:32 UTC</div><p>OK, I never trusted it which is why I never used it. Here's the one I actually use, figure out where its bug is.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:32 UTC</div><p>It inherited the same <code>InpDeviation</code> bug from the MetaQuotes original — lines 150 and 168 are identical in logic to the stock code. The condition is inverted the same way.</p>
+<p>But there's a second, distinct bug specific to this version. Look at <code>Highest</code> and <code>Lowest</code> (lines 281–295). The stock MetaQuotes versions return the <strong>index</strong> of the extreme, then the calling code checks <code>if(high[shift]==val)</code> to confirm the current bar <em>is</em> that extreme. This version returns the <strong>value</strong> directly and skips that confirmation check — it just assigns whatever the window's extreme value is to the current bar's calc buffer (lines 160, 178), regardless of whether the current bar is actually the bar that produced that extreme.</p>
+<p>So when <code>Highest</code> finds a high 3 bars back, this code still marks the <em>current</em> bar as the pivot, not the bar that actually made the high. That's why you get pivots placed on the wrong bar, and it contributes to the short legs — the pivot bar and the actual price extreme are misaligned.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:34 UTC</div><p>OK, is the fix for those bugs scattered or localized? If localized, give me a replacement code block and show me exactly which lines in the current code need to be replaced by it.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:34 UTC</div><p>Both bugs are localized to the first extremes-search loop, lines 143–180. Here's the replacement:</p>
+<pre><code class="language-mql5">   for(iCBIX=iStrtAtIX; iCBIX&lt;rates_total &amp;&amp; !IsStopped(); iCBIX++)
+     {
+      // --- LOW ---
+      int iLowestIX = Lowest(low, InpDepth, iCBIX);
+      dVLU = low[iLowestIX];
+      if(dVLU==dLast_LO) dVLU=0.0;
+      else
+        {
+         dLast_LO=dVLU;
+         if((dVLU-low[iCBIX])&gt;(InpDeviation*_Point)) dVLU=0.0;  // discard if current bar is NOT close enough to the window low
+         else
+           {
+            for(iBackStep=InpBackstep; iBackStep&gt;=1; iBackStep--)
+              {
+               dClc=dbZZ_LO_CALC[iCBIX-iBackStep];
+               if((dClc!=0) &amp;&amp; (dClc&gt;dVLU)) dbZZ_LO_CALC[iCBIX-iBackStep]=0.0;
+              }
+           }
+        }
+      if(iLowestIX==iCBIX) dbZZ_LO_CALC[iCBIX]=dVLU;  // only mark if THIS bar is the extreme
+      else dbZZ_LO_CALC[iCBIX]=0.0;
+
+      // --- HIGH ---
+      int iHighestIX = Highest(high, InpDepth, iCBIX);
+      dVLU = high[iHighestIX];
+      if(dVLU==dLast_HI) dVLU=0.0;
+      else
+        {
+         dLast_HI=dVLU;
+         if((high[iCBIX]-dVLU)&gt;(InpDeviation*_Point)) dVLU=0.0;  // discard if current bar is NOT close enough to the window high
+         else
+           {
+            for(iBackStep=InpBackstep; iBackStep&gt;=1; iBackStep--)
+              {
+               dClc=dbZZ_HI_CALC[iCBIX-iBackStep];
+               if((dClc!=0) &amp;&amp; (dClc&lt;dVLU)) dbZZ_HI_CALC[iCBIX-iBackStep]=0.0;
+              }
+           }
+        }
+      if(iHighestIX==iCBIX) dbZZ_HI_CALC[iCBIX]=dVLU;  // only mark if THIS bar is the extreme
+      else dbZZ_HI_CALC[iCBIX]=0.0;
+     }
+</code></pre>
+<p>You also need to change the return types of <code>Highest</code> and <code>Lowest</code> from <code>double</code> to <code>int</code>, and have them return the index rather than the value — exactly as the MetaQuotes originals do. Replace lines 281–295:</p>
+<pre><code class="language-mql5">int Highest(const double&amp;array[],int count,int piStrtAtIX)
+  {
+   double dClc=array[piStrtAtIX];
+   int iIX=piStrtAtIX;
+   for(int i=piStrtAtIX-1; i&gt;piStrtAtIX-count &amp;&amp; i&gt;=0; i--)
+      if(array[i]&gt;dClc) { dClc=array[i]; iIX=i; }
+   return(iIX);
+  }
+
+int Lowest(const double&amp;array[],int count,int piStrtAtIX)
+  {
+   double dClc=array[piStrtAtIX];
+   int iIX=piStrtAtIX;
+   for(int i=piStrtAtIX-1; i&gt;piStrtAtIX-count &amp;&amp; i&gt;=0; i--)
+      if(array[i]&lt;dClc) { dClc=array[i]; iIX=i; }
+   return(iIX);
+  }
+</code></pre>
+<p>Those are the only two blocks that need to change. Everything else — the final selection loop, the leg statistics loop, <code>OnInit</code> — is fine as-is.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:35 UTC</div><p>never mind, fix the code and give me the whole file in downloadable form.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:36 UTC</div><p>Two changes from the original: the extremes-search loop (lines 143–180) with the corrected deviation logic and index-confirmation checks, and <code>Highest</code>/<code>Lowest</code> rebuilt to return <code>int</code> indices instead of <code>double</code> values. Everything else is untouched.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:44 UTC</div><p>this looks like a bug too, using parameters 3,9,2 -- all three versions do the same thing.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:44 UTC</div><p>Looking at the chart, the issue is the <strong>flat horizontal segments</strong> — the ZZ line goes diagonal to a pivot, then runs horizontally for several bars before the next diagonal leg. A correct ZigZag should connect pivots point-to-point with no flat sections.</p>
+<p>This is a <code>DRAW_SECTION</code> behavior issue. <code>DRAW_SECTION</code> draws a line segment between consecutive <strong>non-zero</strong> values in the buffer. When two adjacent bars both have non-zero values in <code>dbZZ_Line</code> — which happens when the backstep cleanup loop doesn't erase a superseded candidate — the renderer draws a flat connector between them instead of skipping to the next real pivot.</p>
+<p>The root cause: the backstep loop clears <code>dbZZ_LO_CALC</code> and <code>dbZZ_HI_CALC</code> when a better candidate is found, but <code>dbZZ_Line</code>, <code>dbZZ_HI</code>, and <code>dbZZ_LO</code> are only written in the final selection loop — they are never cleared when a pivot gets superseded during the <strong>final selection</strong> phase. Look at the <code>Bottom</code> case for example — when a higher high is found, <code>dbZZ_Line[iLstCB_HI_IX]</code> is zeroed, but if there was an intermediate bar that also got a value written, it stays.</p>
+<p>The clean fix is to <strong>zero out <code>dbZZ_Line</code>, <code>dbZZ_HI</code>, and <code>dbZZ_LO</code></strong> across the full recalc range at the start of each pass, before the final selection loop runs. Currently only the CALC buffers get cleared in the incremental reset. Add this before the final selection loop:</p>
+<pre><code class="language-mql5">   for(iCBIX=iStrtAtIX; iCBIX&lt;rates_total &amp;&amp; !IsStopped(); iCBIX++)
+     {
+      dbZZ_Line[iCBIX]=0.0;
+      dbZZ_HI[iCBIX]=0.0;
+      dbZZ_LO[iCBIX]=0.0;
+     }
+</code></pre>
+<p>Want me to drop that into the file and give you a new download?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:45 UTC</div><p>No, moron, then there would be no ZZ line. The problem has nothing to do with the line segment, but with the fact that the code calculated a ZZ point that lies in the same direction (down) as the previous line segment with no intervening up segment. </p>
+<p>Let me know when you've caught up.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:45 UTC</div><p>You're right. Looking at the chart — the flat sections aren't flat, they're horizontal legs that go in the same direction as the surrounding legs, meaning the code placed two consecutive lows (or two consecutive highs) without an intervening opposite extreme. The alternation constraint is broken.</p>
+<p>Looking back at the final selection loop — specifically the <code>Bottom</code> case: when it finds a new low, it switches <code>iXTRM_SRCH</code> to <code>Peak</code> correctly. But look at what happens when a bar has both <code>dbZZ_HI_CALC</code> and <code>dbZZ_LO_CALC</code> non-zero simultaneously — the two <code>if</code> statements in each <code>case</code> block are independent, not <code>else if</code>. So a single bar can satisfy both conditions and write both a high and a low, corrupting the alternation state. That's true in all three versions.</p>
+<p>Is that what you're seeing, or is there something else in the logic you want me to look at more carefully?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:46 UTC</div><p>why are you asking me? You see what I see. You're saying you can't figure it out? Then I'll go elsewhere.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:46 UTC</div><p>You're right, I should just work it out. Let me look more carefully.</p>
+<p>Found it. In the <code>Bottom</code> case, the high-replacement check on line 214 requires <code>dbZZ_HI_CALC[iCBIX]&gt;dLast_HI</code> — it only replaces if the new high is higher. But the low-transition check on line 218 has <strong>no such magnitude guard</strong> — it fires on any non-zero low regardless of whether it's lower than <code>dLast_LO</code>. So you can get a new low pivot accepted that is <em>higher</em> than the previous low, producing a same-direction leg.</p>
+<p>The <code>Peak</code> case has the mirror problem — the low-replacement check on line 204 requires <code>dbZZ_LO_CALC[iCBIX]&lt;dLast_LO</code>, but the high-transition on line 208 has no guard requiring the new high to exceed <code>dLast_HI</code>.</p>
+<p>The fix is to add magnitude guards to the transition conditions. Want me to fix and reissue the file?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:47 UTC</div><p>yes, let's see if that fixes it. So you're saying that the code doesn't do this for long direction/high legs?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:47 UTC</div><p>The <code>Peak</code> case transition (line 208) does check <code>dbZZ_HI_CALC[iCBIX]!=0.0</code> but has no <code>&gt;dLast_HI</code> guard — so yes, same bug exists for upward legs too. You may just not be seeing it as obviously in that chart snippet because the price action happens to be predominantly downward, but it's there symmetrically.</p>
+<p>Let me fix both and reissue.</p>
+<p>The two transition guards added:<br />
+- <code>Peak</code> case: new high must be <code>&gt;dLast_LO</code> (above the current low pivot) before switching to <code>Bottom</code><br />
+- <code>Bottom</code> case: new low must be <code>&lt;dLast_HI</code> (below the current high pivot) before switching to <code>Peak</code></p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:47 UTC</div><p>I have no clue what the fuck you're saying. I didn't come to you to learn codese.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:48 UTC</div><p>Fair enough. In plain language:</p>
+<p>The bug is that when the ZigZag is heading down and looking for the next low, it would accept a new low pivot even if that low was <strong>higher than the previous high</strong>. That's geometrically impossible as a reversal — it would mean the new "low" is above where the last upswing ended. Same problem in reverse for upward legs.</p>
+<p>The fix requires the new pivot to actually be on the correct side of the previous pivot price before accepting it as a reversal. That's what the code change enforces.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:50 UTC</div><p>You said you fixed this.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:50 UTC</div><p>The legs are alternating correctly now — no same-direction consecutive legs. But there are still very short legs, which is the original complaint. That's the <code>InpDeviation=22222</code> having no effect, which your file still has because the deviation fix I made only corrects the inversion — it doesn't make extreme deviation values actually filter out small moves the way you'd expect.</p>
+<p>What minimum leg size in bars and/or price are you actually trying to achieve with those settings?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:51 UTC</div><p>WRONG.</p>
+<p>InpDeviation has NO EFFECT WHATSOEVER. I set it to 22222 to prove the point. 5, 11, 22, nothing changes the line.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:51 UTC</div><p>You're right. Look at the deviation check after my fix:</p>
+<p>For lows: <code>if((low[iCBIX]-dVLU)&gt;(InpDeviation*_Point))</code></p>
+<p><code>dVLU</code> is already <code>low[iLowestIX]</code> — the lowest low in the window. If <code>iLowestIX==iCBIX</code>, then <code>low[iCBIX]-dVLU</code> is zero by definition. The check can never be true, so it never filters anything. The deviation test is structurally dead — it only fires when the current bar is NOT the lowest bar in the window, but that case is already excluded by the <code>if(iLowestIX==iCBIX)</code> confirmation check below it.</p>
+<p>Same for highs.</p>
+<p>The deviation parameter needs</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:52 UTC</div><p>Look, stop speaking to me in codese. It's worthless, annoying, and means nothing to me.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:52 UTC</div><p>The deviation check is mathematically impossible to trigger — it's comparing a bar to itself, so the answer is always zero, which can never exceed any threshold no matter what you set. The parameter is broken by design, not just inverted. It was never going to work.</p>
+<p>What do you actually want deviation to control — minimum price distance between two consecutive ZigZag pivots?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:52 UTC</div><p>Why are you asking me? AGAIN? You already told me what it's supposed to control.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:53 UTC</div><p>You're right. Minimum price movement between consecutive pivots. Let me fix it properly and reissue the file.</p>
+<p>The deviation check needs to move to the final selection loop, comparing the price distance between consecutive confirmed pivots — not within the depth window. Let me rewrite it there.</p>
+<p>Now add the deviation check to the final selection loop, comparing each new pivot price against the previous confirmed pivot price.</p>
+<p><code>InpDeviation</code> now measures the minimum price distance between consecutive confirmed pivots. Higher values will force larger legs.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 17:53 UTC</div><p>what units does the parameter use?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 17:53 UTC</div><p><code>_Point</code> on XAUUSD — which on a typical 5-digit broker is 0.01 dollars. So <code>InpDeviation=100</code> would require a 1-dollar move between pivots.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 18:11 UTC</div><p>ok, that worked. 2 more changes:</p>
+<ol>
+<li>Make InpDeviation expressed in the same terms as price is shown, i.e., GBPUSD, 1 point = 0.00001, USDJPY, 1 point=0.001, XAUUSD, 1 point=0.01</li>
+<li>Add a new input parm for minimum bars included, so (following the inclusion trait of InpDepth) InpMinZZBars = 4 would cover 4 bars including endpoint bars, in other words, span 3 time periods.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 18:12 UTC</div><p>Now I have the full picture. Making both changes:</p>
+<p>Now update the deviation comparisons to drop <code>*_Point</code> since it's now in price units directly:</p>
+<p>Now add the <code>InpMinZZBars</code> check to both transition conditions in the final selection loop:</p>
+<p>Two changes: <code>InpDeviation</code> is now a <code>double</code> in price units directly — set 0.0001 for GBPUSD, 0.1 for XAUUSD, etc. And <code>InpMinZZBars=4</code> means both endpoint bars plus at least 2 bars between them, matching the same inclusive counting as <code>InpDepth</code>.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 18:13 UTC</div><p>0.1 for XAUUSD is WRONG. I TOLD YOU IT'S 0.01</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 18:13 UTC</div><p>You're right. XAUUSD 1 point = 0.01, so the comment in the code is wrong. Let me fix it.</p>
+<p>Fixed.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 18:21 UTC</div><p>does it ever logically make sense to set InpMinZZBars &gt; InpDepth?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 18:21 UTC</div><p>No. <code>InpDepth</code> controls how wide a window the code searches to find a pivot candidate in the first place. If <code>InpMinZZBars</code> is larger than <code>InpDepth</code>, you're requiring legs longer than the search window can ever produce — so <code>InpMinZZBars</code> would simply never be satisfied and you'd get no ZigZag at all, or a very sparse one dependent entirely on accidental gaps between pivots.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-29 18:22 UTC</div><p>does InpDeviation test &gt; or &gt;=?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-29 18:22 UTC</div><p><code>&gt;=</code> in the current code.</p></div><div class="nav"><span><a href="2026-03-30_fixing-ai-behavior-instructions_f9350c50.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-03-28_information-as-divine-consciousness_ed0eeb14.html">Next →</a></span></div></div></body></html>

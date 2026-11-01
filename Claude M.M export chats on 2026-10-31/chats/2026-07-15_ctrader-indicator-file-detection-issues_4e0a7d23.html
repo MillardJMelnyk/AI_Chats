@@ -1,0 +1,34 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>cTrader indicator file detection issues</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-16_shared-chat-link-access_2b5098a0.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-13_porting-mql5-functions-to-ctrader_bba5eb8a.html">Next →</a></span></div><h1>cTrader indicator file detection issues</h1><div class="meta">Created 2026-07-15 17:59 UTC · Last updated 2026-07-15 18:03 UTC · 4 messages<br>Original: <a href="https://claude.ai/chat/4e0a7d23-62f2-479c-af49-f5468f3d08c6">claude.ai/chat/4e0a7d23-62f2-479c-af49-f5468f3d08c6</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-15 17:59 UTC</div><p>I'm using VS Code to develop indicators for cTrader. Both the CODEX and Claude extensions will edit, compile, and build them, creating an .algo file. </p>
+<p>I'm having an intermittent, inconsistent problem with these indicators.</p>
+<p>Usually, simply by copying the .algo file to the platform's \Indicator folder will cause it to show up as "new" in cTrader's indicators list, even though the platform is running, even though the indicator was running on a chart.</p>
+<p>Sometimes, though, there's no trace of it anywhere, and I have to close and reopen the platform, with is a real pain in the ass given how many changes I make to the code.</p>
+<p>I've tried double-clicking on the .algo file, it prompts me asking if I want to replace the existing one, I click yes, and still -- nothing happens. No indy to be found.</p>
+<p>Has anyone found a fix or workaround for this problem?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-15 18:00 UTC</div><p>No real fix exists — it's a known cTrader bug, not something you're doing wrong. Multiple developers report the same thing on 5.x: rebuilds reload the first time or two, then silently stop registering until a full platform restart, even when the .algo compiled clean, and Spotware shipped a hotfix (5.0.38) for indicators randomly unloading, but reports continued after it. Spotware has never given a reliable workaround.</p>
+<p>What actually works around it in practice:</p>
+<ol>
+<li>
+<p><strong>Rename each build.</strong> Give the .algo a bumped name (e.g. <code>TTEM_v37.algo</code>). cTrader treats it as a brand-new indicator and picks it up immediately, every time — that's why your copies "usually" show up as new. The failure mode only hits replacements of an already-loaded file, because the old assembly stays locked in cTrader's process. Downside: the indicator list clutters up and you re-add to the chart each time, but it's the only method that never needs a restart.</p>
+</li>
+<li>
+<p><strong>Detach before replacing.</strong> Remove the indicator from all charts (and close any Algo-tab view of it) <em>before</em> copying the new .algo over. Replacing while an instance holds the old DLL loaded is exactly when the stale-assembly failure happens.</p>
+</li>
+<li>
+<p>If you're already stuck (no trace anywhere), restart is the only recovery — double-clicking and "replace" won't unstick it, as you've found.</p>
+</li>
+</ol>
+<p>Given how many builds you do a day, option 1 with a build-number suffix automated into your VS Code build step is the workflow most cTrader devs settle on.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-15 18:03 UTC</div><p>I just noticed that a little panel popped up when I double-clicked the .algo file, see image, but it just spins and doesn't stop.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-15 18:03 UTC</div><p>That spinner is the same bug made visible — the installer is waiting to swap in the new file, but the running platform still has the old assembly loaded and locked, so the install never completes. It'll spin forever; clicking X doesn't cancel anything useful.</p>
+<p>Once you see that hang, the platform is already in the stuck state: restart is the only way out. The value of the toast is as an early warning — if you double-click and it installs instantly, you're fine; if it spins, don't waste time hunting the indicators list, just restart. Detaching the indicator from every chart <em>before</em> installing is what prevents the hang in the first place.</p></div><div class="nav"><span><a href="2026-07-16_shared-chat-link-access_2b5098a0.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-13_porting-mql5-functions-to-ctrader_bba5eb8a.html">Next →</a></span></div></div></body></html>

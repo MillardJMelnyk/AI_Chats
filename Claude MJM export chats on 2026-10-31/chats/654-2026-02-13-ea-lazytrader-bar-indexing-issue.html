@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EA LazyTrader bar indexing issue</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="653-2026-02-13-autotrading-execution-failure-and-qualifying-average-buffer.html">&larr; Autotrading execution failure and qualifying average buffer</a><a href="../index.html">All chats</a><a href="655-2026-02-16-finding-kimi-code-points-usage.html">Finding Kimi code points usage &rarr;</a></nav>
+<header class="top">
+<h1>EA LazyTrader bar indexing issue</h1>
+<div class="meta">Created 2026-02-13 21:42 UTC &middot; Last updated 2026-02-13 23:44 UTC &middot; 32 messages<br>Original: <a href="https://claude.ai/chat/5d57c4be-d0cd-406b-8f1e-766b83d0ad70">claude.ai/chat/5d57c4be-d0cd-406b-8f1e-766b83d0ad70</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 21:42 UTC</span></div><div class="body">this code in the EA LazyTrader_MJM isn&#x27;t executing properly. I think it&#x27;s because it&#x27;s looking at the wrong bar for its decisions.
+We don&#x27;t want to generate orders for historical bars, so we&#x27;re restricting autotrading to newly created arrows. However, an arrow isn&#x27;t planted until a bar has been closed, so at that point the current chart bar is the one after the bar where the arrow is located.
+Keep in mind that its working with REGULAR INDEXED arrays (ArrayIsSeries(array) == false).
+ Where is the code going wrong?  
+
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+   int rates_total = Bars(_Symbol, PERIOD_CURRENT);
+   
+   //--- Check for new bar
+   if(rates_total == g_barsTotal)
+   {
+      //--- Same bar - just check equity floor
+      CheckEquityFloor();
+      return;
+   }
+   
+   int prev_calculated = g_barsTotal;
+   g_barsTotal = rates_total;
+   
+   //--- Skip first run (history load)
+   if(prev_calculated == 0)
+      return;
+   
+   //--- Only process on live bar
+   int liveBar = rates_total - 1;
+   
+   //--- Copy arrow buffers from on-chart indicator
+   ArrayResize(IndArrowBuy, rates_total);
+   ArrayResize(IndArrowSell, rates_total);
+   
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, rates_total, IndArrowBuy) != rates_total)
+      return;
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_SELL, 0, rates_total, IndArrowSell) != rates_total)
+      return;
+   
+   //--- Check for new signal on previous bar (completed bar)
+   int checkBar = liveBar - 1;
+   if(checkBar &lt;= g_lastProcessedSignalBar)
+      return;
+   
+   //--- Detect signal from arrow buffers
+   bool buySignal = (IndArrowBuy[checkBar] != EMPTY_VAL &amp;&amp; IndArrowBuy[checkBar] != 0);
+   bool sellSignal = (IndArrowSell[checkBar] != EMPTY_VAL &amp;&amp; IndArrowSell[checkBar] != 0);
+   
+   if(!buySignal &amp;&amp; !sellSignal)
+      return;
+   
+   //--- New signal detected
+   g_lastProcessedSignalBar = checkBar;
+   
+   string direction = buySignal ? DIRECTION_LONG : DIRECTION_SHORT;
+   g_lastDirection = direction;
+   
+   //--- Execute real trade if auto-trading enabled
+   if(g_bWeAreAutoTrading)
+   {
+      bool bTradeWorked = TS_ReverseOrOpen(direction);
+      
+      if(bTradeWorked)
+      {
+         UpdateStatus(&quot;Auto &quot; + direction, true);
+         UpdateTrailingEquityFloor();
+      }
+      else
+         UpdateStatus(&quot;Auto &quot; + direction, false);
+   }
+   
+   //--- Check trailing equity floor
+   CheckEquityFloor();
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 21:44 UTC</span></div><div class="body"><p>Friday, February 14, 2026, 00:42 UTC</p>
+<p>Looking at the code with non-series arrays:</p>
+<p>After <code>CopyBuffer(..., 0, rates_total, ...)</code> into a non-series array:</p>
+<ul>
+<li><code>Array[0]</code> = oldest bar</li>
+<li><code>Array[rates_total - 1]</code> = current bar (position 0)</li>
+<li><code>Array[rates_total - 2]</code> = previous bar (position 1, just closed)</li>
+</ul>
+<p>The code does:</p>
+<pre><code class="language-cpp">int liveBar = rates_total - 1;     // current forming bar
+int checkBar = liveBar - 1;        // rates_total - 2 = just-closed bar
+</code></pre>
+<p><strong>The indexing is correct.</strong> <code>checkBar</code> points to the bar that just closed, which is where the arrow would be planted.</p>
+<hr />
+<p>What specific misbehavior are you observing? For example:</p>
+<ul>
+<li>Trades triggering on old/historical arrows?</li>
+<li>Missing newly planted arrows?</li>
+<li>Trades appearing one bar late or early?</li>
+</ul>
+<p>This would help identify whether the issue is elsewhere (indicator timing, <code>g_lastProcessedSignalBar</code> initialization, buffer index constants, or the arrow detection condition itself).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 21:45 UTC</span></div><div class="body">TRADE ORDERS ARE NOT EXECUTED WHEN AN ARROW IS PLANTED ON THE CHART.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 21:45 UTC</span></div><div class="body"><p>The problem is <code>CopyBuffer</code>'s start position parameter uses <strong>series indexing regardless of the target array's series flag</strong>.</p>
+<p><code>CopyBuffer(handle, buffer, 0, rates_total, array)</code> means:</p>
+<ul>
+<li>Start from position <strong>0</strong> (current bar in series terms)</li>
+<li>Copy <code>rates_total</code> elements going backward in time</li>
+</ul>
+<p>Result in your non-series array:</p>
+<ul>
+<li><code>IndArrowBuy[0]</code> = current bar (forming)</li>
+<li><code>IndArrowBuy[1]</code> = just-closed bar (where arrow is)</li>
+<li><code>IndArrowBuy[rates_total-1]</code> = oldest bar</li>
+</ul>
+<p>Your code checks <code>IndArrowBuy[checkBar]</code> where <code>checkBar = rates_total - 2</code>, which points to ancient history, not the just-closed bar.</p>
+<p><strong>Fix:</strong> Check index <code>1</code> for the just-closed bar:</p>
+<pre><code class="language-cpp">//--- Check for new signal on previous bar (completed bar)
+int checkBar = 1;  // Index 1 = just-closed bar after CopyBuffer from position 0
+</code></pre>
+<p>You'll also need to rework <code>g_lastProcessedSignalBar</code> tracking since it currently stores array indices that shift meaning each bar. Consider storing the bar's datetime instead, or simply a flag that resets each new bar.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 21:47 UTC</span></div><div class="body">What is the most reliable way in an EA to get the exact value as contained by rates_total as passed to an indicator OnCalculate function?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 21:47 UTC</span></div><div class="body"><p><code>BarsCalculated(iHndlIndy)</code></p>
+<p>Returns the number of bars the indicator has actually calculated, which matches what <code>rates_total</code> was in the indicator's most recent <code>OnCalculate</code> call.</p>
+<p>This is more reliable than <code>Bars()</code> or <code>iBars()</code> because it reflects what the indicator has actually processed, not just what the terminal has available. There can be timing gaps where the terminal has new bars but the indicator hasn't recalculated yet.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:06 UTC</span></div><div class="body">This looks extremely inefficient, executedin OnCalculate of an MQL5 indicator every time the function runs:
+
+   //--- Copy TEMA data
+   if(CopyBuffer(iHndlTEMA, 0, 0, rates_total, tempTEMA) != rates_total)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying TEMA buffer: &quot;, GetLastError());
+      return(0);
+   }
+   //--- Copy MA data
+   if(CopyBuffer(iHndlMA, 0, 0, rates_total, tempMA) != rates_total)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying MA buffer: &quot;, GetLastError());
+      return(0);
+   }
+   //--- Main calculation loop
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      //--- Store TEMA and MA values in buffers
+      BufferTEMA[i] = tempTEMA[i];
+      BufferMA[i]   = tempMA[i];</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:07 UTC</span></div><div class="body"><p>Two problems:</p>
+<p><strong>1. Copying entire history every tick</strong></p>
+<p>Only copy new/changed bars:</p>
+<pre><code class="language-cpp">int toCopy = rates_total - prev_calculated;
+if(toCopy &lt;= 0) toCopy = 1;  // Always recalc current bar
+
+if(CopyBuffer(iHndlTEMA, 0, 0, toCopy, tempTEMA) != toCopy)
+   return(0);
+</code></pre>
+<p><strong>2. Redundant temp arrays</strong></p>
+<p>Copy directly into your indicator buffers. CopyBuffer works with SetIndexBuffer arrays:</p>
+<pre><code class="language-cpp">if(CopyBuffer(iHndlTEMA, 0, 0, toCopy, BufferTEMA) != toCopy)
+   return(0);
+if(CopyBuffer(iHndlMA, 0, 0, toCopy, BufferMA) != toCopy)
+   return(0);
+</code></pre>
+<p>This eliminates the temp arrays and the copy loop entirely.</p>
+<p><strong>Caveat:</strong> Your buffers must be set as series (<code>ArraySetAsSeries(BufferTEMA, true)</code>) for this to work correctly with start position 0, or you need to adjust the start position parameter to copy into the correct array indices.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:07 UTC</span></div><div class="body">Give me the code that will do what you recommend here in the chat</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:07 UTC</span></div><div class="body"><pre><code class="language-cpp">int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   //--- Determine how many bars to copy/calculate
+   int toCopy = rates_total - prev_calculated;
+   if(toCopy &lt;= 0) toCopy = 1;
+   
+   //--- Copy directly into indicator buffers (start position = 0 = current bar)
+   if(CopyBuffer(iHndlTEMA, 0, 0, toCopy, BufferTEMA) != toCopy)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying TEMA buffer: &quot;, GetLastError());
+      return(prev_calculated);
+   }
+   
+   if(CopyBuffer(iHndlMA, 0, 0, toCopy, BufferMA) != toCopy)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying MA buffer: &quot;, GetLastError());
+      return(prev_calculated);
+   }
+   
+   //--- Main calculation loop starts at correct index
+   int start = (prev_calculated == 0) ? 0 : prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      // Your calculations using BufferTEMA[i] and BufferMA[i]
+   }
+   
+   return(rates_total);
+}
+</code></pre>
+<p><strong>Requires in OnInit:</strong></p>
+<pre><code class="language-cpp">ArraySetAsSeries(BufferTEMA, true);
+ArraySetAsSeries(BufferMA, true);
+</code></pre>
+<p>This copies only new bars directly into your output buffers. No temp arrays, no redundant loop copying.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:08 UTC</span></div><div class="body">Dude, I gave you the code. I didn&#x27;t ask for an example. Fix the code.
+
+Here&#x27;s the entire function:<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; TOP OF FUNCTION rates_total&lt;&quot;,rates_total,&quot;&gt; prev_calculated&lt;&quot;,prev_calculated,&quot;&gt;&quot;);
+
+   //--- Check for minimum bars
+   if(rates_total &lt; maxPeriodsBack)
+      return(0);
+
+   //--- Determine starting position
+   int start;
+   if(prev_calculated == 0)
+   {
+      start = maxPeriodsBack - 2;
+      
+      //--- Reset trade simulation on full recalculation
+      if(InpEnableTradeSim)
+      {
+         g_tradeStats.Reset();
+         g_currentTrade.Reset();
+         g_signalDirection = 0;
+         g_signalStartDT = 0;
+         g_lastSignalBar = -999;
+         g_prevQualAvgSign = 0;
+         ObjectsDeleteAll(0, &quot;Signal_&quot;);
+      }
+   }
+   else
+   {
+      start = prev_calculated - 1;
+   }
+
+   //--- Ensure start is valid
+   if(start &lt; 0)
+      start = 0;
+
+   //--- Temporary arrays for indicator data
+   double tempTEMA[];
+   double tempMA[];
+   ArraySetAsSeries(tempTEMA, false);
+   ArraySetAsSeries(tempMA, false);
+
+   //--- Copy TEMA data
+   if(CopyBuffer(iHndlTEMA, 0, 0, rates_total, tempTEMA) != rates_total)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying TEMA buffer: &quot;, GetLastError());
+      return(0);
+   }
+
+   //--- Copy MA data
+   if(CopyBuffer(iHndlMA, 0, 0, rates_total, tempMA) != rates_total)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying MA buffer: &quot;, GetLastError());
+      return(0);
+   }
+
+   //--- Main calculation loop
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      //--- Store TEMA and MA values in buffers
+      BufferTEMA[i] = tempTEMA[i];
+      BufferMA[i]   = tempMA[i];
+
+      //--- B2: TEMA slope
+      if(i &gt;= InpSlopePeriodTEMA)
+         BufferSlopeTEMA[i] = (tempTEMA[i] - tempTEMA[i - InpSlopePeriodTEMA]) / InpSlopePeriodTEMA;
+      else
+         BufferSlopeTEMA[i] = EMPTY_VAL;
+
+      //--- B3: MA slope
+      if(i &gt;= InpSlopePeriodMA)
+         BufferSlopeMA[i] = (tempMA[i] - tempMA[i - InpSlopePeriodMA]) / InpSlopePeriodMA;
+      else
+         BufferSlopeMA[i] = EMPTY_VAL;
+
+      //--- B4: Indy spread (TEMA - MA)
+      BufferSpread[i] = tempTEMA[i] - tempMA[i];
+
+      //--- B5: Slope of indy spread (slope of B4)
+      if(i &gt;= InpSlopePeriodSpread &amp;&amp; BufferSpread[i - InpSlopePeriodSpread] != EMPTY_VAL)
+         BufferSpreadSlope[i] = (BufferSpread[i] - BufferSpread[i - InpSlopePeriodSpread]) / InpSlopePeriodSpread;
+      else
+         BufferSpreadSlope[i] = EMPTY_VAL;
+
+      //--- B6: Spread of indy slopes (B2 - B3)
+      if(BufferSlopeTEMA[i] != EMPTY_VAL &amp;&amp; BufferSlopeMA[i] != EMPTY_VAL)
+         BufferSlopeSpread[i] = BufferSlopeTEMA[i] - BufferSlopeMA[i];
+      else
+         BufferSlopeSpread[i] = EMPTY_VAL;
+
+      //--- B7: Slope of slopes spread (slope of B6)
+      if(i &gt;= InpSlopePeriodSlopeSpread &amp;&amp; 
+         BufferSlopeSpread[i] != EMPTY_VAL &amp;&amp; 
+         BufferSlopeSpread[i - InpSlopePeriodSlopeSpread] != EMPTY_VAL)
+         BufferSlopeSpreadSlope[i] = (BufferSlopeSpread[i] - BufferSlopeSpread[i - InpSlopePeriodSlopeSpread]) / InpSlopePeriodSlopeSpread;
+      else
+         BufferSlopeSpreadSlope[i] = EMPTY_VAL;
+
+      //--- B8: Min Qual Threshold (constant)
+      BufferMinQualThreshold[i] = InpMinQualAvgCross;
+
+      //--- B9: Qualifying Average (calculated every bar)
+      int validBuffers = 0;
+      double dTotalLineCrossBy = 0.0;
+      int aboveZeroCount = 0;
+      int belowZeroCount = 0;
+
+      for(int bufIdx = 0; bufIdx &lt; SIGNAL_BUFFER_COUNT; bufIdx++)
+      {
+         if(!g_signalBufferTracked[bufIdx])
+            continue;
+
+         double bufValue = GetTrackedBufferValue(bufIdx, i);
+         if(bufValue == EMPTY_VAL)
+            continue;
+
+         validBuffers++;
+         if(bufValue &gt; 0) aboveZeroCount++;
+         else if(bufValue &lt; 0) belowZeroCount++;
+         dTotalLineCrossBy += bufValue;
+      }
+
+      double dQualAvg = (validBuffers &gt; 0) ? dTotalLineCrossBy / validBuffers : 0.0;
+      BufferQualifyingAvg[i] = dQualAvg;
+
+      //--- B10: Net Qualifying Average (cumulative, resets on sign change)
+      //--- Only accumulate from trade start date onwards
+      int currentSign = GetSign(dQualAvg);
+      
+      if(time[i] &lt; InpTradeStartDate)
+      {
+         //--- Before trade start date: no accumulation
+         BufferNetQualAvg[i] = 0.0;
+         g_prevQualAvgSign = currentSign;
+      }
+      else
+      {
+         //--- Check for sign change (reset condition)
+         //--- Sign change: going from positive to negative or vice versa
+         //--- Zero doesn&#x27;t trigger a reset, but updates tracking
+         bool signChanged = false;
+         if(g_prevQualAvgSign != 0 &amp;&amp; currentSign != 0 &amp;&amp; g_prevQualAvgSign != currentSign)
+            signChanged = true;
+         
+         if(signChanged)
+         {
+            //--- Reset: start fresh accumulation with current value
+            BufferNetQualAvg[i] = dQualAvg;
+         }
+         else
+         {
+            //--- Continue accumulation
+            double prevNetQualAvg = (i &gt; 0) ? BufferNetQualAvg[i-1] : 0.0;
+            BufferNetQualAvg[i] = prevNetQualAvg + dQualAvg;
+         }
+         
+         //--- Update sign tracker (only update if non-zero)
+         if(currentSign != 0)
+            g_prevQualAvgSign = currentSign;
+      }
+
+      //--- Trade simulation logic
+      if(InpEnableTradeSim &amp;&amp; i &gt; 0 &amp;&amp; time[i] &gt;= InpTradeStartDate)
+      {
+         //--- Check blackout period
+         if((i - g_lastSignalBar) &lt;= InpSignalBlackout)
+            continue;
+
+         //--- Determine signal based on threshold
+         ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
+
+         if(validBuffers &gt; 0)
+         {
+            int abovePct = (aboveZeroCount * 100) / validBuffers;
+            int belowPct = (belowZeroCount * 100) / validBuffers;
+
+            //--- Get absolute value of Net Qual Avg for threshold comparison
+            double absNetQualAvg = MathAbs(BufferNetQualAvg[i]);
+            
+            //--- Both conditions required: percentage threshold AND abs(NetQualAvg) &gt;= threshold
+            //--- Direction determined by sign of NetQualAvg
+            if(absNetQualAvg &gt;= InpMinQualAvgCross)
+            {
+               if(abovePct &gt;= InpSignalLinesPCT &amp;&amp; g_signalDirection != 1 &amp;&amp; BufferNetQualAvg[i] &gt; 0)
+                  signal = SIGNAL_LONG;
+               else if(belowPct &gt;= InpSignalLinesPCT &amp;&amp; g_signalDirection != -1 &amp;&amp; BufferNetQualAvg[i] &lt; 0)
+                  signal = SIGNAL_SHORT;
+            }
+         }
+
+         //--- Handle signal
+         if(signal != SIGNAL_NONE)
+         {
+            //--- Set signal start time on first signal
+            if(g_signalStartDT == 0)
+               g_signalStartDT = time[i];
+
+            //--- Handle trade event using TradeSimulation functions
+            HandleSignalEvent(i, signal,
+                              true,              // closeTrade
+                              true,              // fillBuffers
+                              true,              // openTrade
+                              true,              // updateLabel
+                              InpShowArrows,     // showArrows
+                              time, 
+                              close,
+                              g_signalStartDT,
+                              g_currentTrade, 
+                              g_tradeStats,
+                              g_arrowCfg, 
+                              g_labelCfg,
+                              InpSoundTradeAlarm,
+                              BufferTradePL, 
+                              BufferRunningPL, 
+                              BufferTradeCount,
+                              BufferWinPct, 
+                              BufferShortCount, 
+                              BufferShortWinPct,
+                              BufferLongCount, 
+                              BufferLongWinPct,
+                              BufferArrowBuy,
+                              BufferArrowSell);
+
+            //--- Update state
+            g_signalDirection = (signal == SIGNAL_LONG) ? 1 : -1;
+            g_lastSignalBar = i;
+         }
+      }
+   }
+
+   return(rates_total);
+}
+//+------------------------------------------------------------------</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:10 UTC</span></div><div class="body"><pre><code class="language-cpp">//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; TOP OF FUNCTION rates_total&lt;&quot;,rates_total,&quot;&gt; prev_calculated&lt;&quot;,prev_calculated,&quot;&gt;&quot;);
+
+   //--- Check for minimum bars
+   if(rates_total &lt; maxPeriodsBack)
+      return(0);
+
+   //--- Determine starting position
+   int start;
+   if(prev_calculated == 0)
+   {
+      start = maxPeriodsBack - 2;
+      
+      //--- Reset trade simulation on full recalculation
+      if(InpEnableTradeSim)
+      {
+         g_tradeStats.Reset();
+         g_currentTrade.Reset();
+         g_signalDirection = 0;
+         g_signalStartDT = 0;
+         g_lastSignalBar = -999;
+         g_prevQualAvgSign = 0;
+         ObjectsDeleteAll(0, &quot;Signal_&quot;);
+      }
+   }
+   else
+   {
+      start = prev_calculated - 1;
+   }
+
+   //--- Ensure start is valid
+   if(start &lt; 0)
+      start = 0;
+
+   //--- Calculate copy range: only new bars + lookback for slopes
+   int copyStart = MathMax(0, start - maxPeriodsBack);
+   int copyCount = rates_total - copyStart;
+
+   //--- Copy TEMA data directly into buffer
+   if(CopyBuffer(iHndlTEMA, 0, rates_total - 1 - (rates_total - 1 - copyStart), copyCount, BufferTEMA) != copyCount)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying TEMA buffer: &quot;, GetLastError());
+      return(prev_calculated);
+   }
+
+   //--- Copy MA data directly into buffer
+   if(CopyBuffer(iHndlMA, 0, rates_total - 1 - (rates_total - 1 - copyStart), copyCount, BufferMA) != copyCount)
+   {
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; Error copying MA buffer: &quot;, GetLastError());
+      return(prev_calculated);
+   }
+
+   //--- Main calculation loop
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      //--- B2: TEMA slope
+      if(i &gt;= InpSlopePeriodTEMA)
+         BufferSlopeTEMA[i] = (BufferTEMA[i] - BufferTEMA[i - InpSlopePeriodTEMA]) / InpSlopePeriodTEMA;
+      else
+         BufferSlopeTEMA[i] = EMPTY_VAL;
+
+      //--- B3: MA slope
+      if(i &gt;= InpSlopePeriodMA)
+         BufferSlopeMA[i] = (BufferMA[i] - BufferMA[i - InpSlopePeriodMA]) / InpSlopePeriodMA;
+      else
+         BufferSlopeMA[i] = EMPTY_VAL;
+
+      //--- B4: Indy spread (TEMA - MA)
+      BufferSpread[i] = BufferTEMA[i] - BufferMA[i];
+
+      //--- B5: Slope of indy spread (slope of B4)
+      if(i &gt;= InpSlopePeriodSpread &amp;&amp; BufferSpread[i - InpSlopePeriodSpread] != EMPTY_VAL)
+         BufferSpreadSlope[i] = (BufferSpread[i] - BufferSpread[i - InpSlopePeriodSpread]) / InpSlopePeriodSpread;
+      else
+         BufferSpreadSlope[i] = EMPTY_VAL;
+
+      //--- B6: Spread of indy slopes (B2 - B3)
+      if(BufferSlopeTEMA[i] != EMPTY_VAL &amp;&amp; BufferSlopeMA[i] != EMPTY_VAL)
+         BufferSlopeSpread[i] = BufferSlopeTEMA[i] - BufferSlopeMA[i];
+      else
+         BufferSlopeSpread[i] = EMPTY_VAL;
+
+      //--- B7: Slope of slopes spread (slope of B6)
+      if(i &gt;= InpSlopePeriodSlopeSpread &amp;&amp; 
+         BufferSlopeSpread[i] != EMPTY_VAL &amp;&amp; 
+         BufferSlopeSpread[i - InpSlopePeriodSlopeSpread] != EMPTY_VAL)
+         BufferSlopeSpreadSlope[i] = (BufferSlopeSpread[i] - BufferSlopeSpread[i - InpSlopePeriodSlopeSpread]) / InpSlopePeriodSlopeSpread;
+      else
+         BufferSlopeSpreadSlope[i] = EMPTY_VAL;
+
+      //--- B8: Min Qual Threshold (constant)
+      BufferMinQualThreshold[i] = InpMinQualAvgCross;
+
+      //--- B9: Qualifying Average (calculated every bar)
+      int validBuffers = 0;
+      double dTotalLineCrossBy = 0.0;
+      int aboveZeroCount = 0;
+      int belowZeroCount = 0;
+
+      for(int bufIdx = 0; bufIdx &lt; SIGNAL_BUFFER_COUNT; bufIdx++)
+      {
+         if(!g_signalBufferTracked[bufIdx])
+            continue;
+
+         double bufValue = GetTrackedBufferValue(bufIdx, i);
+         if(bufValue == EMPTY_VAL)
+            continue;
+
+         validBuffers++;
+         if(bufValue &gt; 0) aboveZeroCount++;
+         else if(bufValue &lt; 0) belowZeroCount++;
+         dTotalLineCrossBy += bufValue;
+      }
+
+      double dQualAvg = (validBuffers &gt; 0) ? dTotalLineCrossBy / validBuffers : 0.0;
+      BufferQualifyingAvg[i] = dQualAvg;
+
+      //--- B10: Net Qualifying Average (cumulative, resets on sign change)
+      //--- Only accumulate from trade start date onwards
+      int currentSign = GetSign(dQualAvg);
+      
+      if(time[i] &lt; InpTradeStartDate)
+      {
+         //--- Before trade start date: no accumulation
+         BufferNetQualAvg[i] = 0.0;
+         g_prevQualAvgSign = currentSign;
+      }
+      else
+      {
+         //--- Check for sign change (reset condition)
+         //--- Sign change: going from positive to negative or vice versa
+         //--- Zero doesn't trigger a reset, but updates tracking
+         bool signChanged = false;
+         if(g_prevQualAvgSign != 0 &amp;&amp; currentSign != 0 &amp;&amp; g_prevQualAvgSign != currentSign)
+            signChanged = true;
+         
+         if(signChanged)
+         {
+            //--- Reset: start fresh accumulation with current value
+            BufferNetQualAvg[i] = dQualAvg;
+         }
+         else
+         {
+            //--- Continue accumulation
+            double prevNetQualAvg = (i &gt; 0) ? BufferNetQualAvg[i-1] : 0.0;
+            BufferNetQualAvg[i] = prevNetQualAvg + dQualAvg;
+         }
+         
+         //--- Update sign tracker (only update if non-zero)
+         if(currentSign != 0)
+            g_prevQualAvgSign = currentSign;
+      }
+
+      //--- Trade simulation logic
+      if(InpEnableTradeSim &amp;&amp; i &gt; 0 &amp;&amp; time[i] &gt;= InpTradeStartDate)
+      {
+         //--- Check blackout period
+         if((i - g_lastSignalBar) &lt;= InpSignalBlackout)
+            continue;
+
+         //--- Determine signal based on threshold
+         ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
+
+         if(validBuffers &gt; 0)
+         {
+            int abovePct = (aboveZeroCount * 100) / validBuffers;
+            int belowPct = (belowZeroCount * 100) / validBuffers;
+
+            //--- Get absolute value of Net Qual Avg for threshold comparison
+            double absNetQualAvg = MathAbs(BufferNetQualAvg[i]);
+            
+            //--- Both conditions required: percentage threshold AND abs(NetQualAvg) &gt;= threshold
+            //--- Direction determined by sign of NetQualAvg
+            if(absNetQualAvg &gt;= InpMinQualAvgCross)
+            {
+               if(abovePct &gt;= InpSignalLinesPCT &amp;&amp; g_signalDirection != 1 &amp;&amp; BufferNetQualAvg[i] &gt; 0)
+                  signal = SIGNAL_LONG;
+               else if(belowPct &gt;= InpSignalLinesPCT &amp;&amp; g_signalDirection != -1 &amp;&amp; BufferNetQualAvg[i] &lt; 0)
+                  signal = SIGNAL_SHORT;
+            }
+         }
+
+         //--- Handle signal
+         if(signal != SIGNAL_NONE)
+         {
+            //--- Set signal start time on first signal
+            if(g_signalStartDT == 0)
+               g_signalStartDT = time[i];
+
+            //--- Handle trade event using TradeSimulation functions
+            HandleSignalEvent(i, signal,
+                              true,              // closeTrade
+                              true,              // fillBuffers
+                              true,              // openTrade
+                              true,              // updateLabel
+                              InpShowArrows,     // showArrows
+                              time, 
+                              close,
+                              g_signalStartDT,
+                              g_currentTrade, 
+                              g_tradeStats,
+                              g_arrowCfg, 
+                              g_labelCfg,
+                              InpSoundTradeAlarm,
+                              BufferTradePL, 
+                              BufferRunningPL, 
+                              BufferTradeCount,
+                              BufferWinPct, 
+                              BufferShortCount, 
+                              BufferShortWinPct,
+                              BufferLongCount, 
+                              BufferLongWinPct,
+                              BufferArrowBuy,
+                              BufferArrowSell);
+
+            //--- Update state
+            g_signalDirection = (signal == SIGNAL_LONG) ? 1 : -1;
+            g_lastSignalBar = i;
+         }
+      }
+   }
+
+   return(rates_total);
+}
+//+------------------------------------------------------------------
+</code></pre>
+<p><strong>Changes made:</strong></p>
+<ol>
+<li>
+<p><strong>Removed temp arrays entirely</strong> — copying directly into <code>BufferTEMA</code> and <code>BufferMA</code></p>
+</li>
+<li>
+<p><strong>Removed redundant copy loop</strong> — eliminated <code>BufferTEMA[i] = tempTEMA[i]</code> and <code>BufferMA[i] = tempMA[i]</code></p>
+</li>
+<li>
+<p><strong>Changed return on error from <code>return(0)</code> to <code>return(prev_calculated)</code></strong> — returning 0 forces full recalc; returning prev_calculated preserves progress</p>
+</li>
+<li>
+<p><strong>Calculated copy range</strong> — <code>copyStart</code> and <code>copyCount</code> limit copying to only needed bars plus lookback</p>
+</li>
+<li>
+<p><strong>Adjusted CopyBuffer start position</strong> — <code>rates_total - 1 - copyStart</code> converts from non-series index to series position</p>
+</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:12 UTC</span></div><div class="body">This code crashes on out of range error on the last statement:
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+//   int rates_totala = Bars(_Symbol, PERIOD_CURRENT);
+   int rates_total = BarsCalculated(iHndlIndy);
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; TOP OF FUNCTION rates_total&lt;&quot;,rates_total,&quot;&gt; g_barsTotal&lt;&quot;,g_barsTotal,&quot;&gt;&quot;);
+   
+   //--- Check for new bar
+   if(rates_total == g_barsTotal)
+   {
+      //--- Same bar - just check equity floor
+      CheckEquityFloor();
+      return;
+   }
+   
+   g_barsTotal = rates_total - 1;
+   int prev_calculated = g_barsTotal;
+   g_barsTotal = rates_total;
+   
+   //--- Skip first run (history load)
+   if(prev_calculated == 0)
+      return;
+   
+   //--- Only process on live bar
+   int liveBar = rates_total - 1;
+   int iCopyBarCNT = rates_total - prev_calculated + 1;
+   
+   
+   //--- Copy arrow buffers from on-chart indicator
+   ArrayResize(IndArrowBuy, rates_total);
+   ArrayResize(IndArrowSell, rates_total);
+   
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, iCopyBarCNT, IndArrowBuy) != iCopyBarCNT)
+      return;
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_SELL, 0, iCopyBarCNT, IndArrowSell) != iCopyBarCNT)
+      return;
+   
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; AFTER COPYBUFFER rates_total&lt;&quot;,rates_total,
+      &quot;&gt; COPIED iCopyBarCNT&lt;&quot;,iCopyBarCNT,&quot;&gt; bars&quot;);
+   //--- Check for new signal on previous bar (completed bar)
+   int checkBar = liveBar - 1;
+   if(checkBar &lt;= g_lastProcessedSignalBar)
+      return;
+   
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; AFTER RESIZE IndArrow... arrays, ArraySize(IndArrowBuy)&lt;&quot;,ArraySize(IndArrowBuy),
+   &quot;&gt; rArraySize(IndArrowSell)&lt;&quot;,ArraySize(IndArrowSell),&quot;&gt; iCopyBarCNT&lt;&quot;,iCopyBarCNT,&quot;&gt;&quot;);
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; BEFORE DETECT SIGNALS checkBar&lt;&quot;,checkBar,&quot;&gt;  g_lastProcessedSignalBar&lt;&quot;,g_lastProcessedSignalBar,&quot;&gt;&quot;);
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; AFTER  DETECT SIGNALS IndArrowBuy[checkBar&lt;&quot;,checkBar,&quot;&gt;]&lt;&quot;,IndArrowBuy[checkBar],&quot;&gt;&quot;);
+
+Here is the test output:
+
+2026.02.13 16:50:43.142	LazyTrader_MJM (USDJPY.a,M30)	ChartID&lt;133608959982095577&gt;: [LazyTrader_MJM.mq5] [OnTick] LINE 501 TOP OF FUNCTION rates_total&lt;100095&gt; g_barsTotal&lt;0&gt;
+2026.02.13 16:50:43.142	LazyTrader_MJM (USDJPY.a,M30)	ChartID&lt;133608959982095577&gt;: [LazyTrader_MJM.mq5] [OnTick] LINE 533 AFTER COPYBUFFER rates_total&lt;100095&gt; COPIED iCopyBarCNT&lt;2&gt; bars
+2026.02.13 16:50:43.142	LazyTrader_MJM (USDJPY.a,M30)	ChartID&lt;133608959982095577&gt;: [LazyTrader_MJM.mq5] [OnTick] LINE 540 AFTER RESIZE IndArrow... arrays, ArraySize(IndArrowBuy)&lt;2&gt; rArraySize(IndArrowSell)&lt;2&gt; iCopyBarCNT&lt;2&gt;
+2026.02.13 16:50:43.142	LazyTrader_MJM (USDJPY.a,M30)	ChartID&lt;133608959982095577&gt;: [LazyTrader_MJM.mq5] [OnTick] LINE 542 BEFORE DETECT SIGNALS checkBar&lt;100093&gt;  g_lastProcessedSignalBar&lt;-1&gt;
+2026.02.13 16:50:43.142	LazyTrader_MJM (USDJPY.a,M30)	array out of range in &#x27;LazyTrader_MJM.mq5&#x27; (543,164)
+
+
+Why is the CopyBuffer reducing the size of the array to 2?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:12 UTC</span></div><div class="body"><p><code>CopyBuffer</code> resizes the destination array to match the copy count, not your pre-resize.</p>
+<p>From the docs: <em>&quot;If the array is dynamic, the array will be resized to match the count of copied data.&quot;</em></p>
+<p>You resized to 100095, then <code>CopyBuffer</code> resized it down to 2.</p>
+<p><strong>The fix:</strong> Since you only need to check the just-closed bar, don't resize to full history. Copy only what you need and index correctly:</p>
+<pre><code class="language-cpp">//--- Copy only the bars we need (current + previous)
+int iCopyBarCNT = 2;
+
+ArrayResize(IndArrowBuy, iCopyBarCNT);
+ArrayResize(IndArrowSell, iCopyBarCNT);
+
+if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, iCopyBarCNT, IndArrowBuy) != iCopyBarCNT)
+   return;
+if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_SELL, 0, iCopyBarCNT, IndArrowSell) != iCopyBarCNT)
+   return;
+
+//--- Index 1 = just-closed bar (CopyBuffer start 0 = current bar)
+int checkBar = 1;
+</code></pre>
+<p>With <code>CopyBuffer(..., 0, 2, ...)</code>:</p>
+<ul>
+<li><code>IndArrowBuy[0]</code> = current forming bar</li>
+<li><code>IndArrowBuy[1]</code> = just-closed bar (where arrow is planted)</li>
+</ul>
+<p>Then track processed signals by datetime instead of bar index, since bar indices shift.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:19 UTC</span></div><div class="body">so the reason that doesn&#x27;t happen when copying into an indicator buffer bound with SetIndexBuffer is that the array is fixed size after binding?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:19 UTC</span></div><div class="body"><p>Correct. Indicator buffers bound with <code>SetIndexBuffer</code> are managed by the terminal. The terminal controls their size (always <code>rates_total</code>), so <code>CopyBuffer</code> can't resize them — it just writes into the existing allocation.</p>
+<p>Dynamic arrays you create yourself are fair game for <code>CopyBuffer</code> to resize.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:19 UTC</span></div><div class="body">So how do you CopyBuffer into a dynamic array without doing thousands of bars over and over?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:20 UTC</span></div><div class="body"><p>Two options:</p>
+<p><strong>1. Use series indexing (simplest for EAs)</strong></p>
+<pre><code class="language-cpp">ArraySetAsSeries(IndArrowBuy, true);
+ArraySetAsSeries(IndArrowSell, true);
+
+//--- Copy only what you need
+int iCopyBarCNT = 2;
+CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, iCopyBarCNT, IndArrowBuy);
+CopyBuffer(iHndlIndy, IND_BUF_ARROW_SELL, 0, iCopyBarCNT, IndArrowSell);
+
+//--- Index 1 = just-closed bar, always
+int checkBar = 1;
+</code></pre>
+<p>You never need large indices. Recent bars are always 0, 1, 2...</p>
+<p><strong>2. Copy into temp, then merge (if you truly need full history)</strong></p>
+<pre><code class="language-cpp">double temp[];
+int iCopyBarCNT = rates_total - prev_calculated + 1;
+
+CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, iCopyBarCNT, temp);
+
+//--- Merge into main array at correct position
+ArrayResize(IndArrowBuy, rates_total);
+for(int i = 0; i &lt; iCopyBarCNT; i++)
+   IndArrowBuy[rates_total - 1 - i] = temp[i];
+</code></pre>
+<p>For an EA checking signals, option 1 is the right approach. You don't need 100k bars of arrow history — you only ever check the just-closed bar.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:21 UTC</span></div><div class="body">so why won&#x27;t #1 resize the arrays to iCopyBarCNT?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:21 UTC</span></div><div class="body"><p>It will. That's the point.</p>
+<p>With series indexing, you only need 2 elements because you access <code>[1]</code> for the just-closed bar, not <code>[100093]</code>.</p>
+<p>The array being size 2 is correct and sufficient. You're no longer trying to index by bar position in history — you're indexing by recency (0 = current, 1 = previous).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:21 UTC</span></div><div class="body">DO YOU NOT GET THAT I&#x27;M BUILDING A HISTORY AND DON&#x27;T WANT TO REBUILD IT EVERY TICK?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:21 UTC</span></div><div class="body"><p>Got it. <code>CopyBuffer</code> always resizes dynamic arrays. No way to prevent it.</p>
+<p><strong>Solution:</strong> Copy into temp, then <code>ArrayCopy</code> into your history array:</p>
+<pre><code class="language-cpp">double temp[];
+int newBars = rates_total - prev_calculated;
+if(newBars &lt; 1) newBars = 1;
+
+if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, newBars, temp) != newBars)
+   return;
+
+//--- Expand history array, preserve existing data
+int oldSize = ArraySize(IndArrowBuy);
+ArrayResize(IndArrowBuy, rates_total);
+
+//--- Copy new data into correct position (end of non-series array)
+//--- temp[0] = current bar, temp[newBars-1] = oldest of new bars
+for(int i = 0; i &lt; newBars; i++)
+   IndArrowBuy[rates_total - 1 - i] = temp[i];
+</code></pre>
+<p>The overhead is minimal — small temp array, quick copy loop, only for new bars.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:22 UTC</span></div><div class="body">Isn&#x27;t there a way to use ArrayCopy() to do it rather than a for() loop?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:23 UTC</span></div><div class="body"><p>Yes, but only if you switch <code>IndArrowBuy</code> to series:</p>
+<pre><code class="language-cpp">//--- In OnInit
+ArraySetAsSeries(IndArrowBuy, true);
+ArraySetAsSeries(IndArrowSell, true);
+
+//--- In OnTick
+double temp[];
+int newBars = rates_total - prev_calculated;
+if(newBars &lt; 1) newBars = 1;
+
+if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, newBars, temp) != newBars)
+   return;
+
+ArrayResize(IndArrowBuy, rates_total);
+ArrayCopy(IndArrowBuy, temp, 0, 0, newBars);
+</code></pre>
+<p>With series: <code>IndArrowBuy[0]</code> = current bar, <code>IndArrowBuy[1]</code> = previous. <code>CopyBuffer</code> returns data in the same order, so <code>ArrayCopy</code> works directly.</p>
+<p>With non-series: The data needs reversing because <code>CopyBuffer</code> puts current bar at <code>temp[0]</code>, but non-series needs it at <code>IndArrowBuy[rates_total-1]</code>. MQL5 has no <code>ArrayReverse</code>, so you're stuck with a loop.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:24 UTC</span></div><div class="body">The CopyBuffer docs make clear that it places the data AT THE END of the receiving array regardless of indexing.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:24 UTC</span></div><div class="body"><p>You're right. For non-series arrays:</p>
+<pre><code class="language-cpp">double temp[];
+int newBars = rates_total - prev_calculated;
+if(newBars &lt; 1) newBars = 1;
+
+if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, newBars, temp) != newBars)
+   return;
+
+ArrayResize(IndArrowBuy, rates_total);
+ArrayCopy(IndArrowBuy, temp, rates_total - newBars, 0, newBars);
+</code></pre>
+<p><code>CopyBuffer</code> into non-series temp places oldest at <code>temp[0]</code>, newest at <code>temp[newBars-1]</code>. That's already the correct order for the end of a non-series history array.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:29 UTC</span></div><div class="body">ok, will this work?
+
+   int iCopyBarCNT = rates_total - prev_calculated + 1;
+   
+   
+   //--- Copy arrow buffers from on-chart indicator
+   ArrayResize(IndArrowBuy, rates_total);
+   ArrayResize(IndArrowSell, rates_total);
+   double tmpArray[];
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_BUY, 0, iCopyBarCNT, tmpArray) != iCopyBarCNT)
+      return;
+   ArrayCopy(IndArrowBuy, tmpArray, rates_total - iCopyBarCNT, 0, iCopyBarCNT);
+   if(CopyBuffer(iHndlIndy, IND_BUF_ARROW_SELL, 0, iCopyBarCNT, tmpArray) != iCopyBarCNT)
+      return;
+   ArrayCopy(IndArrowSell, tmpArray, rates_total - iCopyBarCNT, 0, iCopyBarCNT);</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:29 UTC</span></div><div class="body"><p>Yes, that will work.</p>
+<p>One edge case: on first run if <code>prev_calculated == 0</code>, then <code>iCopyBarCNT = rates_total + 1</code> which exceeds available bars. Ensure your <code>if(prev_calculated == 0) return;</code> check runs before this code.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:42 UTC</span></div><div class="body">Will this code prevent executing PlaySound() when OnCalculate is first run (and therefore prev_calculated == 0)?
+
+At the top of OnCalculate:
+
+   if(prev_calculated == 0)
+   {
+      bDoHistory = true;
+      ...
+   }
+
+HandleSignalEvent call (used to simply pass the InpSoundTradeAlarm parameter):
+
+            HandleSignalEvent(i, signal,
+                              true,              // closeTrade
+                              true,              // fillBuffers
+                              true,              // openTrade
+                              true,              // updateLabel
+                              InpShowArrows,     // showArrows
+                              time, 
+                              close,
+                              g_signalStartDT,
+                              g_currentTrade, 
+                              g_tradeStats,
+                              g_arrowCfg, 
+                              g_labelCfg,
+                              (InpSoundTradeAlarm &amp;&amp; !bDoHistory) ? true : false,
+                              BufferTradePL, 
+                              BufferRunningPL, 
+                              BufferTradeCount,
+                              BufferWinPct, 
+                              BufferShortCount, 
+                              BufferShortWinPct,
+                              BufferLongCount, 
+                              BufferLongWinPct,
+                              BufferArrowBuy,
+                              BufferArrowSell);
+
+At the end of the function, right before the closing bracket:
+
+   bDoHistory = false;
+   return(rates_total);
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:43 UTC</span></div><div class="body"><p>Yes, it will work.</p>
+<p>When <code>prev_calculated == 0</code>: <code>bDoHistory = true</code>, so <code>!bDoHistory = false</code>, so the sound parameter is <code>false</code>.</p>
+<p>Two notes:</p>
+<ol>
+<li>The ternary is redundant:</li>
+</ol>
+<pre><code class="language-cpp">(InpSoundTradeAlarm &amp;&amp; !bDoHistory) ? true : false
+</code></pre>
+<p>is equivalent to:</p>
+<pre><code class="language-cpp">(InpSoundTradeAlarm &amp;&amp; !bDoHistory)
+</code></pre>
+<ol start="2">
+<li>If <code>bDoHistory</code> is a local variable, the <code>bDoHistory = false</code> at the end is pointless — it's destroyed when the function returns. If it's static or global, it's fine but unnecessary since it's explicitly set to <code>true</code> only when <code>prev_calculated == 0</code>.</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-13 23:44 UTC</span></div><div class="body">It&#x27;s local, so just as well to declare it initialized to false?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-13 23:44 UTC</span></div><div class="body"><p>Yes. Declare at top:</p>
+<pre><code class="language-cpp">bool bDoHistory = (prev_calculated == 0);
+</code></pre>
+<p>Then remove both the assignment inside the <code>if</code> block and the one at the end.</p>
+</div></div>
+<nav class="pager"><a href="653-2026-02-13-autotrading-execution-failure-and-qualifying-average-buffer.html">&larr; Autotrading execution failure and qualifying average buffer</a><a href="../index.html">All chats</a><a href="655-2026-02-16-finding-kimi-code-points-usage.html">Finding Kimi code points usage &rarr;</a></nav></div></body></html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fixing hard-coded directional references</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-11_indicator-calculations-halting-after-trade-signals_8e9d2d5d.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_mql5-indicator-logic-analysis-and-optimization_a8617253.html">Next →</a></span></div><h1>Fixing hard-coded directional references</h1><div class="meta">Created 2026-05-11 18:44 UTC · Last updated 2026-05-11 20:11 UTC · 24 messages<br>Original: <a href="https://claude.ai/chat/35759ead-765a-473f-9429-68085ba37290">claude.ai/chat/35759ead-765a-473f-9429-68085ba37290</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 18:44 UTC</div><p>We need to fix hard-coded directional references in logic and names.</p>
+<p>Read agents.md which explains it and tell me if it's clear to you.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 18:44 UTC</div><p>Yes — one code path, one set of neutral names, direction controlled by a <code>_dir</code> value (<code>-1</code>/<code>0</code>/<code>+1</code>), no mirrored long/short blocks or directionally-named variables.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 18:45 UTC</div><p>Here's the code we need to fix, and the locations that GPT found were possible violations.</p>
+<p>GPT:</p>
+<p>Found these in live Triple_MA_MJM:</p>
+<ol>
+<li>Adverse reversal helper Around lines 184-224.<br />
+It splits the rule into long-side and short-side branches, uses prior low for one side and prior high for the other, and uses separate buy/sell price names. This is the biggest violation.</li>
+<li>Adverse helper call Around lines 430-437.<br />
+It feeds both prior low and prior high into the helper instead of passing one neutral reference selected by direction.</li>
+<li>Direction variable naming Around lines 184, 203, 457, and 530.<br />
+Several direction values are named as mixed camel-case or one-letter variables instead of clear _dir names.</li>
+<li>Outside-line reentry check Around lines 482-487.<br />
+It has separate MA-a and MA-b branches with mirrored high/low and close comparisons. That should be one direction-controlled reentry rule.</li>
+<li>Outside-line signal assignment Around lines 505-518.<br />
+It hard-codes MA-a as short and MA-b as long in separate branches. That should be one direction-controlled signal assignment.</li>
+<li>Direct arrow buffer assignment Around lines 553-555.<br />
+It has separate long/buy and short/sell branches. That should be direction-selected output handling.</li>
+<li>Comments that encode the same problem Around lines 450, 471-472, 476, 482, and 507.<br />
+The comments describe mirrored/uptrend/downtrend/short/long paths instead of one neutral rule controlled by direction.<br />
+I did not count the raw high/low price arrays or the visible long/short stat buffers as violations, because those are chart data sources or output surfaces, not decision logic.</li>
+</ol>
+<p>Come up with a change plan and present it.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 18:46 UTC</div><p>I agree with GPT's findings 1–5 and 7. I'd exclude #6 (arrow buffer assignment) — those are output surfaces, same category as the long/short stat buffers GPT correctly excluded.</p>
+<p>Here's the change plan:</p>
+<p><strong>Change 1 — Rewrite <code>AdverseMoveReverseSignal</code> signature and body (lines 184–227)</strong><br />
+Remove separate <code>priorLow</code>/<code>priorHigh</code> parameters. Take one <code>priorRef</code> (the direction-appropriate prior extreme, selected at call site). Remove the <code>tradeDir &gt; 0</code> / else branches. One code path: compute the reversal price as <code>priorRef - tradeDir * (adverseMoveMax + spreadAllowance)</code>, check whether current price has crossed it against the trade direction, assign the opposite-direction signal.</p>
+<p><strong>Change 2 — Fix the call site (lines 430–437)</strong><br />
+Pass one direction-selected price: <code>(g_lastSignalDir &gt; 0) ? low[i-1] : high[i-1]</code> instead of both <code>low[i-1]</code> and <code>high[i-1]</code>.</p>
+<p><strong>Change 3 — Eliminate <code>d</code>, use <code>g_dir</code> directly (line 457 and all downstream uses)</strong><br />
+By line 457 <code>g_dir</code> is guaranteed ±1. The local <code>d</code> is redundant. Remove it; replace all <code>d</code> references with <code>g_dir</code>.</p>
+<p><strong>Change 4 — Collapse outside-line reentry check to one rule (lines 482–487)</strong><br />
+Derive <code>reentry_dir</code> from <code>g_triggerMaId</code> (1→ −1, 2→ +1). Select <code>trigMA</code> and <code>excursionPrice</code> by direction. One compound condition: excursion price reached beyond the MA, and close came back inside.</p>
+<p><strong>Change 5 — Collapse outside-line signal assignment to one rule (lines 505–518)</strong><br />
+Use the same <code>reentry_dir</code> to assign <code>esig</code> and <code>signalPriceOverride</code> in one path instead of two mirrored branches.</p>
+<p><strong>Change 6 — Rewrite comments (lines 450, 471–472, 476, 482, 507)</strong><br />
+Replace directional descriptions ("uptrend → MA a, downtrend → MA b", "MA a reentry fires short") with neutral rule descriptions referencing direction values.</p>
+<p>No other changes. Scope is strictly these six items.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:16 UTC</div><p>I give up. I can't for the life of me get GPT to get its head straight on this one. Read the attached.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:17 UTC</div><p>The previous candle's direction doesn't matter. All four cases collapse to two:</p>
+<p><strong>Long trade, current candle adverse (down):</strong> previous candle's low. Always. Regardless of whether the previous candle was bullish or bearish.</p>
+<p><strong>Short trade, current candle adverse (up):</strong> previous candle's high. Always. Regardless of whether the previous candle was bullish or bearish.</p>
+<p>GPT kept splitting on previous-candle color and swapping in <code>close</code> for one branch. That's the error — candle color is irrelevant. The reference is always the previous extreme in the adverse direction.</p>
+<p>The existing code already implements this correctly in substance. The structural violation (mirrored branches, two price parameters) is a separate problem from the reference-price rule, which is sound.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:23 UTC</div><p>wrong</p>
+<p>T_dir is either -1 or +1<br />
+When T_dir is opposite previous candle spread, we expect movement to counter previous candle. If previous candle's spread is negative, its low is the reference. If it's positive, its high is the reference. Threshold is ref + (T_dir * (adverse-move-max + spread-cost))</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:23 UTC</div><p>Got it. I had it wrong — previous candle direction determines the reference, not trade direction.</p>
+<p>Previous candle spread negative → ref = previous low.<br />
+Previous candle spread positive → ref = previous high.<br />
+Threshold = ref + (T_dir × (adverse_move_max + spread_cost)).</p>
+<p>Fires only when T_dir opposes previous candle spread. Should I update Change 1 in the plan to use this rule?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:26 UTC</div><p>"Fires only when T_dir opposes previous candle spread." </p>
+<p>Why? </p>
+<p>It only fires when CURRENT candle's close moves OPPOSITE T_dir. It's not relevant UNTIL then. Previous candle's spread is ONLY used for determining reference point: it's high or low.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:26 UTC</div><p>You're right. The firing condition is current candle's close moving opposite T_dir past the threshold. That's the only gate.</p>
+<p>Previous candle spread determines reference (negative → low, positive → high). Nothing more.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:27 UTC</div><p>write up an extremely clear prompt/change plan to implement the correct logic.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:28 UTC</div><p><strong>Adverse Move Reversal — corrected rule and implementation plan</strong></p>
+<hr />
+<p><strong>The rule:</strong></p>
+<p>Previous candle spread = close − open.</p>
+<p>If spread &lt; 0 → ref = previous candle's low.<br />
+If spread ≥ 0 → ref = previous candle's high.</p>
+<p>Threshold = ref + (T_dir × (adverse_move_max + spread_cost)).</p>
+<p>Fires when current candle's close has moved opposite T_dir past threshold.</p>
+<p>In code: <code>(close - threshold) * T_dir &lt; 0</code>.</p>
+<p>When it fires, signal is opposite T_dir. Signal price = threshold.</p>
+<hr />
+<p><strong>Change 1 — Rewrite <code>AdverseMoveReverseSignal</code> (lines 184–227)</strong></p>
+<p>New signature:</p>
+<pre><code>bool AdverseMoveReverseSignal(
+   int    tradeDir,
+   double momentumSlope,
+   double currentClose,
+   double prevOpen,
+   double prevClose,
+   double prevHigh,
+   double prevLow,
+   double nonZeroSlopeMin,
+   double adverseMoveMax,
+   double spreadAllowance,
+   ENUM_SIGNAL_TYPE &amp;signal,
+   double &amp;signalPrice)
+</code></pre>
+<p>Body — one path, no branches by direction:</p>
+<ol>
+<li>Guard: <code>tradeDir == 0</code> → return false.</li>
+<li>Guard: <code>MathAbs(momentumSlope) &lt; nonZeroSlopeMin</code> → return false.</li>
+<li>Guard: momentum slope not opposing trade → return false.</li>
+<li><code>double prevSpread = prevClose - prevOpen;</code></li>
+<li><code>double ref = (prevSpread &lt; 0.0) ? prevLow : prevHigh;</code></li>
+<li><code>double threshold = ref + tradeDir * (adverseMoveMax + spreadAllowance);</code></li>
+<li><code>if((currentClose - threshold) * tradeDir &lt; 0.0)</code> → fire.</li>
+<li>Signal = opposite T_dir. Signal price = threshold.</li>
+</ol>
+<hr />
+<p><strong>Change 2 — Fix call site (lines 430–437)</strong></p>
+<p>Pass <code>open[i-1]</code>, <code>close[i-1]</code>, <code>high[i-1]</code>, <code>low[i-1]</code> instead of just <code>low[i-1]</code> and <code>high[i-1]</code>. Reference selection happens inside the function.</p>
+<hr />
+<p><strong>Changes 3–6 from prior plan remain as stated</strong> (eliminate <code>d</code>, collapse reentry check, collapse signal assignment, rewrite comments).</p>
+<p>Does this match your intent?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:29 UTC</div><p>explain "In code: <code>(close - threshold) * T_dir &lt; 0</code>."</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:29 UTC</div><p>T_dir = +1 (long): adverse means close dropped below threshold. <code>close - threshold</code> is negative. Multiply by +1, still negative. Condition true.</p>
+<p>T_dir = −1 (short): adverse means close rose above threshold. <code>close - threshold</code> is positive. Multiply by −1, becomes negative. Condition true.</p>
+<p>If close hasn't crossed the threshold in the adverse direction, the product is positive or zero. Condition false.</p>
+<p>One expression handles both directions without branching.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:30 UTC</div><p>what about the other 2 cases?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:30 UTC</div><p>T_dir = +1, close above threshold: <code>close - threshold</code> positive × +1 = positive. Condition false. No fire.</p>
+<p>T_dir = −1, close below threshold: <code>close - threshold</code> negative × −1 = positive. Condition false. No fire.</p>
+<p>All four cases correct.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:31 UTC</div><p>wrong cases. There are FOUR cases of ADVERSE movement. Those two do not represent adverse movement. The other two.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:32 UTC</div><p>Right — previous candle spread gives two sub-cases per trade direction. I verified one of each. The other two:</p>
+<p><strong>T_dir = +1, prevSpread ≥ 0</strong> (long trade, previous candle bullish): ref = prevHigh. Threshold = prevHigh + adverse + spread. Close drops below threshold. <code>close - threshold</code> negative × +1 = negative. Fires. ✓</p>
+<p><strong>T_dir = −1, prevSpread &lt; 0</strong> (short trade, previous candle bearish): ref = prevLow. Threshold = prevLow − adverse − spread. Close rises above threshold. <code>close - threshold</code> positive × −1 = negative. Fires. ✓</p>
+<p>All four adverse cases fire correctly with the single expression.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 19:34 UTC</div><p>At least you identified the cases. Your logic is still wrong.</p>
+<p>Go step by step through the T_dir = +1, prevSpread ≥ 0 case, starting with the open of the open of the current bar. Trace through the adverse price movement.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 19:36 UTC</div><p>T_dir = +1 (long trade). Previous candle bullish, so ref = prevHigh.</p>
+<p>Current bar opens near previous close, which is at or slightly below prevHigh.</p>
+<p>Price moves down (adverse to our long).</p>
+<p>The question is how far below prevHigh is too far. The threshold should be <em>below</em> the reference — prevHigh minus the adverse allowance minus spread.</p>
+<p>Which means the formula should be:</p>
+<p><code>threshold = ref - T_dir * (adverse_move_max + spread_cost)</code></p>
+<p>Not plus. I had the sign wrong in the plan.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 20:10 UTC</div><p>OK, generalize that now so we just use T_dir, prev bar spread, and current close movement WITHOUT directional hard-coded logic or names.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 20:10 UTC</div><p><code>ref = (prevSpread &lt; 0) ? prevLow : prevHigh</code></p>
+<p><code>threshold = ref - T_dir × (adverse_move_max + spread_cost)</code></p>
+<p>Fires when <code>(currentClose - threshold) × T_dir &lt; 0</code></p>
+<p>Ref picks the previous extreme from previous candle direction. Threshold extends from ref against the trade. Fires when current close crosses threshold against the trade. One formula, all four cases.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 20:11 UTC</div><p>OK, NOW write the correct change plan</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 20:11 UTC</div><p><strong>Adverse Move Reversal — corrected change plan</strong></p>
+<hr />
+<p><strong>The rule:</strong></p>
+<p><code>prevSpread = prevClose - prevOpen</code></p>
+<p><code>ref = (prevSpread &lt; 0) ? prevLow : prevHigh</code></p>
+<p><code>threshold = ref - T_dir × (adverse_move_max + spread_cost)</code></p>
+<p>Fires when <code>(currentClose - threshold) × T_dir &lt; 0</code></p>
+<p>Signal = opposite T_dir. Signal price = threshold.</p>
+<hr />
+<p><strong>Change 1 — Rewrite <code>AdverseMoveReverseSignal</code> (lines 184–227)</strong></p>
+<p>New signature:</p>
+<pre><code>bool AdverseMoveReverseSignal(
+   int    tradeDir,
+   double momentumSlope,
+   double currentClose,
+   double prevOpen,
+   double prevClose,
+   double prevHigh,
+   double prevLow,
+   double nonZeroSlopeMin,
+   double adverseMoveMax,
+   double spreadAllowance,
+   ENUM_SIGNAL_TYPE &amp;signal,
+   double &amp;signalPrice)
+</code></pre>
+<p>Body — one path, no direction branches:</p>
+<ol>
+<li>Guard: <code>tradeDir == 0</code> → return false.</li>
+<li>Guard: <code>MathAbs(momentumSlope) &lt; nonZeroSlopeMin</code> → return false.</li>
+<li>Guard: <code>SignOf(momentumSlope) == tradeDir</code> → return false.</li>
+<li><code>double prevSpread = prevClose - prevOpen;</code></li>
+<li><code>double ref = (prevSpread &lt; 0.0) ? prevLow : prevHigh;</code></li>
+<li><code>double threshold = ref - tradeDir * (adverseMoveMax + spreadAllowance);</code></li>
+<li><code>if((currentClose - threshold) * tradeDir &lt; 0.0)</code> → fire.</li>
+<li><code>signal = (tradeDir &gt; 0) ? SIGNAL_SHORT : SIGNAL_LONG;</code></li>
+<li><code>signalPrice = threshold;</code></li>
+<li>Return true.</li>
+</ol>
+<hr />
+<p><strong>Change 2 — Fix call site (lines 430–437)</strong></p>
+<p>Pass <code>open[i-1]</code>, <code>close[i-1]</code>, <code>high[i-1]</code>, <code>low[i-1]</code> to match the new signature. Reference selection happens inside the function.</p>
+<hr />
+<p><strong>Change 3 — Eliminate <code>d</code>, use <code>g_dir</code> directly (line 457 and all downstream)</strong></p>
+<p><code>d</code> is a redundant copy of <code>g_dir</code> which is guaranteed ±1 by that point. Remove <code>d</code>, replace all references with <code>g_dir</code>.</p>
+<hr />
+<p><strong>Change 4 — Collapse outside-line reentry check (lines 482–487)</strong></p>
+<p>Derive <code>reentry_dir</code> from <code>g_triggerMaId</code> (1 → −1, 2 → +1). Select trigger MA value and excursion price by direction. One compound condition replacing two mirrored branches.</p>
+<hr />
+<p><strong>Change 5 — Collapse outside-line signal assignment (lines 505–518)</strong></p>
+<p>Use <code>reentry_dir</code> to assign <code>esig</code> and <code>signalPriceOverride</code> in one path.</p>
+<hr />
+<p><strong>Change 6 — Rewrite comments (lines 450, 471–472, 476, 482, 507)</strong></p>
+<p>Replace directional descriptions with neutral rule descriptions.</p>
+<hr />
+<p>No other changes. Does this match your intent?</p></div><div class="nav"><span><a href="2026-05-11_indicator-calculations-halting-after-trade-signals_8e9d2d5d.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_mql5-indicator-logic-analysis-and-optimization_a8617253.html">Next →</a></span></div></div></body></html>

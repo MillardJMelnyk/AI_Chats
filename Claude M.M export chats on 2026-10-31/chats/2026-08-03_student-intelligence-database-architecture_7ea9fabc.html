@@ -1,0 +1,137 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Student intelligence database architecture</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-08-03_screen-time-risks-for-children-separating-fact-from-fear_5dbebc23.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-08-02_getting-past-the-fire-on-crystal-map_613fafb1.html">Next →</a></span></div><h1>Student intelligence database architecture</h1><div class="meta">Created 2026-08-03 15:12 UTC · Last updated 2026-08-03 15:43 UTC · 27 messages<br>Original: <a href="https://claude.ai/chat/7ea9fabc-5fcb-4dc0-88c1-9091e34d3241">claude.ai/chat/7ea9fabc-5fcb-4dc0-88c1-9091e34d3241</a></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:13 UTC</div><p><strong>Memory updated</strong></p>
+<p>New scope in the md that changes the hosting math — ranked:</p>
+<ol>
+<li><strong>Student Intelligence = write-heavy database.</strong> Per-word mastery (seen/used/correct), per-grammar-point attempts, every answer and error logged. That's millions of rows within months of real use. Postgres, not the NLP tier, becomes the box that forces the first split — it needs NVMe, real backups, and eventually a read replica for the analytics queries.</li>
+<li><strong>Materials</strong> (PDFs, documents, uploads) — object storage, S3/R2, ~$5/mo. Not on the box. Wasn't in the earlier count.</li>
+<li><strong>Student Plus</strong> — payments infra (Stripe or Mercado Pago for MX), webhook worker, plus per-student LLM spend for AI conversation and writing correction. Variable cost that scales with headcount, not a server.</li>
+<li><strong>Spaced repetition</strong> — scheduler + queue. Cheap, but it's a always-on worker.</li>
+<li><strong>Context/template library</strong> — roughly 200 templates × 6 CEFR levels. Zero server cost, and by far the largest amount of actual work in the document. Authoring and QA is the real bottleneck, not infrastructure.</li>
+</ol>
+<p>MVP fleet is unchanged: one Querétaro box + external correction/AI APIs + a storage bucket. Add ~$5.</p>
+<p>Group classrooms is still the open question:</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:14 UTC</div><p>Q: Group classrooms at launch, or 1:1 only for the MVP?<br />
+A: Group + breakouts at launch — three boxes</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:15 UTC</div><p>Three boxes:</p>
+<p><strong>1. Querétaro — real-time.</strong> LiveKit SFU + whiteboard sync server. 8 vCPU / 16GB. This is the box that scales worst and costs most.</p>
+<p><strong>2. Querétaro — app + Postgres.</strong> 4 vCPU / 8GB, NVMe, real backups. Same region as box 1 so the classroom engine isn't reaching across an ocean for state.</p>
+<p><strong>3. Hetzner EU — NLP workers.</strong> spaCy + self-hosted LanguageTool. CX33 or CAX with 8–16GB. Latency irrelevant, buy the cheapest RAM.</p>
+<p>Plus an object storage bucket for materials. Roughly $90–105/mo total.</p>
+<p>Three things that will bite you on box 1:</p>
+<ul>
+<li><strong>Bandwidth, not CPU, is the constraint.</strong> An SFU forwards streams; a 6-student group room at 720p is ~10 Mbps out per participant. Get is*hosting's egress cap and overage price in writing before you sign.</li>
+<li><strong>You need a TURN server.</strong> Students behind corporate or mobile NAT can't do peer-to-peer; their media relays through you, on the same bandwidth budget.</li>
+<li><strong>Whiteboard state is not Postgres data.</strong> Keep CRDT docs in their own store with periodic snapshots. Writing every stroke transactionally to the main DB will take box 2 down.</li>
+</ul>
+<p>One flag and I'll drop it: group + breakouts at launch is the most expensive and slowest possible starting configuration, and it delays proof that the core loop works. You asked, that's the fleet.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:16 UTC</div><p>my hetzner is a cpx11 in ashford or</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:16 UTC</div><p>That box is 2 vCPU / 2GB. It can't hold any of the three roles — LanguageTool alone wants a 2GB heap before spaCy loads a model.</p>
+<p>Use it as the queue/scheduler worker (spaced repetition, webhooks, cron) or as staging. Nothing on the critical path.</p>
+<p>Two things about that location: the cheap CX/CAX line I pointed you at is EU-only, and Hetzner's US pricing runs roughly double EU for the same RAM. Since the NLP tier doesn't care about latency, put that box in Falkenstein or Helsinki, not Ashburn — same 8GB for about half.</p>
+<p>Ambiguity I won't guess at: "ashford or" — Ashburn, Virginia or Hillsboro, Oregon?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:19 UTC</div><p>right so initial launch will just be the video calling white baords etcs, no testing correction yet. The tests aill not be automated till i build my clientele and can afford the $100 a month cost. I will do another testing maker for teachers, where they create the answers themselves, and then when the test is taken it will compare their answers based on that, it will be much simpler at first,</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:19 UTC</div><p>That drops box 3 and the $100 NLP tier entirely. Fleet becomes two Querétaro boxes — real-time, and app + Postgres — plus the CPX11 for queue/staging.</p>
+<p>Teacher-authored answer keys are the right call at this stage, but exact string match will fail badly with language students. Build in from day one, it's an afternoon of work:</p>
+<ul>
+<li>Normalize before comparing: trim, collapse whitespace, lowercase, strip trailing punctuation, normalize curly quotes and accents.</li>
+<li>Let teachers enter <strong>multiple accepted answers</strong> per item, not one. "I have got" / "I've got" / "I have" are all correct and a single key marks two of them wrong.</li>
+<li>Support answer types beyond free text: multiple choice, matching, gap-fill with a word bank. Those have no ambiguity and cover most of what A1–B1 teachers actually assess.</li>
+<li>Flag near-misses for teacher review instead of auto-failing. One-character-off gets queued, not marked wrong.</li>
+</ul>
+<p>Store every response verbatim regardless of scoring. When you can afford the NLP tier, that corpus is what you replay through it — and it's what tells you which items the keys are getting wrong.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:20 UTC</div><p>right i could do like a string comparison with regex and if the difference is huge evaulatae from there</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:20 UTC</div><p>Regex is the wrong tool for the "how different" question — it answers yes/no on a pattern, not how far apart two strings are. Use Levenshtein distance for that. Ratio of edit distance to answer length gives you a clean three-way split: near-zero is correct, small is teacher review, large is wrong.</p>
+<p>Where regex does earn its place is in the teacher's answer key, not the comparison — let them write <code>I(f| ha)ve got</code> style optional groups if they want. Most won't. Multiple accepted answers gets you 90% of it without asking teachers to learn syntax.</p>
+<p>One caution: Levenshtein doesn't know meaning. "I do a decision" is one edit from "I make a decision" and completely wrong; "we didn't have any" versus "we had none" is far apart and correct. Set the auto-fail threshold loose and let the review queue absorb the middle — teacher time is cheap at your volume, wrong grades are not.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:22 UTC</div><p>ok, honestly there will be a prompt in which ai will be returning a json for these answer groups</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:22 UTC</div><p>That's the better version — the AI generates the accepted-answer variants at authoring time, the teacher approves or edits them, and grading itself stays offline string comparison. No LLM call when a student submits, so cost stays fixed per test rather than per attempt.</p>
+<p>Three things to nail down:</p>
+<ul>
+<li><strong>Generate once, store the result.</strong> The variant list lives in the test object in Postgres. Never regenerate at grade time — same test must grade identically today and in six months.</li>
+<li><strong>Teacher approves before the test goes live.</strong> The AI will produce variants that are wrong for the level: accepting a B2 phrasing on an A1 gap-fill teaches the wrong thing. Show the list, let them delete.</li>
+<li><strong>Validate the JSON on the way in.</strong> Schema check, reject and retry on malformed output. A test that fails to parse at 8am with a class waiting is the failure mode you care about.</li>
+</ul>
+<p>Ask the model for level-appropriate variants explicitly — pass the CEFR level and grammar focus into the prompt. Without it you'll get every synonym in English.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:24 UTC</div><p>ok so lets go back to what we're really after should i go with the v8 plan from cloudinghost?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:24 UTC</div><p>I don't have specs for that plan — it wasn't in this conversation, and "cloudinghost" isn't a provider I know. Earlier we've been sizing is*hosting Querétaro.</p>
+<p>Give me vCPU, RAM, disk type and size, bandwidth allowance and overage price, and monthly cost, and I'll tell you whether it carries the real-time box.</p>
+<p>The one number that decides it is bandwidth. Group video with breakouts is an egress problem before it's a CPU problem — an unmetered claim with a fair-use clause buried in the ToS is the trap here.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:25 UTC</div><p>https://www.cloudinghost.com/mexico/vps-barato/#planes we're comparing against *hosting in mexico, the cost difference per spec is huge but we're actually considering latency etc</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:25 UTC</div><p>No.</p>
+<p>They have no Mexican datacenter. The regions section lists Virginia, US and Montreal, CA — that's it, despite the page being sold as "VPS Barato en México." The same page exists for Argentina, Chile, Colombia, Peru and a dozen others with identical hardware — it's SEO localization, not local infrastructure. The company is CloudingHost Corp with a Florida phone number.</p>
+<p>So the price difference isn't a bargain, it's a different product. You'd be buying US-East and paying Querétaro→Virginia latency, which is the exact thing the is*hosting decision existed to avoid for group video and whiteboard sync.</p>
+<p>On the V8 itself: $8.95 for 4 vCPU / 8GB / 140GB NVMe. Two things in the fine print —</p>
+<ul>
+<li>Port speed is stated as a range, 300 Mbit/s to 1 Gbit/s, not per plan. On a $8.95 tier assume 300. That caps you around 25–30 concurrent 720p streams total, breakouts included.</li>
+<li>"Tráfico ilimitado" on a budget host plus sustained video egress is the classic suspension scenario. Get the fair-use threshold in writing before you put an SFU on it.</li>
+</ul>
+<p>Also worth noting: the Ultra plans specify "vCPU dedicados," the Core plans just say "2.6GHz." The marketing copy claims dedicated CPU everywhere; the spec sheet only claims it on Ultra.</p>
+<p>Where it does fit: if you decide US-East is acceptable for everything, a V16 at $14.95 is a legitimately cheap app + Postgres box. But then you've abandoned the Mexican-datacenter premise entirely, and Hetzner Ashburn is in the same conversation.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:27 UTC</div><p>yeah thats cloudinghost https://ishosting.com/en/vps/mx this is the other</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:28 UTC</div><p>is*hosting is the real thing — CloudHQ QRO1, Tier 3+, actual hardware in Querétaro. So the comparison is legitimate: you're paying roughly 4.7× for latency and location.</p>
+<p>Same 4-core / 8GB spec:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>CloudingHost V8</th>
+<th>is*hosting Premium</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Price</td>
+<td>$8.95</td>
+<td>$42.49 ($40.37 w/ is*smart)</td>
+</tr>
+<tr>
+<td>Disk</td>
+<td>140 GB NVMe</td>
+<td>50 GB NVMe</td>
+</tr>
+<tr>
+<td>Location</td>
+<td>Virginia</td>
+<td>Querétaro</td>
+</tr>
+<tr>
+<td>Latency from MX</td>
+<td>~50–60ms</td>
+<td>~5–15ms</td>
+</tr>
+<tr>
+<td>Bandwidth</td>
+<td>"unlimited," 300Mbit–1Gbit port</td>
+<td>Unmetered, 1Gbps port</td>
+</tr>
+</tbody>
+</table>
+<p>Three things on the is*hosting side that aren't in the headline price:</p>
+<ul>
+<li><strong>IPv4 is optional</strong> — it's a line item, not included. You need one.</li>
+<li><strong>50GB on Premium is thin</strong> for Postgres carrying per-word and per-attempt event rows. Elite (6 cores / 16GB / 80GB, $59.49) is the realistic DB-capable tier, or you buy disk as an upgrade.</li>
+<li><strong>Weekly backups only.</strong> Daily costs extra. For student data that's not optional — price it in.</li>
+</ul>
+<p>Given you just said you can't carry $100/mo yet, the sane launch is one is*hosting Elite at ~$59.49 running everything — app, Postgres, LiveKit, whiteboard — and split the SFU onto its own box when concurrent classes actually strain it. That's one bill, in Querétaro, and it keeps the latency you're paying for.</p>
+<p>Verify before you order: their AUP on sustained video egress. "Unmetered" on a 1Gbps port is the right shape for an SFU, but confirm in a support ticket that a WebRTC media server is permitted — get it in writing.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:35 UTC</div><p>what about the other in virginia</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:35 UTC</div><p>Virginia is usable. The latency case against it is weaker than I implied earlier — here are the actual numbers.</p>
+<p>Querétaro → Ashburn is roughly 50–60ms RTT. Through an SFU that means student-to-student mouth-to-ear picks up ~50–60ms extra each way. Total conversational delay lands around 200ms, which is noticeable on interruption and turn-taking but sits inside the range people run classes on every day. Whiteboard sync is even less of an issue: CRDT renders your own strokes locally and instantly, so you only see the delay on other people's strokes.</p>
+<p>So the $34/mo delta buys a real improvement, not a necessary one.</p>
+<p>The reason I'd still steer you off CloudingHost isn't milliseconds:</p>
+<ul>
+<li>No track record for sustained WebRTC egress, and "unlimited" on a $8.95 plan almost always has a fair-use clause that video trips first.</li>
+<li>Port speed unspecified per plan.</li>
+<li>Core-tier CPU isn't labelled dedicated in the specs even though the marketing copy claims it — you'd be on oversubscribed cores during class hours.</li>
+<li>Mexican ISP routing to US-East isn't always direct; Telmex in particular can hairpin through Dallas or Miami, so your real latency may be worse than the 50–60ms figure and will vary by student.</li>
+</ul>
+<p>If you want US-East cheap, use a provider whose bandwidth terms and AUP are actually documented — Hetzner's Ashburn location or DigitalOcean NYC. You'd pay more than $8.95 and less than $42, with terms you can hold them to.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:39 UTC</div><p>should i just buy the bullet and go local?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:39 UTC</div><p>Yes.</p>
+<p>Not for the latency — for the reasons that don't show up in a spec table. You're selling to Mexican teachers, the datacenter is in your city, support is in your timezone, and when a class drops mid-session you're debugging one variable instead of two. At $59.49 you're buying the ability to stop thinking about this and go build the thing.</p>
+<p>The scope in your md is a year of work minimum. The hosting decision has now consumed several rounds and the difference is $35 a month — less than one student's monthly fee.</p>
+<p>Order the Elite, add the IPv4, add daily backups, confirm the AUP on WebRTC egress, and move on.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:40 UTC</div><p>$35 a month is a lot</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:41 UTC</div><p>Fair — I shouldn't have waved that off.</p>
+<p>Then here's the honest version: at pre-revenue with zero clients, latency you can't yet measure against users you don't yet have is not worth $35/mo. Buy the cheap box, build the platform, and move to Querétaro when a paying teacher complains about lag or when you have the revenue to stop caring.</p>
+<p>Two things make that switch cheap later:</p>
+<ul>
+<li>Keep everything in Docker Compose from day one. Migrating hosts is then a rebuild and a DNS change, not a rewrite.</li>
+<li>Don't hardcode the LiveKit URL anywhere. Environment variable, one place.</li>
+</ul>
+<p>If you go cheap, go somewhere with documented terms rather than CloudingHost — the "unlimited traffic" risk on a video workload is a real chance of getting suspended mid-class, and that costs you a client, which costs more than $35. Hetzner Ashburn or DigitalOcean NYC, $12–24/mo range, terms you can point at.</p>
+<p>That's the last thing I'll say on hosting unless you ask.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:42 UTC</div><p>the equivalent in hetzner is $70</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:42 UTC</div><p>Then the argument's over — is*hosting wins on both axes. $59.49 in Querétaro beats $70 in Ashburn, and it's local.</p>
+<p>The only way Hetzner comes back is if you price the shared-vCPU CPX line instead of dedicated CCX. That's cheaper, but shared cores are the wrong thing to put an SFU on, so it's not actually the equivalent.</p>
+<p>Buy the Elite.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-03 15:43 UTC</div><p>give me an email of hostingcloud to see if there is a egress or webrtc media issue</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-03 15:43 UTC</div><p>Contact form is at cloudinghost.com/mexico/contacto — they don't publish a sales email address, only the phone number.</p>
+<p>Watch for a non-answer on question 2. "No hay límite" without a figure is the answer that means yes there is one.</p></div><div class="nav"><span><a href="2026-08-03_screen-time-risks-for-children-separating-fact-from-fear_5dbebc23.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-08-02_getting-past-the-fire-on-crystal-map_613fafb1.html">Next →</a></span></div></div></body></html>

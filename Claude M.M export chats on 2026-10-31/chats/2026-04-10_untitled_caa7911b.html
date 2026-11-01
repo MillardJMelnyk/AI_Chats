@@ -1,0 +1,33 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>(untitled)</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-10_interpreting-heiken-ashi-candles_a432b659.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-10_revisionstart-buffer-not-displaying-in-mql5-indicator_11f2c837.html">Next →</a></span></div><h1>(untitled)</h1><div class="meta">Created 2026-04-10 18:51 UTC · Last updated 2026-04-10 18:52 UTC · 2 messages<br>Original: <a href="https://claude.ai/chat/caa7911b-c58e-479a-a072-f917d1f3966f">claude.ai/chat/caa7911b-c58e-479a-a072-f917d1f3966f</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-10 18:51 UTC</div><p>The "RevisionStart" buffer is not appearing in the data window of this MQL5 indicator. Tell me why. I'm not asking you to code. Just report your analysis.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-10 18:52 UTC</div><h2>Analysis</h2>
+<p>The <code>RevisionStart</code> buffer is not appearing in the data window because of <strong>a mismatch between the buffer index and the plot index</strong>.</p>
+<p><strong>The problem:</strong></p>
+<ul>
+<li>On line 97, <code>BufferRevisionStart</code> is assigned to <strong>buffer index 8</strong>: <code>SetIndexBuffer(8, BufferRevisionStart, INDICATOR_DATA);</code></li>
+<li>On lines 108–110, you attempt to configure its display properties using <code>PlotIndexSetInteger(8, ...)</code> and <code>PlotIndexSetString(8, ...)</code></li>
+</ul>
+<p><strong>But here's the issue:</strong> <code>PlotIndexSet*</code> functions operate on <strong>plot indices</strong>, not buffer indices. These are only the same when every buffer is a plot buffer in sequential order—which isn't the case here.</p>
+<p>Your <code>#property indicator_plots 9</code> declares 9 plots, and your <code>#property</code> directives (lines 15–55) map plots 1–9 to their visual properties. However, the <code>SetIndexBuffer</code> calls use <code>INDICATOR_DATA</code> for all buffers, which means all 9 buffers are treated as plot buffers. The plot indices 0–8 should correspond to buffer indices 0–8 in that case, so in principle plot index 8 should work.</p>
+<p><strong>The actual culprit:</strong> The <code>PLOT_SHOW_DATA</code> flag on line 110 is being set correctly, but <code>DRAW_NONE</code> plots with <code>PLOT_SHOW_DATA = true</code> still won't appear in the data window unless the buffer contains <strong>non-EMPTY_VALUE data at the cursor position</strong>.</p>
+<p>Look at lines 186–187:</p>
+<pre><code class="language-cpp">for(int i = 0; i &lt; rates_total; i++)
+   BufferRevisionStart[i] = (double)start;
+</code></pre>
+<p>This loop runs for all bars, but <strong>on the first call</strong> (when <code>prev_calculated == 0</code>), <code>start</code> is 0. On subsequent calls, <code>start</code> gets a value based on pivot lookback—but you're overwriting the entire buffer every tick with the same <code>start</code> value for all bars. That's fine for populating the buffer.</p>
+<p><strong>The real reason it's not showing:</strong></p>
+<p>Your <code>#property</code> declarations at lines 53–55 set <code>indicator_type9</code> to <code>DRAW_NONE</code>. The <code>#property</code> directives are compiled statically and take precedence. Even though you're calling <code>PlotIndexSetInteger(8, PLOT_DRAW_TYPE, DRAW_NONE)</code> at runtime (which is redundant since it's already <code>DRAW_NONE</code>), the key issue is that <strong><code>DRAW_NONE</code> plots typically don't show in the data window by default</strong>, and the <code>PLOT_SHOW_DATA</code> flag you set at runtime may be ignored because the <code>#property</code> block doesn't include an equivalent static declaration.</p>
+<p><strong>Bottom line:</strong> The <code>#property</code> block doesn't have a way to statically declare <code>PLOT_SHOW_DATA = true</code>. You're relying on runtime <code>PlotIndexSetInteger(8, PLOT_SHOW_DATA, true)</code> to enable it, but for <code>DRAW_NONE</code> plots, this runtime setting may not take effect reliably in all MT5 builds, or it may require the buffer to be declared as <code>INDICATOR_CALCULATIONS</code> rather than <code>INDICATOR_DATA</code> (though that would also hide it).</p>
+<p>The most likely fix: change the plot type from <code>DRAW_NONE</code> to something visible but styled to be unobtrusive (like <code>DRAW_LINE</code> with zero width or a transparent color), or test whether your MT5 build actually honors <code>PLOT_SHOW_DATA</code> for <code>DRAW_NONE</code> plots.</p></div><div class="nav"><span><a href="2026-04-10_interpreting-heiken-ashi-candles_a432b659.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-10_revisionstart-buffer-not-displaying-in-mql5-indicator_11f2c837.html">Next →</a></span></div></div></body></html>

@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ATR indicator metadata not updating on parameter changes</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="615-2026-01-21-modularizing-mt5-indicator-code.html">&larr; Modularizing MT5 indicator code</a><a href="../index.html">All chats</a><a href="617-2026-01-21-code-analysis-and-q-a.html">Code analysis and Q&amp;A &rarr;</a></nav>
+<header class="top">
+<h1>ATR indicator metadata not updating on parameter changes</h1>
+<div class="meta">Created 2026-01-21 15:30 UTC &middot; Last updated 2026-01-22 04:06 UTC &middot; 30 messages<br>Original: <a href="https://claude.ai/chat/e84b2106-e443-4129-8319-4600abe66f49">claude.ai/chat/e84b2106-e443-4129-8319-4600abe66f49</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-21 15:30 UTC</span></div><div class="body">OK, we&#x27;ve got a working ATR and an IndicatorSlopes that&#x27;s picking up metadata just fine when it&#x27;s loaded, but never thereafter when I change the ATR&#x27;s line properties or parameters. Here&#x27;s the code for both, find the bugs.//+------------------------------------------------------------------+
+//|                                                Ind_ATR MJM.mq5   |
+//|                                             Average True Range   |
+//|                               ATR with metadata/state handling   |
+//|                                                                  |
+//| Updated: 2026-01-21                                              |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#define PROGRAM_VERSION &quot;2.0&quot;
+#property version PROGRAM_VERSION
+//+------------------------------------------------------------------+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+#include &lt;My MT5 Includes/IndicatorMetadata MJM.mqh&gt;
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;ATR&quot;
+#property indicator_type1   DRAW_LINE
+input int   InpPeriod = 14;           // Period
+input color InpATRColor = clrDodgerBlue; // ATR Color
+input int   InpATRWidth = 2;          // ATR Width
+double   ATRBuffer[];
+SIndicatorContext g_Ctx;
+int OnInit()
+{
+   SetIndexBuffer(0, ATRBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, InpPeriod);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpATRColor);
+   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpATRWidth);
+   InitIndicatorContext(g_Ctx, &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;);
+   PlotIndexSetString(0, PLOT_LABEL, g_Ctx.ShortName);
+   //--- Plot metadata
+   SetPlotCount(g_Ctx, 1);
+   CreatePlotMetadata(g_Ctx, 0, g_Ctx.IndyName, InpATRColor, InpATRWidth);
+   
+   //--- Parameter metadata
+   string paramNames[1] = {&quot;Period&quot;};
+   string paramValues[1] = {IntegerToString(InpPeriod)};
+   CreateParameterMetadata(g_Ctx, paramNames, paramValues);
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - EXITING with INIT_SUCCEEDED&quot;);
+   return(INIT_SUCCEEDED);
+}
+void OnDeinit(const int reason)
+{
+   HandleIndicatorDeinit(reason, g_Ctx);
+}
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt; InpPeriod) return(0);
+   
+   int start;
+   if(prev_calculated == 0)
+   {
+      ATRBuffer[0] = high[0] - low[0];
+      double sum = 0;
+      for(int i = 1; i &lt; InpPeriod; i++)
+      {
+         double tr = MathMax(high[i] - low[i], 
+                     MathMax(MathAbs(high[i] - close[i-1]), 
+                             MathAbs(low[i] - close[i-1])));
+         ATRBuffer[i] = tr;
+         sum += tr;
+      }
+      ATRBuffer[InpPeriod-1] = sum / InpPeriod;
+      start = InpPeriod;
+   }
+   else
+      start = prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      double tr = MathMax(high[i] - low[i], 
+                  MathMax(MathAbs(high[i] - close[i-1]), 
+                          MathAbs(low[i] - close[i-1])));
+      ATRBuffer[i] = (ATRBuffer[i-1] * (InpPeriod - 1) + tr) / InpPeriod;
+   }
+   
+   return(rates_total);
+}
+
+I&#x27;m also including the two .mqh files involved.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                        IndicatorSlopes MJM.mq5   |
+//|                        Plots slopes of chart&#x27;s indicators        |
+//|                                                                  |
+//| Updated: 2026-01-20                                              |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#define PROGRAM_VERSION &quot;1.07&quot;
+#property version PROGRAM_VERSION
+//+------------------------------------------------------------------+
+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 32
+#property indicator_plots   32
+
+// Plot type declarations for all 32 possible plots
+#property indicator_type1   DRAW_LINE
+#property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_LINE
+#property indicator_type4   DRAW_LINE
+#property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
+#property indicator_type7   DRAW_LINE
+#property indicator_type8   DRAW_LINE
+#property indicator_type9   DRAW_LINE
+#property indicator_type10  DRAW_LINE
+#property indicator_type11  DRAW_LINE
+#property indicator_type12  DRAW_LINE
+#property indicator_type13  DRAW_LINE
+#property indicator_type14  DRAW_LINE
+#property indicator_type15  DRAW_LINE
+#property indicator_type16  DRAW_LINE
+#property indicator_type17  DRAW_LINE
+#property indicator_type18  DRAW_LINE
+#property indicator_type19  DRAW_LINE
+#property indicator_type20  DRAW_LINE
+#property indicator_type21  DRAW_LINE
+#property indicator_type22  DRAW_LINE
+#property indicator_type23  DRAW_LINE
+#property indicator_type24  DRAW_LINE
+#property indicator_type25  DRAW_LINE
+#property indicator_type26  DRAW_LINE
+#property indicator_type27  DRAW_LINE
+#property indicator_type28  DRAW_LINE
+#property indicator_type29  DRAW_LINE
+#property indicator_type30  DRAW_LINE
+#property indicator_type31  DRAW_LINE
+#property indicator_type32  DRAW_LINE
+
+enum ENUM_SLOPE_MODE
+{
+   SLOPE_EMA    = 0,
+   SLOPE_ZSCORE = 1,
+   SLOPE_MEDIAN = 2
+};
+
+//--- Input parameters
+input int             InpSlopeBarCnt   = 3;           // Number of bars for slope calculation
+input bool            InpRawSlope      = true;        // Raw slope? False = use Slope Calc mode; true = raw slope
+input ENUM_SLOPE_MODE InpSlopeMode     = SLOPE_EMA;   // Slope Calc mode (only if Raw slope = false)
+input int             InpEmaPeriod     = 3;           // for EMA on slope
+input int             InpZScorePeriod  = 5;           // for Z-score
+input int             InpMedianPeriod  = 3;           // for Median on slope (odd &gt;=3)
+input int             InpRawNormPeriod = 5;           // Normalization lookback period
+input color           InpSummaryAvgColor = clrNONE;  // Summary Avg Color
+input int             InpSummaryAvgWidth = 4;         // Summary Avg Width
+input color           InpSummaryPctColor = clrNONE;   // Summary % UP/DN Color
+input int             InpSummaryPctWidth = 3;         // Summary % UP/DN Width
+
+//--- Constants
+#define MAX_BUFFERS 30
+#define SUMMARY_AVG_BUFFER 30
+#define SUMMARY_PCT_BUFFER 31
+#define MAX_INDICATORS 20
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+#define TEXTGVAR_REINIT &quot;REINIT&quot;
+
+//+------------------------------------------------------------------+
+//| Structure to hold line information                               |
+//+------------------------------------------------------------------+
+struct LineInfo
+{
+   int    indicatorHandle;
+   string indicatorShortName;
+   int    instanceID;           // InstanceID for TextGVar lookups
+   int    indicatorWindow;      // Track which window the indicator is in (for handle ops)
+   int    lineIndex;
+   int    bufferIndex;
+   int    period;
+   color  lineColor;
+   int    lineStyle;
+   int    lineWidth;
+   string lineName;
+   double cache[];              // Cached timeseries for this line
+   int    lastRatesTotal;       // rates_total at last calculation
+   bool   isValid;
+   //--- Cached TextGVar values for change detection
+   string cachedColorStr;
+   string cachedWidthStr;
+};
+
+//--- Global variables
+LineInfo g_lines[];
+int   g_totalBuffers = 0;
+int   g_totalPlots = 0;
+int   g_lastIndicatorCount = 0;  // Track indicator count for change detection
+int   g_Uninit_Reason = 0;
+
+//--- Indicator buffers
+double Buffer0[], Buffer1[], Buffer2[], Buffer3[], Buffer4[];
+double Buffer5[], Buffer6[], Buffer7[], Buffer8[], Buffer9[];
+double Buffer10[], Buffer11[], Buffer12[], Buffer13[], Buffer14[];
+double Buffer15[], Buffer16[], Buffer17[], Buffer18[], Buffer19[];
+double Buffer20[], Buffer21[], Buffer22[], Buffer23[], Buffer24[];
+double Buffer25[], Buffer26[], Buffer27[], Buffer28[], Buffer29[];
+double Buffer30[], Buffer31[];  // Summary buffers
+
+string sMeShortName = &quot;IndicatorSlopes MJM&quot;;
+
+//+------------------------------------------------------------------+
+//| Parse TextGVar object name to extract InstanceID and ShortName   |
+//| Format: MJM_[InstanceID]_[ShortName]_[VarName]                   |
+//| Returns true if successfully parsed, false otherwise             |
+//+------------------------------------------------------------------+
+bool ParseTextGVarObjectName(const string objName, int &amp;instanceID, string &amp;shortName)
+{
+   //--- Must start with prefix
+   if(StringFind(objName, TEXTGVAR_PREFIX + &quot;_&quot;) != 0)
+      return false;
+   
+   //--- Find first underscore after prefix (end of InstanceID)
+   int prefixLen = StringLen(TEXTGVAR_PREFIX) + 1;  // &quot;MJM_&quot;
+   int secondUnderscore = StringFind(objName, &quot;_&quot;, prefixLen);
+   if(secondUnderscore &lt; 0)
+      return false;
+   
+   //--- Extract InstanceID
+   string idStr = StringSubstr(objName, prefixLen, secondUnderscore - prefixLen);
+   instanceID = (int)StringToInteger(idStr);
+   
+   //--- Find last underscore (start of VarName)
+   int lastUnderscore = -1;
+   for(int i = StringLen(objName) - 1; i &gt;= secondUnderscore; i--)
+   {
+      if(StringGetCharacter(objName, i) == &#x27;_&#x27;)
+      {
+         lastUnderscore = i;
+         break;
+      }
+   }
+   
+   if(lastUnderscore &lt;= secondUnderscore)
+      return false;
+   
+   //--- Extract ShortName (between second underscore and last underscore)
+   shortName = StringSubstr(objName, secondUnderscore + 1, lastUnderscore - secondUnderscore - 1);
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Find indicator window by ShortName                               |
+//| Returns window number or -1 if not found                         |
+//+------------------------------------------------------------------+
+int FindIndicatorWindow(const string shortName)
+{
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      int count = ChartIndicatorsTotal(0, win);
+      for(int i = 0; i &lt; count; i++)
+      {
+         if(ChartIndicatorName(0, win, i) == shortName)
+            return win;
+      }
+   }
+   return -1;
+}
+
+//+------------------------------------------------------------------+
+//| Unified TextGVar reader                                          |
+//+------------------------------------------------------------------+
+string ReadTextGVar(int instanceID, const string shortName, const string varName, const string defaultValue = &quot;&quot;)
+{
+   return TextGVar_Read(TEXTGVAR_PREFIX, instanceID, shortName, varName, defaultValue);
+}
+
+//+------------------------------------------------------------------+
+//| Get indicator plot count from TextGVar                           |
+//+------------------------------------------------------------------+
+int GetIndicatorPlotCount(int instanceID, const string shortName)
+{
+   string countStr = ReadTextGVar(instanceID, shortName, &quot;PlotCount&quot;, &quot;&quot;);
+   if(countStr == &quot;&quot;)
+      return 1;  // Default if not found
+   return (int)StringToInteger(countStr);
+}
+
+//+------------------------------------------------------------------+
+//| Get plot name from TextGVar                                      |
+//+------------------------------------------------------------------+
+string GetPlotDisplayName(int instanceID, const string shortName, int plotIndex)
+{
+   string varName = &quot;Plot[&quot; + IntegerToString(plotIndex) + &quot;]_Name&quot;;
+   string name = ReadTextGVar(instanceID, shortName, varName, &quot;&quot;);
+   if(name == &quot;&quot;)
+      return &quot;Line &quot; + IntegerToString(plotIndex);  // Default
+   return name;
+}
+
+//+------------------------------------------------------------------+
+//| Get MaxPeriod from TextGVar parameter metadata                   |
+//+------------------------------------------------------------------+
+int GetMaxPeriodFromTextGVar(int instanceID, const string shortName)
+{
+   string countStr = ReadTextGVar(instanceID, shortName, &quot;ParmCount&quot;, &quot;0&quot;);
+   int parmCount = (int)StringToInteger(countStr);
+   int maxPeriod = 1;
+   
+   for(int p = 0; p &lt; parmCount; p++)
+   {
+      string parmName = ReadTextGVar(instanceID, shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Name&quot;, &quot;&quot;);
+      
+      // Case-insensitive check for &quot;period&quot;
+      string lowerName = parmName;
+      StringToLower(lowerName);
+      if(StringFind(lowerName, &quot;period&quot;) &gt;= 0)
+      {
+         string parmValue = ReadTextGVar(instanceID, shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Value&quot;, &quot;1&quot;);
+         int val = (int)StringToInteger(parmValue);
+         if(val &gt; maxPeriod)
+            maxPeriod = val;
+      }
+   }
+   return maxPeriod;
+}
+
+//+------------------------------------------------------------------+
+//| Set buffer by index                                              |
+//+------------------------------------------------------------------+
+void SetBufferByIndex(int bufferIndex)
+{
+   switch(bufferIndex)
+   {
+      case 0: SetIndexBuffer(0, Buffer0, INDICATOR_DATA); ArraySetAsSeries(Buffer0, true); break;
+      case 1: SetIndexBuffer(1, Buffer1, INDICATOR_DATA); ArraySetAsSeries(Buffer1, true); break;
+      case 2: SetIndexBuffer(2, Buffer2, INDICATOR_DATA); ArraySetAsSeries(Buffer2, true); break;
+      case 3: SetIndexBuffer(3, Buffer3, INDICATOR_DATA); ArraySetAsSeries(Buffer3, true); break;
+      case 4: SetIndexBuffer(4, Buffer4, INDICATOR_DATA); ArraySetAsSeries(Buffer4, true); break;
+      case 5: SetIndexBuffer(5, Buffer5, INDICATOR_DATA); ArraySetAsSeries(Buffer5, true); break;
+      case 6: SetIndexBuffer(6, Buffer6, INDICATOR_DATA); ArraySetAsSeries(Buffer6, true); break;
+      case 7: SetIndexBuffer(7, Buffer7, INDICATOR_DATA); ArraySetAsSeries(Buffer7, true); break;
+      case 8: SetIndexBuffer(8, Buffer8, INDICATOR_DATA); ArraySetAsSeries(Buffer8, true); break;
+      case 9: SetIndexBuffer(9, Buffer9, INDICATOR_DATA); ArraySetAsSeries(Buffer9, true); break;
+      case 10: SetIndexBuffer(10, Buffer10, INDICATOR_DATA); ArraySetAsSeries(Buffer10, true); break;
+      case 11: SetIndexBuffer(11, Buffer11, INDICATOR_DATA); ArraySetAsSeries(Buffer11, true); break;
+      case 12: SetIndexBuffer(12, Buffer12, INDICATOR_DATA); ArraySetAsSeries(Buffer12, true); break;
+      case 13: SetIndexBuffer(13, Buffer13, INDICATOR_DATA); ArraySetAsSeries(Buffer13, true); break;
+      case 14: SetIndexBuffer(14, Buffer14, INDICATOR_DATA); ArraySetAsSeries(Buffer14, true); break;
+      case 15: SetIndexBuffer(15, Buffer15, INDICATOR_DATA); ArraySetAsSeries(Buffer15, true); break;
+      case 16: SetIndexBuffer(16, Buffer16, INDICATOR_DATA); ArraySetAsSeries(Buffer16, true); break;
+      case 17: SetIndexBuffer(17, Buffer17, INDICATOR_DATA); ArraySetAsSeries(Buffer17, true); break;
+      case 18: SetIndexBuffer(18, Buffer18, INDICATOR_DATA); ArraySetAsSeries(Buffer18, true); break;
+      case 19: SetIndexBuffer(19, Buffer19, INDICATOR_DATA); ArraySetAsSeries(Buffer19, true); break;
+      case 20: SetIndexBuffer(20, Buffer20, INDICATOR_DATA); ArraySetAsSeries(Buffer20, true); break;
+      case 21: SetIndexBuffer(21, Buffer21, INDICATOR_DATA); ArraySetAsSeries(Buffer21, true); break;
+      case 22: SetIndexBuffer(22, Buffer22, INDICATOR_DATA); ArraySetAsSeries(Buffer22, true); break;
+      case 23: SetIndexBuffer(23, Buffer23, INDICATOR_DATA); ArraySetAsSeries(Buffer23, true); break;
+      case 24: SetIndexBuffer(24, Buffer24, INDICATOR_DATA); ArraySetAsSeries(Buffer24, true); break;
+      case 25: SetIndexBuffer(25, Buffer25, INDICATOR_DATA); ArraySetAsSeries(Buffer25, true); break;
+      case 26: SetIndexBuffer(26, Buffer26, INDICATOR_DATA); ArraySetAsSeries(Buffer26, true); break;
+      case 27: SetIndexBuffer(27, Buffer27, INDICATOR_DATA); ArraySetAsSeries(Buffer27, true); break;
+      case 28: SetIndexBuffer(28, Buffer28, INDICATOR_DATA); ArraySetAsSeries(Buffer28, true); break;
+      case 29: SetIndexBuffer(29, Buffer29, INDICATOR_DATA); ArraySetAsSeries(Buffer29, true); break;
+      case 30: SetIndexBuffer(30, Buffer30, INDICATOR_DATA); ArraySetAsSeries(Buffer30, true); break;
+      case 31: SetIndexBuffer(31, Buffer31, INDICATOR_DATA); ArraySetAsSeries(Buffer31, true); break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Clear all indicator buffers                                      |
+//+------------------------------------------------------------------+
+void ClearAllBuffers()
+{
+   ArrayInitialize(Buffer0, EMPTY_VALUE);
+   ArrayInitialize(Buffer1, EMPTY_VALUE);
+   ArrayInitialize(Buffer2, EMPTY_VALUE);
+   ArrayInitialize(Buffer3, EMPTY_VALUE);
+   ArrayInitialize(Buffer4, EMPTY_VALUE);
+   ArrayInitialize(Buffer5, EMPTY_VALUE);
+   ArrayInitialize(Buffer6, EMPTY_VALUE);
+   ArrayInitialize(Buffer7, EMPTY_VALUE);
+   ArrayInitialize(Buffer8, EMPTY_VALUE);
+   ArrayInitialize(Buffer9, EMPTY_VALUE);
+   ArrayInitialize(Buffer10, EMPTY_VALUE);
+   ArrayInitialize(Buffer11, EMPTY_VALUE);
+   ArrayInitialize(Buffer12, EMPTY_VALUE);
+   ArrayInitialize(Buffer13, EMPTY_VALUE);
+   ArrayInitialize(Buffer14, EMPTY_VALUE);
+   ArrayInitialize(Buffer15, EMPTY_VALUE);
+   ArrayInitialize(Buffer16, EMPTY_VALUE);
+   ArrayInitialize(Buffer17, EMPTY_VALUE);
+   ArrayInitialize(Buffer18, EMPTY_VALUE);
+   ArrayInitialize(Buffer19, EMPTY_VALUE);
+   ArrayInitialize(Buffer20, EMPTY_VALUE);
+   ArrayInitialize(Buffer21, EMPTY_VALUE);
+   ArrayInitialize(Buffer22, EMPTY_VALUE);
+   ArrayInitialize(Buffer23, EMPTY_VALUE);
+   ArrayInitialize(Buffer24, EMPTY_VALUE);
+   ArrayInitialize(Buffer25, EMPTY_VALUE);
+   ArrayInitialize(Buffer26, EMPTY_VALUE);
+   ArrayInitialize(Buffer27, EMPTY_VALUE);
+   ArrayInitialize(Buffer28, EMPTY_VALUE);
+   ArrayInitialize(Buffer29, EMPTY_VALUE);
+   ArrayInitialize(Buffer30, EMPTY_VALUE);
+   ArrayInitialize(Buffer31, EMPTY_VALUE);
+}
+
+//+------------------------------------------------------------------+
+//| Get buffer value by index                                        |
+//+------------------------------------------------------------------+
+double GetBufferValue(int bufferIndex, int bar)
+{
+   switch(bufferIndex)
+   {
+      case 0:  return Buffer0[bar];
+      case 1:  return Buffer1[bar];
+      case 2:  return Buffer2[bar];
+      case 3:  return Buffer3[bar];
+      case 4:  return Buffer4[bar];
+      case 5:  return Buffer5[bar];
+      case 6:  return Buffer6[bar];
+      case 7:  return Buffer7[bar];
+      case 8:  return Buffer8[bar];
+      case 9:  return Buffer9[bar];
+      case 10: return Buffer10[bar];
+      case 11: return Buffer11[bar];
+      case 12: return Buffer12[bar];
+      case 13: return Buffer13[bar];
+      case 14: return Buffer14[bar];
+      case 15: return Buffer15[bar];
+      case 16: return Buffer16[bar];
+      case 17: return Buffer17[bar];
+      case 18: return Buffer18[bar];
+      case 19: return Buffer19[bar];
+      case 20: return Buffer20[bar];
+      case 21: return Buffer21[bar];
+      case 22: return Buffer22[bar];
+      case 23: return Buffer23[bar];
+      case 24: return Buffer24[bar];
+      case 25: return Buffer25[bar];
+      case 26: return Buffer26[bar];
+      case 27: return Buffer27[bar];
+      case 28: return Buffer28[bar];
+      case 29: return Buffer29[bar];
+      default: return EMPTY_VALUE;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Structure to hold discovered indicator info                      |
+//+------------------------------------------------------------------+
+struct DiscoveredIndicator
+{
+   int    instanceID;
+   string shortName;
+};
+
+//+------------------------------------------------------------------+
+//| Scan chart for indicators and configure slope lines             |
+//+------------------------------------------------------------------+
+void ScanChartIndicators()
+{
+   //--- Reset globals
+   g_totalBuffers = 0;
+   g_totalPlots = 0;
+   int indicatorCount = 0;
+   
+   //--- Clear all buffers to remove old plot data
+   ClearAllBuffers();
+   
+   //--- Hide all plots initially (they&#x27;ll be shown as we configure them)
+   for(int p = 0; p &lt; 32; p++)
+   {
+      PlotIndexSetInteger(p, PLOT_DRAW_TYPE, DRAW_NONE);
+      PlotIndexSetString(p, PLOT_LABEL, &quot;&quot;);
+   }
+   
+   //--- Discovery phase: Find all registered indicators via TextGVar objects
+   DiscoveredIndicator discovered[];
+   int discoveredCount = 0;
+   
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      
+      //--- Look for ShortName objects (format: MJM_[ID]_[ShortName]_ShortName)
+      if(StringFind(objName, &quot;_ShortName&quot;) &lt; 0)
+         continue;
+      
+      int instanceID;
+      string shortName;
+      if(!ParseTextGVarObjectName(objName, instanceID, shortName))
+         continue;
+      
+      //--- Skip ourselves
+      if(shortName == sMeShortName)
+         continue;
+      
+      //--- Check if already discovered (avoid duplicates)
+      bool alreadyFound = false;
+      for(int d = 0; d &lt; discoveredCount; d++)
+      {
+         if(discovered[d].instanceID == instanceID &amp;&amp; discovered[d].shortName == shortName)
+         {
+            alreadyFound = true;
+            break;
+         }
+      }
+      if(alreadyFound)
+         continue;
+      
+      //--- Add to discovered list
+      ArrayResize(discovered, discoveredCount + 1);
+      discovered[discoveredCount].instanceID = instanceID;
+      discovered[discoveredCount].shortName = shortName;
+      discoveredCount++;
+      
+      Print(&quot;Discovered indicator: InstanceID&lt;&quot;, instanceID, &quot;&gt; ShortName&lt;&quot;, shortName, &quot;&gt;&quot;);
+   }
+   
+   Print(&quot;Discovery phase complete: found &quot;, discoveredCount, &quot; registered indicators&quot;);
+   
+   //--- Process each discovered indicator
+   for(int d = 0; d &lt; discoveredCount; d++)
+   {
+      int instanceID = discovered[d].instanceID;
+      string shortName = discovered[d].shortName;
+      
+      //--- Check indicator limit
+      if(indicatorCount &gt;= MAX_INDICATORS)
+      {
+         Print(&quot;ERROR: Maximum indicator limit (&quot;, MAX_INDICATORS, &quot;) reached. Skipping indicator: &quot;, shortName);
+         continue;
+      }
+      
+      //--- Find which window the indicator is in
+      int win = FindIndicatorWindow(shortName);
+      if(win &lt; 0)
+      {
+         Print(&quot;Indicator &quot;, shortName, &quot; not found in any window - skipping&quot;);
+         continue;
+      }
+      
+      //--- Get handle
+      int handle = ChartIndicatorGet(0, win, shortName);
+      if(handle == INVALID_HANDLE)
+      {
+         Print(&quot;Bad handle for indicator&lt;&quot;, shortName, &quot;&gt; in window &quot;, win, &quot; - skipping&quot;);
+         continue;
+      }
+      
+      int plotCount = GetIndicatorPlotCount(instanceID, shortName);
+      
+      //--- Skip indicators with no plots
+      if(plotCount &lt; 1)
+      {
+         Print(&quot;Indicator &quot;, shortName, &quot; has no plots - skipping&quot;);
+         continue;
+      }
+      
+      //--- Check if adding this indicator would exceed buffer limit
+      if(g_totalBuffers + plotCount &gt; MAX_BUFFERS)
+      {
+         Print(&quot;ERROR: Adding indicator &quot;, shortName, &quot; would exceed buffer limit (&quot;, MAX_BUFFERS, &quot;). Skipping...&quot;);
+         continue;
+      }
+      
+      //--- Get max period from TextGVar parameter metadata
+      int maxPeriod = GetMaxPeriodFromTextGVar(instanceID, shortName);
+      
+      Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;, InstanceID&lt;&quot;, instanceID, &quot;&gt;, Window&lt;&quot;, win, &quot;&gt;, plot count: &lt;&quot;, plotCount, &quot;&gt;, maxPeriod: &lt;&quot;, maxPeriod, &quot;&gt;&quot;);
+      
+      for(int lineIdx = 0; lineIdx &lt; plotCount; lineIdx++)
+      {
+         if(g_totalBuffers &gt;= MAX_BUFFERS)
+         {
+            Print(&quot;ERROR: Buffer limit (&quot;, MAX_BUFFERS, &quot;) reached while processing &quot;, shortName);
+            break;
+         }
+         
+         string lineName = GetPlotDisplayName(instanceID, shortName, lineIdx);
+         
+         //--- Read color/width from TextGVar, fall back to defaults
+         color defaultColor = GetAutoColor(g_totalPlots);
+         int defaultWidth = 2;
+         
+         string colorStr = ReadTextGVar(instanceID, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+         color lineColor = (colorStr != &quot;&quot;) ? StringToColor(colorStr) : defaultColor;
+         
+         string widthStr = ReadTextGVar(instanceID, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+         int lineWidth = (widthStr != &quot;&quot;) ? (int)StringToInteger(widthStr) : defaultWidth;
+         int lineStyle = STYLE_SOLID;
+         
+         int idx = ArraySize(g_lines);
+         ArrayResize(g_lines, idx + 1);
+         
+         g_lines[idx].indicatorHandle = handle;
+         g_lines[idx].indicatorShortName = shortName;
+         g_lines[idx].instanceID = instanceID;
+         g_lines[idx].indicatorWindow = win;
+         g_lines[idx].lineIndex = lineIdx;
+         g_lines[idx].bufferIndex = g_totalBuffers;
+         g_lines[idx].period = maxPeriod;
+         g_lines[idx].lineColor = lineColor;
+         g_lines[idx].lineStyle = lineStyle;
+         g_lines[idx].lineWidth = lineWidth;
+         g_lines[idx].lineName = lineName;
+         g_lines[idx].lastRatesTotal = 0;
+         g_lines[idx].isValid = true;
+         g_lines[idx].cachedColorStr = colorStr;
+         g_lines[idx].cachedWidthStr = widthStr;
+         
+         Print(&quot;Line &quot;, idx, &quot;: ShortName&lt;&quot;, shortName, 
+               &quot;&gt; Handle&lt;&quot;, g_lines[idx].indicatorHandle,
+               &quot;&gt; InstanceID&lt;&quot;, g_lines[idx].instanceID,
+               &quot;&gt; Window&lt;&quot;, g_lines[idx].indicatorWindow,
+               &quot;&gt; LineIdx&lt;&quot;, g_lines[idx].lineIndex,
+               &quot;&gt; BufferIdx&lt;&quot;, g_lines[idx].bufferIndex,
+               &quot;&gt; Period&lt;&quot;, g_lines[idx].period,
+               &quot;&gt; Color&lt;&quot;, g_lines[idx].lineColor,
+               &quot;&gt; Style&lt;&quot;, g_lines[idx].lineStyle,
+               &quot;&gt; Width&lt;&quot;, g_lines[idx].lineWidth,
+               &quot;&gt; LineName&lt;&quot;, g_lines[idx].lineName,
+               &quot;&gt; CachedColorStr&lt;&quot;, g_lines[idx].cachedColorStr,
+               &quot;&gt; CachedWidthStr&lt;&quot;, g_lines[idx].cachedWidthStr,
+               &quot;&gt;&quot;);
+         
+         SetBufferByIndex(g_totalBuffers);
+         PlotIndexSetInteger(g_totalPlots, PLOT_DRAW_TYPE, DRAW_LINE);
+         PlotIndexSetInteger(g_totalPlots, PLOT_LINE_STYLE, lineStyle);
+         PlotIndexSetInteger(g_totalPlots, PLOT_LINE_WIDTH, lineWidth);
+         PlotIndexSetInteger(g_totalPlots, PLOT_LINE_COLOR, lineColor);
+         PlotIndexSetString(g_totalPlots, PLOT_LABEL, shortName + &quot; &quot; + lineName + &quot; Slope&quot;);
+
+         g_totalBuffers++;
+         g_totalPlots++;
+      }
+      
+      indicatorCount++;
+   }
+   
+   //--- Configure summary buffers if we have active line buffers
+   if(g_totalBuffers &gt; 0)
+   {
+      //--- Buffer30: Slopes Avg
+      SetBufferByIndex(SUMMARY_AVG_BUFFER);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_WIDTH, InpSummaryAvgWidth);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_COLOR, InpSummaryAvgColor);
+      PlotIndexSetString(SUMMARY_AVG_BUFFER, PLOT_LABEL, &quot;Slopes Avg&quot;);
+      
+      //--- Buffer31: Slope % UP/DN
+      SetBufferByIndex(SUMMARY_PCT_BUFFER);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_WIDTH, InpSummaryPctWidth);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_COLOR, InpSummaryPctColor);
+      PlotIndexSetString(SUMMARY_PCT_BUFFER, PLOT_LABEL, &quot;Slope % UP/DN&quot;);
+   }
+   
+   Print(&quot;Total slope lines configured&lt;&quot;, g_totalBuffers, &quot;&gt; from &quot;, indicatorCount, &quot; indicators&quot;);
+}
+
+//+------------------------------------------------------------------+
+//| Check for REINIT signals from TextGVar objects                   |
+//| Returns true if rescan is needed                                 |
+//+------------------------------------------------------------------+
+bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int instanceID = g_lines[i].instanceID;
+      
+      //--- Check if we&#x27;ve already processed this shortName
+      bool alreadyChecked = false;
+      for(int j = 0; j &lt; checkedCount; j++)
+      {
+         if(checkedNames[j] == shortName)
+         {
+            alreadyChecked = true;
+            break;
+         }
+      }
+      
+      if(alreadyChecked)
+         continue;
+      
+      ArrayResize(checkedNames, checkedCount + 1);
+      checkedNames[checkedCount] = shortName;
+      checkedCount++;
+      
+      //--- Check for REINIT signal
+      string reinitSignal = ReadTextGVar(instanceID, shortName, TEXTGVAR_REINIT, &quot;&quot;);
+      
+      if(reinitSignal == &quot;&quot;)
+         continue;
+      
+      Print(&quot;REINIT detected for &quot;, shortName, &quot;, triggering rescan&quot;);
+      
+      //--- Delete the REINIT flag
+      TextGVar_Delete(TEXTGVAR_PREFIX, instanceID, shortName, TEXTGVAR_REINIT);
+      
+      return true;
+   }
+   
+   return false;
+}
+
+////+------------------------------------------------------------------+
+////| Check for REINIT signals from TextGVar objects                   |
+////+------------------------------------------------------------------+
+//void CheckReinitSignals()
+//{
+//   //--- Track which shortNames we&#x27;ve already checked (avoid redundant checks for multi-buffer indicators)
+//   string checkedNames[];
+//   int checkedCount = 0;
+//   
+//   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//   {
+//      if(!g_lines[i].isValid)
+//         continue;
+//      
+//      string shortName = g_lines[i].indicatorShortName;
+//      
+//      //--- Check if we&#x27;ve already processed this shortName
+//      bool alreadyChecked = false;
+//      for(int j = 0; j &lt; checkedCount; j++)
+//      {
+//         if(checkedNames[j] == shortName)
+//         {
+//            alreadyChecked = true;
+//            break;
+//         }
+//      }
+//      
+//      if(alreadyChecked)
+//         continue;
+//      
+//      //--- Add to checked list
+//      ArrayResize(checkedNames, checkedCount + 1);
+//      checkedNames[checkedCount] = shortName;
+//      checkedCount++;
+//      
+//      //--- Check for REINIT signal
+//      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+//      
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - BEFORE reinitSignal check, reinitSignal&lt;&quot;, reinitSignal, &quot;&gt;&quot;);
+//      if(reinitSignal == &quot;&quot;)
+//         continue;
+//      
+//      //--- Get max period from TextGVar
+//      int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - Got maxPeriod&lt;&quot;, maxPeriod, &quot;&gt; from TextGVar&quot;);
+//      
+//      //--- Update all lines belonging to this indicator
+//      for(int k = 0; k &lt; ArraySize(g_lines); k++)
+//      {
+//         if(g_lines[k].indicatorShortName == shortName)
+//         {
+//            g_lines[k].period = maxPeriod;
+//            g_lines[k].lastRatesTotal = 0;  // Force full recalculation
+//            Print(&quot;Updated line &quot;, k, &quot; (&quot;, shortName, &quot; &quot;, g_lines[k].lineName, &quot;) period to &quot;, maxPeriod);
+//         }
+//      }
+//      
+//      //--- Delete the REINIT text object
+//      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+//      
+//      ChartRedraw(0);
+//   }
+//}
+
+//+------------------------------------------------------------------+
+//| Get total indicator count across all windows                     |
+//+------------------------------------------------------------------+
+int GetTotalIndicatorCount()
+{
+   int total = 0;
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      total += ChartIndicatorsTotal(0, win);
+   }
+   return total;
+}
+
+//+------------------------------------------------------------------+
+//| Create the palette 
+//+------------------------------------------------------------------+
+color GetAutoColor(int index)
+{
+   color palette[] = {
+      clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold, clrMagenta,
+      clrCyan, clrCoral, clrSpringGreen, clrViolet, clrYellow,
+      clrDeepSkyBlue, clrTomato, clrChartreuse, clrOrchid, clrAqua
+   };
+   return palette[index % ArraySize(palette)];
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   //--- Validate InpSlopeBarCnt
+   if(InpSlopeBarCnt &lt; 2)
+   {
+      Print(&quot;InpSlopeBarCnt must be &gt;= 2&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   IndicatorSetString(INDICATOR_SHORTNAME, sMeShortName);
+   
+   //--- Reset line array
+   ArrayResize(g_lines, 0);
+
+   //--- Clean any outstanding REINIT flags (stale from previous session or just-completed SI reinits)
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, TEXTGVAR_PREFIX + &quot;_&quot;) == 0 &amp;&amp; 
+         StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+      {
+         ObjectDelete(0, objName);
+      }
+   }
+   
+   //--- Scan chart for indicators
+   ScanChartIndicators();
+   
+   if(g_totalBuffers == 0)
+   {
+      Print(&quot;No indicator plots found on chart!&quot;);
+      
+      //--- Remove this indicator from the chart
+      int chartWindow = ChartWindowFind();
+      if(chartWindow &gt;= 0)
+      {
+         Print(&quot;Removing indicator - ChartWindow&lt;&quot;, chartWindow, &quot;&gt; ShortName&lt;&quot;, sMeShortName, &quot;&gt;&quot;);
+         ChartIndicatorDelete(0, chartWindow, sMeShortName);
+      }
+      
+      return(INIT_FAILED);
+   }
+   
+   EventSetMillisecondTimer(250);  // Check every 250 milliseconds
+//   EventSetTimer(1);  // Check every 1 second
+   g_lastIndicatorCount = GetTotalIndicatorCount();
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator deinitialization function                       |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   //--- Kill the timer
+   EventKillTimer();
+   
+//   //--- Release all indicator handles
+//   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//   {
+//      if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+//         IndicatorRelease(g_lines[i].indicatorHandle);
+//   }
+//   
+   g_Uninit_Reason = reason; 
+}
+
+//+------------------------------------------------------------------+
+//| Timer function - detect indicator changes                        |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   //--- Check for line property changes from TextGVar
+   CheckLinePropertyChanges();
+   
+   //--- Check for REINIT signals
+   bool needsRescan = CheckReinitSignals();
+   
+   //--- Count indicators across all subwindows
+   int currentCount = GetTotalIndicatorCount();
+   
+   if(needsRescan || currentCount != g_lastIndicatorCount)
+   {
+      Print(&quot;Reinitializing...&quot;);
+      g_lastIndicatorCount = currentCount;
+      
+      //--- Release existing handles
+      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+      {
+         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+            IndicatorRelease(g_lines[i].indicatorHandle);
+      }
+      ArrayResize(g_lines, 0);
+      
+      //--- Rescan and rebuild
+      ScanChartIndicators();
+      
+      //--- Force full recalculation on next OnCalculate
+      ChartSetSymbolPeriod(0, _Symbol, _Period);
+   }
+}
+
+
+////+------------------------------------------------------------------+
+////| Timer function - detect indicator changes                        |
+////+------------------------------------------------------------------+
+//void OnTimer()
+//{
+//   //--- Check for REINIT signals
+//   CheckReinitSignals();
+//   
+//   //--- Count indicators across all subwindows
+//   int currentCount = GetTotalIndicatorCount();
+//   
+//   if(currentCount != g_lastIndicatorCount)
+//   {
+//      Print(&quot;Indicator count changed: &quot;, g_lastIndicatorCount, &quot; -&gt; &quot;, currentCount, &quot;. Reinitializing...&quot;);
+//      g_lastIndicatorCount = currentCount;
+//      
+//      //--- Release existing handles
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+//            IndicatorRelease(g_lines[i].indicatorHandle);
+//      }
+//      ArrayResize(g_lines, 0);
+//      
+//      //--- Rescan and rebuild
+//      ScanChartIndicators();
+//      
+//      //--- Force full recalculation on next OnCalculate
+//      ChartSetSymbolPeriod(0, _Symbol, _Period);
+//   }
+//}
+//
+
+//+------------------------------------------------------------------+
+//| Check and apply TextGVar property changes for all lines          |
+//+------------------------------------------------------------------+
+void CheckLinePropertyChanges()
+{
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int instanceID = g_lines[i].instanceID;
+      int lineIdx = g_lines[i].lineIndex;
+      
+      //--- Read current values from TextGVar
+      string currentColorStr = ReadTextGVar(instanceID, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+      string currentWidthStr = ReadTextGVar(instanceID, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+      
+      bool changed = false;
+      
+      //--- Check color change
+      if(currentColorStr != &quot;&quot; &amp;&amp; currentColorStr != g_lines[i].cachedColorStr)
+      {
+         color newColor = StringToColor(currentColorStr);
+         g_lines[i].lineColor = newColor;
+         g_lines[i].cachedColorStr = currentColorStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_COLOR, newColor);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) color changed to &quot;, currentColorStr);
+      }
+      
+      //--- Check width change
+      if(currentWidthStr != &quot;&quot; &amp;&amp; currentWidthStr != g_lines[i].cachedWidthStr)
+      {
+         int newWidth = (int)StringToInteger(currentWidthStr);
+         g_lines[i].lineWidth = newWidth;
+         g_lines[i].cachedWidthStr = currentWidthStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_WIDTH, newWidth);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) width changed to &quot;, currentWidthStr);
+      }
+      
+      if(changed)
+         ChartRedraw(0);
+   }
+}
+
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+
+//   //--- Dump arrays on first call only
+//   if(prev_calculated == 0)
+//   {
+//      Print(&quot;=== OnCalculate First Run Dump ===&quot;);
+//      Print(&quot;g_totalBuffers&lt;&quot;, g_totalBuffers, &quot;&gt; g_totalPlots&lt;&quot;, g_totalPlots, &quot;&gt; g_lines size&lt;&quot;, ArraySize(g_lines), &quot;&gt;&quot;);
+//      
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         Print(&quot;g_lines[&quot;, i, &quot;]: Handle&lt;&quot;, g_lines[i].indicatorHandle,
+//               &quot;&gt; ShortName&lt;&quot;, g_lines[i].indicatorShortName,
+//               &quot;&gt; LineIdx&lt;&quot;, g_lines[i].lineIndex,
+//               &quot;&gt; BufIdx&lt;&quot;, g_lines[i].bufferIndex,
+//               &quot;&gt; Period&lt;&quot;, g_lines[i].period,
+//               &quot;&gt; Color&lt;&quot;, g_lines[i].lineColor,
+//               &quot;&gt; LineName&lt;&quot;, g_lines[i].lineName,
+//               &quot;&gt; CacheSize&lt;&quot;, ArraySize(g_lines[i].cache),
+//               &quot;&gt; lastRatesTotal&lt;&quot;, g_lines[i].lastRatesTotal,
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;g_knownIndicators size&lt;&quot;, ArraySize(g_knownIndicators), &quot;&gt;&quot;);
+//      for(int i = 0; i &lt; ArraySize(g_knownIndicators); i++)
+//      {
+//         Print(&quot;g_knownIndicators[&quot;, i, &quot;]: ShortName&lt;&quot;, g_knownIndicators[i].shortName,
+//               &quot;&gt; PlotCount&lt;&quot;, g_knownIndicators[i].plotCount,
+//               &quot;&gt; PlotNames size&lt;&quot;, ArraySize(g_knownIndicators[i].plotNames),
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;=== End Dump ===&quot;);
+//   }
+   
+   if(rates_total &lt; InpSlopeBarCnt)
+      return 0;
+
+   //--- Track the earliest bar we need to recalculate for summary
+   int summaryStartBar = 0;
+
+   for(int lineIdx = 0; lineIdx &lt; ArraySize(g_lines); lineIdx++)
+   {
+      //--- Capture before cache update overwrites it
+      bool forceFullRecalc = (g_lines[lineIdx].lastRatesTotal == 0);
+      
+      //--- Guard: need enough bars for indicator period + slope calc
+      int minBarsRequired = g_lines[lineIdx].period + InpSlopeBarCnt;
+      
+      if(rates_total &lt; minBarsRequired)
+         continue;
+      if(!g_lines[lineIdx].isValid)
+         continue;
+      
+      int lastRates = g_lines[lineIdx].lastRatesTotal;
+      int newBars = rates_total - lastRates;
+      
+      //--- First call or history changed: full copy
+      if(lastRates == 0 || newBars &lt; 0 || newBars &gt; rates_total)
+      {
+         ArrayResize(g_lines[lineIdx].cache, rates_total);
+         ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     rates_total,
+                                     g_lines[lineIdx].cache);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer full copy FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+
+         //--- Accept what we got (indicator may have fewer bars due to warmup period)
+         g_lines[lineIdx].lastRatesTotal = rates_total;
+      }
+      else
+      {
+         //--- Incremental update: copy new bars + bar 0 update
+         int barsToCopy = newBars + 1;  // +1 to recalc bar 0
+         if(barsToCopy &gt; rates_total)
+            barsToCopy = rates_total;
+         
+         //--- Resize cache if new bars arrived
+         if(rates_total &gt; ArraySize(g_lines[lineIdx].cache))
+         {
+            ArrayResize(g_lines[lineIdx].cache, rates_total);
+            ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         }
+         
+         double tempBuffer[];
+         ArraySetAsSeries(tempBuffer, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     barsToCopy,
+                                     tempBuffer);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer incremental FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+         
+         //--- Update cache with new values
+         for(int i = 0; i &lt; copyResult; i++)
+         {
+            g_lines[lineIdx].cache[i] = tempBuffer[i];
+         }
+         g_lines[lineIdx].lastRatesTotal = rates_total;       
+      }
+
+      //--- Calculate Z-score normalized slopes
+      //--- Oldest bar we can calculate slope for (need room for slope bars + z-score lookback)
+      int oldestSlopeBar = rates_total - 1 - g_lines[lineIdx].period - (InpSlopeBarCnt - 1) - InpZScorePeriod;
+      if(oldestSlopeBar &lt; 0)
+         oldestSlopeBar = 0;
+      
+      //--- Determine which bars to recalculate
+      int startBar;
+      if(prev_calculated == 0 || forceFullRecalc)
+      {
+         startBar = oldestSlopeBar;
+      }
+      else
+      {
+         startBar = newBars;  // recalc new bars + bar 0
+         if(startBar &gt; oldestSlopeBar)
+            startBar = oldestSlopeBar;
+      }
+      
+      //--- Track for summary calculation
+      if(startBar &gt; summaryStartBar)
+         summaryStartBar = startBar;
+      
+      //+------------------------------------------------------------------+
+      // NOTE: loop MUST run from older bars to newer for EMA correctness
+      //+------------------------------------------------------------------+
+      for(int CalcBarIX = startBar; CalcBarIX &gt;= 0; CalcBarIX--)      
+      {
+         int PrevBarIX = CalcBarIX + InpSlopeBarCnt - 1;
+      
+         //--- Guard against out of range
+         if(PrevBarIX &gt;= ArraySize(g_lines[lineIdx].cache))
+            continue;
+      
+         //--- Calculate raw slope for current bar
+         double currentValue = g_lines[lineIdx].cache[CalcBarIX];
+         double prevValue    = g_lines[lineIdx].cache[PrevBarIX];
+      
+         //--- Guard against EMPTY_VALUE
+         if(currentValue == EMPTY_VALUE || prevValue == EMPTY_VALUE)
+            continue;
+      
+         double slope = (currentValue - prevValue) / (InpSlopeBarCnt - 1);
+         
+         double outValue = 0.0;
+         
+         //================ CALCULATE outValue BY MODE =================
+         if(InpRawSlope)
+         {
+            outValue = slope;
+         }
+         else if(InpSlopeMode == SLOPE_ZSCORE)
+         {
+            //--- Calculate mean and standard deviation of slopes over lookback period
+            double sumSlope = 0.0;
+            double sumSlopeSq = 0.0;
+            int count = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpZScorePeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               double s = (val - valPrev) / (InpSlopeBarCnt - 1);
+               sumSlope   += s;
+               sumSlopeSq += s * s;
+               count++;
+            }
+      
+            if(count &gt; 1)
+            {
+               double mean     = sumSlope / count;
+               double variance = (sumSlopeSq / count) - (mean * mean);
+               double stdDev   = (variance &gt; 0) ? MathSqrt(variance) : 0;
+      
+               if(stdDev &gt; 0)
+                  outValue = (slope - mean) / stdDev;
+               else
+                  outValue = 0.0;
+            }
+            else
+               outValue = 0.0;
+         }
+         else if(InpSlopeMode == SLOPE_EMA)
+         {
+            double alpha = 2.0 / (InpEmaPeriod + 1.0);
+            double prev;
+            
+            if(CalcBarIX + 1 &gt;= rates_total)
+            {
+               prev = slope;
+            }
+            else
+            {
+               switch(g_lines[lineIdx].bufferIndex)
+               {
+                  case 0:  prev = Buffer0[CalcBarIX + 1]; break;
+                  case 1:  prev = Buffer1[CalcBarIX + 1]; break;
+                  case 2:  prev = Buffer2[CalcBarIX + 1]; break;
+                  case 3:  prev = Buffer3[CalcBarIX + 1]; break;
+                  case 4:  prev = Buffer4[CalcBarIX + 1]; break;
+                  case 5:  prev = Buffer5[CalcBarIX + 1]; break;
+                  case 6:  prev = Buffer6[CalcBarIX + 1]; break;
+                  case 7:  prev = Buffer7[CalcBarIX + 1]; break;
+                  case 8:  prev = Buffer8[CalcBarIX + 1]; break;
+                  case 9:  prev = Buffer9[CalcBarIX + 1]; break;
+                  case 10: prev = Buffer10[CalcBarIX + 1]; break;
+                  case 11: prev = Buffer11[CalcBarIX + 1]; break;
+                  case 12: prev = Buffer12[CalcBarIX + 1]; break;
+                  case 13: prev = Buffer13[CalcBarIX + 1]; break;
+                  case 14: prev = Buffer14[CalcBarIX + 1]; break;
+                  case 15: prev = Buffer15[CalcBarIX + 1]; break;
+                  case 16: prev = Buffer16[CalcBarIX + 1]; break;
+                  case 17: prev = Buffer17[CalcBarIX + 1]; break;
+                  case 18: prev = Buffer18[CalcBarIX + 1]; break;
+                  case 19: prev = Buffer19[CalcBarIX + 1]; break;
+                  case 20: prev = Buffer20[CalcBarIX + 1]; break;
+                  case 21: prev = Buffer21[CalcBarIX + 1]; break;
+                  case 22: prev = Buffer22[CalcBarIX + 1]; break;
+                  case 23: prev = Buffer23[CalcBarIX + 1]; break;
+                  case 24: prev = Buffer24[CalcBarIX + 1]; break;
+                  case 25: prev = Buffer25[CalcBarIX + 1]; break;
+                  case 26: prev = Buffer26[CalcBarIX + 1]; break;
+                  case 27: prev = Buffer27[CalcBarIX + 1]; break;
+                  case 28: prev = Buffer28[CalcBarIX + 1]; break;
+                  case 29: prev = Buffer29[CalcBarIX + 1]; break;
+                  default: prev = slope; break;
+               }
+            }
+      
+            if(prev == EMPTY_VALUE)
+               prev = slope;
+      
+            outValue = alpha * slope + (1.0 - alpha) * prev;
+         }
+         else if(InpSlopeMode == SLOPE_MEDIAN)
+         {
+            double tmp[];
+            ArrayResize(tmp, InpMedianPeriod);
+            int k = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpMedianPeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               tmp[k++] = (val - valPrev) / (InpSlopeBarCnt - 1);
+            }
+      
+            if(k &gt; 0)
+            {
+               ArrayResize(tmp, k);
+               ArraySort(tmp);
+               outValue = tmp[k / 2];
+            }
+            else
+               outValue = 0.0;
+         }
+         
+         //================ NORMALIZE outValue =================
+         double minVal = currentValue;
+         double maxVal = currentValue;
+         
+         for(int j = CalcBarIX; 
+             j &lt; CalcBarIX + InpRawNormPeriod &amp;&amp; 
+             j &lt; ArraySize(g_lines[lineIdx].cache); 
+             j++)
+         {
+            double val = g_lines[lineIdx].cache[j];
+            if(val == EMPTY_VALUE)
+               continue;
+            if(val &lt; minVal) minVal = val;
+            if(val &gt; maxVal) maxVal = val;
+         }
+         
+         double range = maxVal - minVal;
+         if(range &gt; 0)
+            outValue = outValue * 100.0 * (InpSlopeBarCnt - 1) / range;
+         else
+            outValue = 0.0;
+         
+         //================ WRITE TO BUFFER =================
+         switch(g_lines[lineIdx].bufferIndex)
+         {
+            case 0:  Buffer0[CalcBarIX]  = outValue; break;
+            case 1:  Buffer1[CalcBarIX]  = outValue; break;
+            case 2:  Buffer2[CalcBarIX]  = outValue; break;
+            case 3:  Buffer3[CalcBarIX]  = outValue; break;
+            case 4:  Buffer4[CalcBarIX]  = outValue; break;
+            case 5:  Buffer5[CalcBarIX]  = outValue; break;
+            case 6:  Buffer6[CalcBarIX]  = outValue; break;
+            case 7:  Buffer7[CalcBarIX]  = outValue; break;
+            case 8:  Buffer8[CalcBarIX]  = outValue; break;
+            case 9:  Buffer9[CalcBarIX]  = outValue; break;
+            case 10: Buffer10[CalcBarIX] = outValue; break;
+            case 11: Buffer11[CalcBarIX] = outValue; break;
+            case 12: Buffer12[CalcBarIX] = outValue; break;
+            case 13: Buffer13[CalcBarIX] = outValue; break;
+            case 14: Buffer14[CalcBarIX] = outValue; break;
+            case 15: Buffer15[CalcBarIX] = outValue; break;
+            case 16: Buffer16[CalcBarIX] = outValue; break;
+            case 17: Buffer17[CalcBarIX] = outValue; break;
+            case 18: Buffer18[CalcBarIX] = outValue; break;
+            case 19: Buffer19[CalcBarIX] = outValue; break;
+            case 20: Buffer20[CalcBarIX] = outValue; break;
+            case 21: Buffer21[CalcBarIX] = outValue; break;
+            case 22: Buffer22[CalcBarIX] = outValue; break;
+            case 23: Buffer23[CalcBarIX] = outValue; break;
+            case 24: Buffer24[CalcBarIX] = outValue; break;
+            case 25: Buffer25[CalcBarIX] = outValue; break;
+            case 26: Buffer26[CalcBarIX] = outValue; break;
+            case 27: Buffer27[CalcBarIX] = outValue; break;
+            case 28: Buffer28[CalcBarIX] = outValue; break;
+            case 29: Buffer29[CalcBarIX] = outValue; break;
+         }
+      }
+   }
+   
+   //================ CALCULATE SUMMARY BUFFERS =================
+   if(g_totalBuffers &gt; 0)
+   {
+      for(int bar = summaryStartBar; bar &gt;= 0; bar--)
+      {
+         double sum = 0.0;
+         int positiveCount = 0;
+         int negativeCount = 0;
+         int validCount = 0;
+         
+         //--- Read from all active line buffers
+         for(int i = 0; i &lt; g_totalBuffers; i++)
+         {
+            double val = GetBufferValue(i, bar);
+            if(val == EMPTY_VALUE)
+               continue;
+            sum += val;
+            if(val &gt; 0)
+               positiveCount++;
+            else if(val &lt; 0)
+               negativeCount++;
+            validCount++;
+         }
+         
+         if(validCount &gt; 0)
+         {
+            double avg = sum / validCount;
+            
+            //--- Mean average, all slopes
+            Buffer30[bar] = avg;
+            
+//            //--- Position avg above/below zero based on majority
+//            if(positiveCount &gt; negativeCount)
+//               Buffer30[bar] = MathAbs(avg);
+//            else if(negativeCount &gt; positiveCount)
+//               Buffer30[bar] = -MathAbs(avg);
+//            else
+//               Buffer30[bar] = 0.0;  // 50/50 on zero line
+//            
+            //--- Calculate percentage UP (positive) vs DN (negative)
+            //--- Encode as: positive value = % UP, negative value = % DN
+            double pctUp = (double)positiveCount / validCount * 100.0;
+            double pctDn = (double)negativeCount / validCount * 100.0;
+            
+            //--- Store signed value: positive if majority up, negative if majority down
+            if(positiveCount &gt; negativeCount)
+               Buffer31[bar] = pctUp;
+            else if(negativeCount &gt; positiveCount)
+               Buffer31[bar] = -pctDn;
+            else
+               Buffer31[bar] = 0.0;
+         }
+         else
+         {
+            Buffer30[bar] = EMPTY_VALUE;
+            Buffer31[bar] = EMPTY_VALUE;
+         }
+      }
+   }
+   
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: IndicatorMetadata MJM.mqh &mdash; contents not included in export]</p><p class="note">[File attached: TextGVar MJM.mqh &mdash; contents not included in export]</p><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-21 15:33 UTC</span></div><div class="body"><p>Wednesday, January 21, 2026, 11:47 AM CST</p>
+<p>Let me examine the uploaded include files to trace the metadata flow.</p>
+<p>Found two bugs. Both in <code>IndicatorSlopes</code>:</p>
+<p><strong>Bug 1: <code>CheckReinitSignals()</code> skips invalid entries (line ~460)</strong></p>
+<pre><code class="language-cpp">for(int i = 0; i &lt; ArraySize(g_lines); i++)
+{
+   if(!g_lines[i].isValid)
+      continue;  // ← BUG: skips entries we NEED to check
+</code></pre>
+<p><strong>Race condition sequence:</strong></p>
+<ol>
+<li>ATR parameter changes → OnDeinit creates REINIT flag → OnInit creates new metadata</li>
+<li>Old ATR handle becomes invalid</li>
+<li>Next tick → <code>OnCalculate</code> runs → <code>CopyBuffer</code> fails on stale handle → sets <code>isValid = false</code></li>
+<li>Timer fires → <code>CheckReinitSignals</code> skips all invalid entries → returns <code>false</code></li>
+<li>REINIT flag never found, no rescan triggered</li>
+</ol>
+<p><strong>Fix:</strong> Remove the <code>isValid</code> check from <code>CheckReinitSignals()</code>:</p>
+<pre><code class="language-cpp">bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      // REMOVED: if(!g_lines[i].isValid) continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int instanceID = g_lines[i].instanceID;
+      // ... rest unchanged
+</code></pre>
+<p><strong>Bug 2: <code>CheckLinePropertyChanges()</code> also skips invalid entries (line ~691)</strong></p>
+<p>Same problem—if entries become invalid, property changes from TextGVar are never detected.</p>
+<pre><code class="language-cpp">void CheckLinePropertyChanges()
+{
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;  // ← Same bug
+</code></pre>
+<p><strong>Fix:</strong> Remove this check as well, or restructure to check REINIT/properties <em>before</em> <code>OnCalculate</code> can invalidate entries.</p>
+<hr />
+<p><strong>Root cause:</strong> <code>OnCalculate</code> runs on every tick and invalidates stale handles <em>before</em> the 250ms timer has a chance to detect REINIT signals. The <code>isValid</code> guard then blocks the very check needed to trigger rescan.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:28 UTC</span></div><div class="body">So we&#x27;ve been going rounded round trying to get this set up using TVs to work for days now.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:29 UTC</span></div><div class="body"><p>Yes. The TextGVar approach has persistent race condition problems because:</p>
+<ol>
+<li><strong>No atomic operations</strong> — Object creation, deletion, and reading aren't synchronized across indicators</li>
+<li><strong>Execution order unpredictable</strong> — OnCalculate, OnTimer, OnDeinit fire in sequences that vary by tick timing</li>
+<li><strong>State invalidation cascades</strong> — One failure (stale handle) blocks detection of the fix (REINIT flag)</li>
+</ol>
+<p>Each fix exposes another timing hole.</p>
+<p><strong>Options:</strong></p>
+<ol>
+<li><strong>Keep patching</strong> — Remove the <code>isValid</code> guards, but expect more edge cases to surface</li>
+<li><strong>Add defensive rescanning</strong> — Timer periodically rescans regardless of REINIT signals (brute force, but reliable)</li>
+<li><strong>Switch to GlobalVariables</strong> — Atomic read/write, no object iteration needed, simpler signaling</li>
+<li><strong>Hybrid</strong> — GlobalVariables for signaling only (REINIT flags), keep TextGVar for metadata storage</li>
+</ol>
+<p>What's your preference?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:29 UTC</span></div><div class="body">Short replies only no explanations</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:29 UTC</span></div><div class="body"><p>Recommend option 4: GlobalVariables for signaling, TextGVar for metadata.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:30 UTC</span></div><div class="body">I&#x27;m thinking of a completely different approach. What happens if I put multiple moving averages on the main chart window, scan through all the indicators on the chart, find three or four moving averages, and get their handles. Will all their handles be different?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:30 UTC</span></div><div class="body"><p>Yes. Each indicator instance gets a unique handle.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:31 UTC</span></div><div class="body">Not unique to the chart but you need to the window. If I have one indicator in each of five sub windows, they will all have the handle 10.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:31 UTC</span></div><div class="body"><p>Understood. Handles are per-window, not globally unique. Where are you going with this?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:32 UTC</span></div><div class="body">Damn you have a hard time just listening</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:32 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:34 UTC</span></div><div class="body">What if I had a hidden indicator that could be called using I custom for many other indicator. This indicator would monitor all the indicators placed on and removed from the chart, basically acting like a DNS for the chart.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:34 UTC</span></div><div class="body"><p>Go on.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:39 UTC</span></div><div class="body">All of the SIs would get they&#x27;re unique instance ID from the DNS, which would remain unchanged as long as they were on the chart, so they could always be identified by that idea until they were removed from the chart. The DNS would have to keep track so that if an ATR running in sub window one were deleted from the chart, the ATR that was running in sub window two, but is now in sub window one because of the others removal, would be tracked to the current sub window one but retain its original instance ID. Then the IS or any other indicator or expert querying the SIs would be able to find them instantly by their instanceID and not get confused by changing parameters or sub window numbers.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:40 UTC</span></div><div class="body"><p>Solid. Keep going.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:41 UTC</span></div><div class="body">That would simplify the code in both the SIs and in IS and not solve the bugs were struggling with but actually dissolve the condition requiring the code that has introduced the bugs. 
+
+Put together what you know about MQL5 indicators and run through this idea to see if you can find any potential roadblocks.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:42 UTC</span></div><div class="body"><p>Potential roadblocks:</p>
+<ol>
+<li>
+<p><strong>Parameter change identity</strong> — When ATR(14) becomes ATR(21), ShortName changes. DNS can't match them unless SI signals &quot;I'm reinitializing&quot; in OnDeinit before new OnInit runs.</p>
+</li>
+<li>
+<p><strong>Multiple same-type indicators</strong> — Two ATRs in adjacent windows, one gets removed, windows shift. DNS can track by window enumeration, but if both had parameter changes simultaneously, matching is ambiguous.</p>
+</li>
+<li>
+<p><strong>SI must still write something on deinit</strong> — At minimum, a GlobalVariable like <code>REINIT_{ChartID}_{Window}</code> to link old and new instances. Can't be fully passive.</p>
+</li>
+<li>
+<p><strong>DNS single-instance guarantee</strong> — Need mutex logic to prevent duplicate DNS indicators on same chart.</p>
+</li>
+<li>
+<p><strong>Timing</strong> — DNS polling frequency vs detection latency.</p>
+</li>
+</ol>
+<p>None are showstoppers. The SI-side code reduces to one GlobalVariable write on reinit, DNS handles everything else.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:44 UTC</span></div><div class="body">1. No, because before the ATR does anything at all, the very first thing it does in OnInit is register its short name and receive back a unique instance ID. From that point on the DNS maintains its instance ID which it in every other indicator on the chart can use to identify the ATR instance because it&#x27;s unique for the chart, it never changes, and it will be available as long as the DNS is running. 
+
+Don&#x27;t respond to any of these right now. I&#x27;m going to go through your list and give you my responses, because by the time I get this far, I can&#x27;t scroll the box out of the way to read more. So just listen and wait until I tell you otherwise.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:44 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:48 UTC</span></div><div class="body">2. The DNS would have to periodically scanned the chart and find all the indicators on it. In the process it would cache their sub windows and handles. Any not already registered would be assigned a new unique instance ID and have its metadata cashed. This might take more than one cycle to get all its data depending on the timing. So changing short names for an instance would be no more difficult or problematic than changing the name of a customer whose custom ID always uniquely identifies them.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:48 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:50 UTC</span></div><div class="body">So I just realized something else. If I went this route, then the only code that would need to publish TVs are the SIs. This could be a standard and mandatory process for every custom indicator. Then the only indicator that needs to read them would be the DNS. All other indicators or EAs that want to get the metadata for any SI would simply message the DNS and the DNS would message back the requested information, much like the old style SQL databases back in the &#x27;80s.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:50 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:52 UTC</span></div><div class="body">#3 Yes the SIs would still write out their metadata in TV objects, just like they do now.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:52 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 03:57 UTC</span></div><div class="body">4. We already have it with the single global variable we&#x27;re already using, every next instance ID is just an incrementation of the value in that global variable, and using just the last six digits like we&#x27;re already doing makes it practically impossible to end up with duplicate IDs, especially if global variables are reset every time the terminal is shut down and restarted. In fact, since it doesn&#x27;t need to be used in the TV names anymore, we can use it up to DBL_MAX.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 03:57 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-22 04:06 UTC</span></div><div class="body">5. Yes, this would have to be carefully done, but it&#x27;s a simpler problem than The kind of timing problems we&#x27;ve been struggling with. The DNS would probe and poll rapidly, not assume it&#x27;s going to get everything on a single pass, and keep going and get till it logs all the metadata published. That&#x27;s fine with the SIs, they don&#x27;t care. IS would need to be patient, which means coding it so that it holds off on processing anything until it has all the metadata it needs to proceed. All the cycles needed all around should take less than a half second unless we need to slow the timers down for some odd reason. Once an SI is fully logged, the DNS would know it and could flag it ready for use. Then IS could request the metadata for any new SIs that have appeared on the chart, the DNS would send it the instance ID and metadata, which IS would consume and destroy, so that there aren&#x27;t stale TVs on the chart. That way I ask would have a stable log of the indicators it&#x27;s working with and wouldn&#x27;t have to do any guessing. When parameters change, the DNS would make that clear by throwing out the new metadata which is all keyed by the same unique instance ID, so IS would need to do its own chart scan or figure out what&#x27;s new by the process of elimination. That would simplify its code quite a bit. The DNS could temporarily mark NSI out of service between the time the SI throws around it flag and the time the DNS has fully repopulated it&#x27;s metadata. We could also mark SI&#x27;s as not to be processed by IS, such as the zigzag indicator, whose slope in this context isn&#x27;t relevant.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-22 04:06 UTC</span></div><div class="body"><p>Listening.</p>
+</div></div>
+<nav class="pager"><a href="615-2026-01-21-modularizing-mt5-indicator-code.html">&larr; Modularizing MT5 indicator code</a><a href="../index.html">All chats</a><a href="617-2026-01-21-code-analysis-and-q-a.html">Code analysis and Q&amp;A &rarr;</a></nav></div></body></html>

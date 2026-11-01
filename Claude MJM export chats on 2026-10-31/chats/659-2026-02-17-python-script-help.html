@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Python script help</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="658-2026-02-17-mexican-rental-contract-post-lease-occupancy-clause.html">&larr; Mexican rental contract post-lease occupancy clause</a><a href="../index.html">All chats</a><a href="660-2026-02-17-python-script-crashed-vs-code.html">Python script crashed VS Code &rarr;</a></nav>
+<header class="top">
+<h1>Python script help</h1>
+<div class="meta">Created 2026-02-17 19:33 UTC &middot; Last updated 2026-02-18 14:50 UTC &middot; 82 messages<br>Original: <a href="https://claude.ai/chat/0501c7f6-88bd-418c-96c4-5751a221839a">claude.ai/chat/0501c7f6-88bd-418c-96c4-5751a221839a</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:33 UTC</span></div><div class="body">I need your help with this Python script<details><summary>Attached file: unnamed</summary><pre>#!/usr/bin/env python3
+&quot;&quot;&quot;
+TEMA/KC Pattern Analyzer
+L0: PL slope dynamics (SL-agnostic)
+L1: Shape detection (crosses/pivots via spread delta)
+L2: Pattern detection (frequency analysis of shape sequences)
+
+Input: CSV from MT5 with Time, OHLC, TEMA, KC_Upper, KC_Middle, KC_Lower
+Output: Bar-by-bar L0/L1 data, then L2 pattern catalog
+&quot;&quot;&quot;
+
+import pandas as pd
+import numpy as np
+import sys
+import argparse
+from collections import defaultdict
+from typing import Tuple, Optional
+
+
+def round_to_point(value: float, point: float = 0.001) -&gt; float:
+    &quot;&quot;&quot;Round to nearest point (0.001 for USDJPY).&quot;&quot;&quot;
+    return round(value / point) * point
+
+
+def calculate_spreads(tema: float, kc_upper: float, kc_middle: float, kc_lower: float, point: float) -&gt; dict:
+    &quot;&quot;&quot;Calculate spreads from TEMA to each KC line, rounded to point.&quot;&quot;&quot;
+    return {
+        &#x27;spread_upper&#x27;: round_to_point(tema - kc_upper, point),
+        &#x27;spread_middle&#x27;: round_to_point(tema - kc_middle, point),
+        &#x27;spread_lower&#x27;: round_to_point(tema - kc_lower, point)
+    }
+
+
+def determine_active_line(spreads: dict) -&gt; Tuple[str, str]:
+    &quot;&quot;&quot;
+    Determine active line (nearest) and zone.
+    Returns (active_line, zone) where active_line and zone are U, M, or L.
+    &quot;&quot;&quot;
+    abs_spreads = {
+        &#x27;U&#x27;: abs(spreads[&#x27;spread_upper&#x27;]),
+        &#x27;M&#x27;: abs(spreads[&#x27;spread_middle&#x27;]),
+        &#x27;L&#x27;: abs(spreads[&#x27;spread_lower&#x27;])
+    }
+    active = min(abs_spreads, key=abs_spreads.get)
+    return active, active  # zone = active line
+
+
+def calculate_spread_delta_state(spread_curr: float, spread_prev: float) -&gt; str:
+    &quot;&quot;&quot;
+    Calculate L1 spread delta state.
+    SD+: diverging (spread increasing in absolute terms, same sign)
+    SD-: converging (spread decreasing in absolute terms, same sign)
+    SD0: parallel (spread unchanged)
+    SDX: cross (spread sign flipped)
+    &quot;&quot;&quot;
+    if spread_curr == 0 and spread_prev == 0:
+        return &#x27;SD0&#x27;
+    
+    # Check for cross (sign flip)
+    if spread_prev != 0 and spread_curr != 0:
+        if (spread_curr &gt; 0) != (spread_prev &gt; 0):
+            return &#x27;SDX&#x27;
+    elif spread_prev == 0 or spread_curr == 0:
+        # One is zero - edge case, treat as cross if other is non-zero
+        if spread_prev != 0 or spread_curr != 0:
+            return &#x27;SDX&#x27;
+    
+    # Same sign - check converging/diverging
+    delta = abs(spread_curr) - abs(spread_prev)
+    
+    if delta &gt; 0:
+        return &#x27;SD+&#x27;  # diverging
+    elif delta &lt; 0:
+        return &#x27;SD-&#x27;  # converging
+    else:
+        return &#x27;SD0&#x27;  # parallel
+
+
+def calculate_l0_state(slope_delta: float) -&gt; int:
+    &quot;&quot;&quot;
+    Calculate L0 state from slope delta.
+    +1: pivot toward up
+     0: continuation
+    -1: pivot toward down
+    &quot;&quot;&quot;
+    if slope_delta &gt; 0:
+        return 1
+    elif slope_delta &lt; 0:
+        return -1
+    else:
+        return 0
+
+
+def pass1_raw_calculations(df: pd.DataFrame, point: float = 0.001) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Pass 1: Calculate spreads, determine active line and zone for each bar.
+    &quot;&quot;&quot;
+    results = []
+    
+    for i, row in df.iterrows():
+        if i % 1000 == 0:
+            print(f&quot;\n  Progress: {i}/{len(df)} bars&quot;, end=&#x27;&#x27;, flush=True)
+        if i % 100 == 0:
+            print(&quot;.&quot;, end=&#x27;&#x27;, flush=True)        
+        spreads = calculate_spreads(
+            row[&#x27;TEMA&#x27;], 
+            row[&#x27;KC_Upper&#x27;], 
+            row[&#x27;KC_Middle&#x27;], 
+            row[&#x27;KC_Lower&#x27;],
+            point
+        )
+        active_line, zone = determine_active_line(spreads)
+        
+        results.append({
+            &#x27;bar_index&#x27;: i,
+            &#x27;time&#x27;: row[&#x27;Time&#x27;],
+            &#x27;close&#x27;: row[&#x27;Close&#x27;],
+            &#x27;tema&#x27;: row[&#x27;TEMA&#x27;],
+            &#x27;kc_upper&#x27;: row[&#x27;KC_Upper&#x27;],
+            &#x27;kc_middle&#x27;: row[&#x27;KC_Middle&#x27;],
+            &#x27;kc_lower&#x27;: row[&#x27;KC_Lower&#x27;],
+            &#x27;spread_upper&#x27;: spreads[&#x27;spread_upper&#x27;],
+            &#x27;spread_middle&#x27;: spreads[&#x27;spread_middle&#x27;],
+            &#x27;spread_lower&#x27;: spreads[&#x27;spread_lower&#x27;],
+            &#x27;active_line&#x27;: active_line,
+            &#x27;zone&#x27;: zone
+        })
+    
+    return pd.DataFrame(results)
+
+
+def pass2_l1_calculation(df: pd.DataFrame) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Pass 2: Calculate L1 spread delta state and zone switch flag.
+    Requires bar 2 onward (index 1+).
+    &quot;&quot;&quot;
+    df = df.copy()
+    df[&#x27;L1_state&#x27;] = None
+    df[&#x27;zone_switch&#x27;] = &#x27;N&#x27;
+    df[&#x27;active_spread&#x27;] = None
+    df[&#x27;active_spread_prev&#x27;] = None
+    
+    for i in range(1, len(df)):
+        curr = df.iloc[i]
+        prev = df.iloc[i-1]
+        
+        # Get spread to active line for current bar
+        if curr[&#x27;active_line&#x27;] == &#x27;U&#x27;:
+            spread_curr = curr[&#x27;spread_upper&#x27;]
+        elif curr[&#x27;active_line&#x27;] == &#x27;M&#x27;:
+            spread_curr = curr[&#x27;spread_middle&#x27;]
+        else:
+            spread_curr = curr[&#x27;spread_lower&#x27;]
+        
+        # Get spread to CURRENT active line from previous bar
+        # (we measure relative to current active line)
+        if curr[&#x27;active_line&#x27;] == &#x27;U&#x27;:
+            spread_prev = prev[&#x27;spread_upper&#x27;]
+        elif curr[&#x27;active_line&#x27;] == &#x27;M&#x27;:
+            spread_prev = prev[&#x27;spread_middle&#x27;]
+        else:
+            spread_prev = prev[&#x27;spread_lower&#x27;]
+        
+        # Calculate L1 state
+        l1_state = calculate_spread_delta_state(spread_curr, spread_prev)
+        
+        # Check zone switch
+        zone_switch = &#x27;Y&#x27; if curr[&#x27;active_line&#x27;] != prev[&#x27;active_line&#x27;] else &#x27;N&#x27;
+        
+        df.at[i, &#x27;L1_state&#x27;] = l1_state
+        df.at[i, &#x27;zone_switch&#x27;] = zone_switch
+        df.at[i, &#x27;active_spread&#x27;] = spread_curr
+        df.at[i, &#x27;active_spread_prev&#x27;] = spread_prev
+    
+    return df
+
+
+def pass3_l0_calculation(df: pd.DataFrame, point: float = 0.001) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Pass 3: Calculate L0 slope delta and state.
+    Requires bar 3 onward (index 2+).
+    Slope = TEMA change between bars, SlopeDelta = Slope2 - Slope1
+    &quot;&quot;&quot;
+    df = df.copy()
+    df[&#x27;slope_1&#x27;] = None  # slope from bar n-2 to bar n-1
+    df[&#x27;slope_2&#x27;] = None  # slope from bar n-1 to bar n
+    df[&#x27;slope_delta&#x27;] = None
+    df[&#x27;L0_state&#x27;] = None
+    
+    for i in range(2, len(df)):
+        tema_n = df.iloc[i][&#x27;tema&#x27;]
+        tema_n1 = df.iloc[i-1][&#x27;tema&#x27;]
+        tema_n2 = df.iloc[i-2][&#x27;tema&#x27;]
+        
+        slope_1 = round_to_point(tema_n1 - tema_n2, point)
+        slope_2 = round_to_point(tema_n - tema_n1, point)
+        slope_delta = round_to_point(slope_2 - slope_1, point)
+        
+        l0_state = calculate_l0_state(slope_delta)
+        
+        df.at[i, &#x27;slope_1&#x27;] = slope_1
+        df.at[i, &#x27;slope_2&#x27;] = slope_2
+        df.at[i, &#x27;slope_delta&#x27;] = slope_delta
+        df.at[i, &#x27;L0_state&#x27;] = l0_state
+    
+    return df
+
+
+def pass4_symbol_encoding(df: pd.DataFrame) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Pass 4: Combine L0 + L1 + zone switch + zone into symbol per bar.
+    Valid from bar 3 onward (index 2+).
+    &quot;&quot;&quot;
+    df = df.copy()
+    df[&#x27;symbol&#x27;] = None
+    
+    for i in range(2, len(df)):
+        row = df.iloc[i]
+        
+        if pd.isna(row[&#x27;L0_state&#x27;]) or pd.isna(row[&#x27;L1_state&#x27;]):
+            continue
+        
+        # Encode L0 state
+        l0_str = f&quot;L0:{int(row[&#x27;L0_state&#x27;]):+d}&quot;
+        
+        # Encode L1 state + zone switch
+        l1_str = f&quot;L1:{row[&#x27;L1_state&#x27;]}&quot;
+        zs_str = f&quot;ZS:{row[&#x27;zone_switch&#x27;]}&quot;
+        zone_str = f&quot;Z:{row[&#x27;zone&#x27;]}&quot;
+        
+        symbol = f&quot;{l0_str}|{l1_str}|{zs_str}|{zone_str}&quot;
+        df.at[i, &#x27;symbol&#x27;] = symbol
+    
+    return df
+
+
+def pass5_pattern_mining(df: pd.DataFrame, min_length: int = 2, min_frequency: int = 2) -&gt; dict:
+    &quot;&quot;&quot;
+    Pass 5: Mine patterns from symbol sequence using suffix-based approach.
+    Returns dict of pattern -&gt; {&#x27;count&#x27;: int, &#x27;instances&#x27;: [(start_idx, end_idx), ...]}.
+    Instances reference df index positions.
+    &quot;&quot;&quot;
+    # Extract valid symbols with their df indices
+    valid_mask = df[&#x27;symbol&#x27;].notna()
+    valid_df = df[valid_mask].copy()
+    symbols = valid_df[&#x27;symbol&#x27;].tolist()
+    indices = valid_df.index.tolist()  # Original df indices
+    
+    if len(symbols) &lt; min_length:
+        return {}
+    
+    pattern_data = defaultdict(lambda: {&#x27;count&#x27;: 0, &#x27;instances&#x27;: []})
+    
+    # Sliding window approach for pattern counting - no max_length limit
+    for length in range(min_length, len(symbols) + 1):
+        if length % 1000 == 0:
+            print(f&quot;\n  Mining progress: checking length {length}&quot;, end=&#x27;&#x27;)
+        if length % 1000 == 0:
+            print(&quot;.&quot;, end=&#x27;&#x27;, flush=True)
+        for start in range(len(symbols) - length + 1):
+            if start % 1000 == 0:
+                print(&quot;.&quot;, end=&#x27;&#x27;, flush=True)
+            pattern = tuple(symbols[start:start + length])
+            start_idx = indices[start]
+            end_idx = indices[start + length - 1]
+            pattern_data[pattern][&#x27;count&#x27;] += 1
+            pattern_data[pattern][&#x27;instances&#x27;].append((start_idx, end_idx))
+    
+    # Filter by minimum frequency
+    significant_patterns = {
+        pattern: data 
+        for pattern, data in pattern_data.items() 
+        if data[&#x27;count&#x27;] &gt;= min_frequency
+    }
+    
+    return significant_patterns
+
+
+def export_l1_output(df: pd.DataFrame, output_path: str) -&gt; None:
+    &quot;&quot;&quot;Export L1 bar-by-bar data to CSV.&quot;&quot;&quot;
+    # Select columns for output
+    output_cols = [
+        &#x27;bar_index&#x27;, &#x27;time&#x27;, &#x27;close&#x27;, &#x27;tema&#x27;,
+        &#x27;spread_upper&#x27;, &#x27;spread_middle&#x27;, &#x27;spread_lower&#x27;,
+        &#x27;active_line&#x27;, &#x27;zone&#x27;, &#x27;zone_switch&#x27;,
+        &#x27;L1_state&#x27;, &#x27;active_spread&#x27;,
+        &#x27;slope_1&#x27;, &#x27;slope_2&#x27;, &#x27;slope_delta&#x27;, &#x27;L0_state&#x27;,
+        &#x27;symbol&#x27;
+    ]
+    
+    existing_cols = [c for c in output_cols if c in df.columns]
+    df_out = df[existing_cols].copy()
+    
+    df_out.to_csv(output_path, index=False, encoding=&#x27;utf-8&#x27;)
+    print(f&quot;Exported L1 data: {len(df_out)} rows to {output_path}&quot;)
+
+
+def export_l2_patterns(patterns: dict, output_path: str) -&gt; None:
+    &quot;&quot;&quot;Export L2 pattern catalog to CSV.&quot;&quot;&quot;
+    rows = []
+    for pattern, data in sorted(patterns.items(), key=lambda x: -x[1][&#x27;count&#x27;]):
+        rows.append({
+            &#x27;pattern_length&#x27;: len(pattern),
+            &#x27;frequency&#x27;: data[&#x27;count&#x27;],
+            &#x27;pattern&#x27;: &#x27; -&gt; &#x27;.join(pattern)
+        })
+    
+    df_out = pd.DataFrame(rows)
+    df_out.to_csv(output_path, index=False, encoding=&#x27;utf-8&#x27;)
+    print(f&quot;Exported L2 patterns: {len(df_out)} patterns to {output_path}&quot;)
+
+
+def export_visualization_csv(df: pd.DataFrame, patterns: dict, output_path: str,
+                              min_length: int = 4, min_frequency: int = 2,
+                              filter_mode: str = &#x27;AND&#x27;) -&gt; None:
+    &quot;&quot;&quot;
+    Export pattern instances for MQL5 visualization.
+    Format: pattern_type, start_time, end_time, high_price, low_price, color, description
+    
+    Filters patterns by length and frequency using AND/OR logic.
+    Exports ALL instances of patterns matching the criteria.
+    &quot;&quot;&quot;
+    # 10 distinct colors
+    colors = [&#x27;BLUE&#x27;, &#x27;RED&#x27;, &#x27;GREEN&#x27;, &#x27;MAGENTA&#x27;, &#x27;CYAN&#x27;,
+              &#x27;ORANGE&#x27;, &#x27;PURPLE&#x27;, &#x27;YELLOW&#x27;, &#x27;LIME&#x27;, &#x27;MAROON&#x27;]
+    
+    # Filter patterns based on criteria
+    filtered_patterns = []
+    for pattern, data in patterns.items():
+        pattern_len = len(pattern)
+        freq = data[&#x27;count&#x27;]
+        
+        meets_length = pattern_len &gt;= min_length
+        meets_freq = freq &gt;= min_frequency
+        
+        if filter_mode == &#x27;AND&#x27;:
+            include = meets_length and meets_freq
+        else:  # OR
+            include = meets_length or meets_freq
+        
+        if include:
+            filtered_patterns.append((pattern, data))
+    
+    if not filtered_patterns:
+        print(f&quot;No patterns meet criteria: length&gt;={min_length}, freq&gt;={min_frequency}, mode={filter_mode}&quot;)
+        # Create empty file with header
+        df_out = pd.DataFrame(columns=[&#x27;pattern_type&#x27;, &#x27;start_time&#x27;, &#x27;end_time&#x27;, 
+                                       &#x27;high_price&#x27;, &#x27;low_price&#x27;, &#x27;color&#x27;, &#x27;description&#x27;])
+        df_out.to_csv(output_path, index=False, encoding=&#x27;utf-8&#x27;)
+        return
+    
+    print(f&quot;Found {len(filtered_patterns)} patterns meeting criteria&quot;)
+    
+    # Sort by frequency for consistent color assignment
+    filtered_patterns.sort(key=lambda x: -x[1][&#x27;count&#x27;])
+    
+    rows = []
+    for pattern_idx, (pattern, data) in enumerate(filtered_patterns):
+        color = colors[pattern_idx % len(colors)]
+        pattern_str = &#x27; -&gt; &#x27;.join(pattern)
+        frequency = data[&#x27;count&#x27;]
+        pattern_len = len(pattern)
+        
+        # Export ALL instances (no limit)
+        instances = data[&#x27;instances&#x27;]
+        
+        for inst_idx, (start_bar, end_bar) in enumerate(instances):
+            # Look up time and price from df
+            try:
+                start_row = df.loc[start_bar]
+                end_row = df.loc[end_bar]
+                
+                # Get high/low across the pattern span using OHLC data
+                pattern_slice = df.loc[start_bar:end_bar]
+                if &#x27;high&#x27; in pattern_slice.columns and &#x27;low&#x27; in pattern_slice.columns:
+                    high_price = pattern_slice[&#x27;high&#x27;].max()
+                    low_price = pattern_slice[&#x27;low&#x27;].min()
+                else:
+                    high_price = pattern_slice[&#x27;close&#x27;].max()
+                    low_price = pattern_slice[&#x27;close&#x27;].min()
+                
+                # Add some buffer to high/low
+                price_range = high_price - low_price
+                if price_range &lt; 0.001:  # Minimum range
+                    price_range = 0.01
+                high_price += price_range * 0.1
+                low_price -= price_range * 0.1
+                
+                rows.append({
+                    &#x27;pattern_type&#x27;: f&quot;P{pattern_idx+1}_L{pattern_len}&quot;,
+                    &#x27;start_time&#x27;: start_row[&#x27;time&#x27;],
+                    &#x27;end_time&#x27;: end_row[&#x27;time&#x27;],
+                    &#x27;high_price&#x27;: round(high_price, 6),
+                    &#x27;low_price&#x27;: round(low_price, 6),
+                    &#x27;color&#x27;: color,
+                    &#x27;description&#x27;: f&quot;P{pattern_idx+1} L={pattern_len} F={frequency} #{inst_idx+1}&quot;
+                })
+            except Exception as e:
+                print(f&quot;Error processing instance {start_bar}-{end_bar}: {e}&quot;)
+                continue
+    
+    df_out = pd.DataFrame(rows)
+    df_out.to_csv(output_path, index=False, encoding=&#x27;utf-8&#x27;)
+    print(f&quot;Exported {len(df_out)} shading blocks for {len(filtered_patterns)} patterns to {output_path}&quot;)
+
+
+def run_analysis(input_path: str, output_dir: str = None, point: float = 0.001,
+                 min_length: int = 4, min_frequency: int = 2, filter_mode: str = &#x27;AND&#x27;) -&gt; Tuple[pd.DataFrame, dict]:
+    &quot;&quot;&quot;
+    Run full L0/L1/L2 analysis pipeline.
+    &quot;&quot;&quot;
+    if output_dir is None:
+        output_dir = &#x27;.&#x27;
+    
+    # Load data
+    print(f&quot;Loading {input_path}...&quot;)
+    try:
+        df = pd.read_csv(input_path, encoding=&#x27;utf-16&#x27;)
+    except:
+        df = pd.read_csv(input_path, encoding=&#x27;utf-8&#x27;)
+    print(f&quot;Loaded {len(df)} bars&quot;)
+    
+    # Pass 1: Raw calculations
+    print(&quot;Pass 1: Calculating spreads and zones...&quot;)
+    df = pass1_raw_calculations(df, point)
+    
+    # Pass 2: L1 calculation
+    print(&quot;Pass 2: Calculating L1 spread delta states...&quot;)
+    df = pass2_l1_calculation(df)
+    
+    # Pass 3: L0 calculation
+    print(&quot;Pass 3: Calculating L0 slope deltas...&quot;)
+    df = pass3_l0_calculation(df, point)
+    
+    # Pass 4: Symbol encoding
+    print(&quot;Pass 4: Encoding symbols...&quot;)
+    df = pass4_symbol_encoding(df)
+    
+    # Count valid symbols
+    valid_symbols = df[&#x27;symbol&#x27;].notna().sum()
+    print(f&quot;Generated {valid_symbols} symbols&quot;)
+    
+    # Pass 5: Pattern mining (use wider range to capture patterns of all lengths)
+    print(&quot;Pass 5: Mining patterns...&quot;)
+    patterns = pass5_pattern_mining(df, min_length=2, min_frequency=2)
+    print(f&quot;Found {len(patterns)} significant patterns&quot;)
+    
+    # Export results
+    base_name = input_path.replace(&#x27;.csv&#x27;, &#x27;&#x27;)
+    l1_output = f&quot;{base_name}_L1_output.csv&quot;
+    l2_output = f&quot;{base_name}_L2_catalog.csv&quot;
+    viz_output = f&quot;{base_name}_patterns.csv&quot;
+    
+    export_l1_output(df, l1_output)
+    export_l2_patterns(patterns, l2_output)
+    export_visualization_csv(df, patterns, viz_output, 
+                             min_length=min_length, min_frequency=min_frequency, 
+                             filter_mode=filter_mode)
+    
+    return df, patterns
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=&#x27;TEMA/KC Pattern Analyzer&#x27;,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=&quot;&quot;&quot;
+Examples:
+  python tema_kc_pattern_analyzer.py data.csv
+  python tema_kc_pattern_analyzer.py data.csv -l 5 -f 3 -m AND
+  python tema_kc_pattern_analyzer.py data.csv 0.01 -l 4 -m OR
+        &quot;&quot;&quot;
+    )
+    
+    parser.add_argument(&#x27;input_file&#x27;, nargs=&#x27;?&#x27;, default=&#x27;TEMA_KC_Data_USDJPY.a_CURRENT.csv&#x27;, help=&#x27;Input CSV file from MT5&#x27;)
+    parser.add_argument(&#x27;point&#x27;, nargs=&#x27;?&#x27;, type=float, default=0.001,
+                       help=&#x27;Point size for rounding (default: 0.001)&#x27;)
+    parser.add_argument(&#x27;-l&#x27;, type=int, default=4,
+                       help=&#x27;Minimum pattern length (default: 4)&#x27;)
+    parser.add_argument(&#x27;-f&#x27;, type=int, default=2,
+                       help=&#x27;Minimum pattern frequency (default: 2)&#x27;)
+    parser.add_argument(&#x27;-m&#x27;, choices=[&#x27;AND&#x27;, &#x27;OR&#x27;], default=&#x27;AND&#x27;,
+                       help=&#x27;Filter mode: AND (both length AND freq) or OR (either) (default: AND)&#x27;)
+    
+    args = parser.parse_args()
+    
+    print(f&quot;Point size: {args.point}&quot;)
+    print(f&quot;Filter: length&gt;={args.l}, freq&gt;={args.f}, mode={args.m}&quot;)
+
+    MT5_COMMON_FILES = r&quot;C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files&quot;
+    
+    df, patterns = run_analysis(
+        MT5_COMMON_FILES + &quot;\\&quot; + args.input_file, 
+        point=args.point,
+        min_length=args.l,
+        min_frequency=args.f,
+        filter_mode=args.m
+    )
+    
+    print(&quot;\nAnalysis complete!&quot;)
+    
+    # Print top 10 patterns
+    if patterns:
+        print(&quot;\nTop 10 most frequent patterns:&quot;)
+        sorted_patterns = sorted(patterns.items(), key=lambda x: -x[1][&#x27;count&#x27;])[:10]
+        for pattern, data in sorted_patterns:
+            print(f&quot;  {data[&#x27;count&#x27;]}x (L={len(pattern)}): {&#x27; -&gt; &#x27;.join(pattern)}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:33 UTC</span></div><div class="body"><p>Tuesday, February 17, 2026 | CST (UTC−6)</p>
+<p>What specifically do you need help with?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:35 UTC</span></div><div class="body">it runs for a long time. I don&#x27;t want to arbitrarily limit it, but I&#x27;d like to have it give status so I can estimate how long it will take to run. The print code inserted in some of the loops doesn&#x27;t really do what I want.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:35 UTC</span></div><div class="body"><p>Before any code, let me map the problem so we're aligned.</p>
+<p><strong>Where time is actually spent:</strong></p>
+<p>The four row-iteration passes (1–4) are all O(n) — slow because of <code>iterrows()</code>, but linear and predictable. ETA there is straightforward: track rows/sec, project finish.</p>
+<p>Pass 5 is the real problem. It's O(n²) in iterations (outer loop: lengths 2→n; inner loop: sliding windows). The total inner iterations is calculable upfront:</p>
+<pre><code>total = sum of (n - l + 1) for l in range(min_length, n+1)
+      ≈ n*(n-1)/2  for min_length=2
+</code></pre>
+<p>For n=5000 symbols that's ~12.5 million iterations. For n=10000 it's ~50 million. So you can pre-compute the exact total before pass 5 starts and give a real ETA.</p>
+<p><strong>Proposed approach:</strong></p>
+<p>Replace all scattered print statements with a single <code>ProgressTracker</code> class that:</p>
+<ul>
+<li>Takes <code>total_units</code> at construction</li>
+<li>Call <code>.update(n)</code> each iteration (or every k iterations for speed)</li>
+<li>Prints: <code>[elapsed] [%] ETA: [remaining]</code> on a single overwriting line</li>
+<li>Fires on a time interval (e.g., every 2 seconds) rather than every N iterations, so it's responsive regardless of loop speed</li>
+</ul>
+<p><strong>One question:</strong> Do you want the ETA line to overwrite in place (<code>\r</code>), or do you prefer discrete newline prints (better for logging to file)?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:36 UTC</span></div><div class="body">For now, overwrite in place.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:36 UTC</span></div><div class="body"><p><strong>Proposed design — discuss before any code:</strong></p>
+<p><strong><code>ProgressTracker</code> class:</strong></p>
+<ul>
+<li>Constructor takes <code>label</code> (string) and <code>total</code> (int)</li>
+<li><code>.tick(n=1)</code> — increments counter, checks elapsed time, prints only if ≥2 seconds since last print</li>
+<li><code>.done()</code> — prints a final completion line with total elapsed</li>
+<li>Print format: <code>[Label] 12,345 / 50,000 (24.7%) | 00:01:23 elapsed | ETA: 00:04:17</code></li>
+<li>Uses <code>\r</code> to overwrite, <code>end=''</code>, <code>flush=True</code></li>
+</ul>
+<p><strong>Where it plugs in:</strong></p>
+<ul>
+<li>Pass 1: total = <code>len(df)</code>, tick once per row in <code>iterrows()</code> loop — replaces existing mod-1000 prints</li>
+<li>Pass 2: same, total = <code>len(df)</code></li>
+<li>Pass 3: same</li>
+<li>Pass 4: same</li>
+<li>Pass 5 outer loop: pre-compute exact total iterations as <code>sum(n - l + 1 for l in range(2, n+1))</code>, tick once per inner iteration (every 500 ticks to reduce overhead)</li>
+</ul>
+<p><strong>One issue to flag:</strong> Passes 1–4 use <code>iterrows()</code> which is inherently slow. The progress tracker will expose just how slow they are. If that becomes a concern after you see the timing, vectorizing those passes would be a separate discussion.</p>
+<p>Ready to proceed?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:38 UTC</span></div><div class="body">1-4 happen fast enough.
+
+Can you calculate time remaining given time spent to the current point?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:38 UTC</span></div><div class="body"><p>Yes. Standard linear projection:</p>
+<pre><code>rate = completed / elapsed
+eta = (total - completed) / rate
+</code></pre>
+<p>This is accurate only once a meaningful number of iterations have completed (first few seconds will be noisy). No issue with Pass 5 since it runs long enough for the estimate to stabilize.</p>
+<p>Updated format:
+<code>[Label] 12,345 / 50,000 (24.7%) | 00:01:23 elapsed | ETA: 00:04:17 remaining</code></p>
+<p>Guard against division by zero on the first tick (elapsed or completed = 0) — just skip printing until both are non-zero.</p>
+<p>Confirmed design. GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:38 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:39 UTC</span></div><div class="body"><p>Key changes:</p>
+<p><strong><code>ProgressTracker</code> class</strong> (top of file) — constructor takes <code>label</code>, <code>total</code>, optional <code>interval</code> (default 2s). <code>.tick(n)</code> accumulates count and prints only when the interval has elapsed. <code>.done()</code> prints a final completion line. Format: <code>Pass 5 (patterns): 1,234,567 / 50,000,000 (2.5%) | 00:00:47 elapsed | ETA: 00:30:12 remaining</code></p>
+<p><strong>Pass 5 specifically</strong> — total iterations pre-computed as <code>sum(n - l + 1 for l in range(min_length, n+1))</code> and printed before the loop starts so you know the scale upfront. Ticks are batched every 500 inner iterations to avoid the progress machinery eating into performance.</p>
+<p><strong>Passes 1–4</strong> — each has its own tracker, so you get wall-clock confirmation of how fast those are relative to Pass 5.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:45 UTC</span></div><div class="body">it got as far as 
+
+Pass 5 (patterns)   : 6,231,000 / 12,214,153 (51.0%) | 00:01:56 elapsed | ETA: 00:01:51 remaining 
+
+and stopped progressing for almost a minute, then started up again.
+
+Just now it stopped again at:
+
+Pass 5 (patterns)   : 7,790,000 / 12,214,153 (63.8%) | 00:02:40 elapsed | ETA: 00:01:31 remaining</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:45 UTC</span></div><div class="body"><p>The stalls are almost certainly GC pauses. The <code>pattern_data</code> dict is storing instances for every pattern — including all the singletons that will be discarded at the end. By 50–60% through, that dict is enormous: millions of tuple keys, each with a growing list of <code>(start_idx, end_idx)</code> pairs. Python's GC periodically freezes to collect the garbage.</p>
+<p><strong>Root cause:</strong> storing instances during the counting pass wastes memory on patterns that won't survive the <code>min_frequency</code> filter.</p>
+<p><strong>Fix: two-pass approach inside Pass 5</strong></p>
+<ul>
+<li><strong>Sub-pass A:</strong> count only — <code>Counter</code> of pattern tuples, no instance storage. Fast, low memory.</li>
+<li><strong>Sub-pass B:</strong> iterate again, but only record instances for patterns whose count meets <code>min_frequency</code>. Skips all singletons.</li>
+</ul>
+<p>This eliminates the majority of allocations. For typical forex data where most long patterns are unique, sub-pass B will do very little work.</p>
+<p>Each sub-pass gets its own progress line, so you'll see:</p>
+<pre><code>Pass 5a (count)     : 12,214,153 / 12,214,153 (100.0%) | 00:02:10 elapsed | done
+Pass 5b (instances) : 12,214,153 / 12,214,153 (100.0%) | 00:00:43 elapsed | done
+</code></pre>
+<p>One question before GO: do you want to keep <code>min_frequency=2</code> hardcoded as the instance-collection threshold, or pass it through as a parameter (it already is a parameter — just confirming the two-pass uses the same value)?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:46 UTC</span></div><div class="body">&quot;GC pauses&quot;
+
+Please. Be more cryptic.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:46 UTC</span></div><div class="body"><p>Fair. Plain version:</p>
+<p>The script is hoarding data it will mostly throw away. For every pattern it finds — including ones that only appear once and get discarded at the end — it's saving a list of every location where that pattern occurred. By halfway through, it's sitting on millions of these throwaway lists. Periodically Python stops everything to clean up that accumulated junk, and that's the freeze.</p>
+<p>The fix is the same: count first, then go back and record locations only for patterns that actually repeat.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:47 UTC</span></div><div class="body">not until you explain that fully and clearly</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:47 UTC</span></div><div class="body"><p><strong>What Pass 5 is doing now:</strong></p>
+<p>The outer loop goes through every possible pattern length (2, 3, 4, ... up to n). The inner loop slides a window of that length across all the symbols. Every time it sees a pattern, it does two things: increments a count, and appends the start/end bar positions to a list stored under that pattern.</p>
+<p>By the time it's halfway through, it has accumulated counts and location lists for millions of distinct patterns — most of which appear only once and will be thrown away at the end when the <code>min_frequency</code> filter runs. All those location lists for throwaway patterns are sitting in memory doing nothing useful. As that pile grows, Python periodically stops the program to reclaim that memory. That's the freeze.</p>
+<hr />
+<p><strong>What the two-pass fix does:</strong></p>
+<p><strong>Sub-pass A</strong> runs the exact same nested loops, but only increments counts. No location lists are stored at all. This is fast and stays lean in memory throughout.</p>
+<p>At the end of sub-pass A, we know exactly which patterns meet <code>min_frequency</code>. That's typically a small fraction of the total.</p>
+<p><strong>Sub-pass B</strong> runs the same nested loops again, but this time only records location lists for patterns already known to qualify. Everything else is ignored. Since qualifying patterns are a small minority, very little is stored.</p>
+<p>Total work is roughly doubled (two full passes), but memory stays controlled the entire time, so no freezes.</p>
+<hr />
+<p><strong>The trade-off:</strong> it takes twice as long on the iteration count, but in practice sub-pass B does far less storage work than the current single pass, so wall-clock time will likely be similar or better — and no stalls.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:49 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:49 UTC</span></div><div class="body"><p>Only <code>pass5_pattern_mining</code> changed. Everything else is identical to the previous version.</p>
+<p>Sub-pass A runs lean — just a counter, nothing else. After it finishes, you'll see how many patterns actually qualify before sub-pass B starts. Sub-pass B only does storage work for that qualifying subset, so memory stays flat throughout both passes.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:53 UTC</span></div><div class="body">OK, how do I kill the running script?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:53 UTC</span></div><div class="body"><p>In the terminal window where it's running: <strong>Ctrl+C</strong></p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:53 UTC</span></div><div class="body">tried that before, does nothing</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:53 UTC</span></div><div class="body"><p>Open a separate Command Prompt and run:</p>
+<pre><code>taskkill /F /IM python.exe
+</code></pre>
+<p>Warning: that kills all running Python processes, not just this one. If that's a problem, first run <code>tasklist | findstr python</code> to get the PID, then <code>taskkill /F /PID &lt;number&gt;</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 19:55 UTC</span></div><div class="body">cool</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 19:55 UTC</span></div><div class="body"><p>👍</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:07 UTC</span></div><div class="body">OK, I ran it, it got to just under 11,000,000 of the 12M cycles, my machine crawled to a halt, and then I got this:<p class="note">[File attached: 1771358854377_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:07 UTC</span></div><div class="body"><p>'oom' = out of memory. VS Code itself was killed by Windows.</p>
+<p>The two-pass fix solved the GC pause problem but not the underlying one: the <code>counts</code> dict in sub-pass A is storing a tuple key for every unique pattern across all lengths from 2 to n. For ~5,000 symbols, that's millions of distinct tuples, and the tuples themselves get longer as the outer loop progresses — a length-4000 pattern tuple is a large object.</p>
+<p><strong>The real issue: there is no upper length cap.</strong></p>
+<p>Patterns of length 100, 500, 2000 are almost certainly unique — they will never survive the <code>min_frequency</code> filter. But the script is still building and storing those giant tuples before it can find that out.</p>
+<p><strong>The fix: add a <code>max_length</code> parameter.</strong></p>
+<p>From a trading analysis standpoint, what is the longest pattern sequence that would actually be meaningful to you? Even something like 20–50 symbols would cut the iteration count and memory use by orders of magnitude compared to running all the way to n.</p>
+<p>What's a reasonable upper bound for pattern length in your use case?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:10 UTC</span></div><div class="body">I wanted to analyze the data before making that kind of decision. Isn&#x27;t there a way to pre-pass and percentilize counts by length tiers? If I could see that I could make a decision about max_length.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:10 UTC</span></div><div class="body"><p>Yes. The key insight: instead of counting all lengths simultaneously (which piles everything into memory at once), process <strong>one length at a time</strong>, compute frequency statistics for that length, then discard before moving to the next.</p>
+<p><strong>Proposed pre-pass:</strong></p>
+<p>For each length L from 2 upward:</p>
+<ul>
+<li>Slide a window of length L across all symbols, count occurrences with a <code>Counter</code></li>
+<li>Record: unique pattern count, and frequency percentiles (50th, 75th, 90th, 95th, 99th, max)</li>
+<li>Discard the <code>Counter</code> entirely before moving to L+1</li>
+</ul>
+<p>Memory at any point = one length's worth of counts only.</p>
+<p><strong>Output:</strong> a CSV with one row per length, something like:</p>
+<pre><code>length | unique | p50 | p75 | p90 | p95 | p99 | max
+2      | 18     | 142 | 210 | 380 | 420 | 501 | 623
+3      | 94     | 31  | 67  | 112 | 190 | 280 | 341
+...
+12     | 4,821  | 1   | 1   | 2   | 3   | 5   | 12
+</code></pre>
+<p>When p99 (or even p90) hits 1, virtually nothing at that length repeats — that's your practical cutoff.</p>
+<p>You set a stop condition: halt automatically when max frequency across the entire length drops to 1 (nothing repeats at all).</p>
+<p>This runs fast, stays lean, and gives you the data to decide <code>max_length</code> before committing to the full mining run.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:12 UTC</span></div><div class="body">what is &quot;length&quot; actually?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:13 UTC</span></div><div class="body"><p>The number of consecutive symbols in a sequence.</p>
+<p>Each symbol is one bar's worth of state: <code>L0:+1|L1:SD-|ZS:N|Z:U</code> for example. A pattern of length 3 is three consecutive bars where that exact sequence of states occurred more than once in the data.</p>
+<p>So &quot;length 12&quot; means: a specific sequence of 12 consecutive bar-states that has been seen to repeat somewhere in the history.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:13 UTC</span></div><div class="body">and what is a symbol?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:13 UTC</span></div><div class="body"><p>One bar's encoded state, combining four pieces of information:</p>
+<ul>
+<li><strong>L0</strong>: whether the TEMA slope is accelerating up (+1), down (-1), or flat (0)</li>
+<li><strong>L1</strong>: whether the TEMA is diverging from, converging toward, or crossing the nearest KC line (SD+, SD-, SD0, SDX)</li>
+<li><strong>ZS</strong>: whether the nearest KC line changed from the previous bar (Y/N)</li>
+<li><strong>Z</strong>: which KC line is nearest (U, M, L)</li>
+</ul>
+<p>Combined into one string per bar: <code>L0:+1|L1:SD-|ZS:N|Z:U</code></p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:13 UTC</span></div><div class="body">so length = # bars?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:13 UTC</span></div><div class="body"><p>Yes.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:13 UTC</span></div><div class="body">OK, well, obviously, length must be no greater than total_bars_on_chart/2</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:14 UTC</span></div><div class="body"><p>Correct, and that's a hard mathematical limit — a pattern of length L requires at least 2 non-overlapping occurrences, which is impossible if L &gt; n/2. So <code>max_length = n // 2</code> is the ceiling regardless of anything else.</p>
+<p>For your ~5,000 symbol dataset that's a max length of ~2,500 — still large, which is exactly why the pre-pass to find the <em>practical</em> cutoff (where repetition drops to near zero) is worth doing before the full mining run.</p>
+<p>Ready for GO on the pre-pass?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:16 UTC</span></div><div class="body">you&#x27;re mixing terminology. It&#x27;s not a 5000 symbol data set. I thought it was 5000 symbol sequences of varying lengths.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:16 UTC</span></div><div class="body"><p>You're right, I was sloppy. To be precise:</p>
+<p>There is one contiguous sequence of ~5,000 symbols, one per bar. Patterns are contiguous subsequences extracted from that single sequence, and they vary in length from 2 bars up to the maximum.</p>
+<p>&quot;5,000 symbol dataset&quot; implied 5,000 separate things, which is wrong.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:28 UTC</span></div><div class="body">OK, the script has all the price data from the input CSV. Run a ZigZag 12,5,3, take the two longest legs (# bars) and that&#x27;s our max_length.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:28 UTC</span></div><div class="body"><p>Before discussing approach: &quot;take the two longest legs and that's our max_length&quot; — two legs gives two numbers. How do you derive a single <code>max_length</code> from them? Average? Larger of the two? Sum?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:28 UTC</span></div><div class="body">sum</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:28 UTC</span></div><div class="body"><p>Confirmed. So the logic is:</p>
+<ol>
+<li>Compute ZigZag(12, 5, 3) on the Close prices already in the dataframe</li>
+<li>Identify all legs (pivot-to-pivot spans), measure each in bars</li>
+<li>Take the two longest, sum them → <code>max_length</code></li>
+<li>Use that as the upper bound in both the pre-pass and the full mining run</li>
+</ol>
+<p>One question: ZigZag in MT5 uses High/Low for pivot detection, not Close. Your input CSV has OHLC. Should the ZigZag here use High/Low (matching MT5 behavior) or Close?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:29 UTC</span></div><div class="body">Why would it use close?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:29 UTC</span></div><div class="body"><p>It wouldn't. High/Low it is.</p>
+<p>The three ZigZag parameters are depth, deviation, backstep — confirm they're 12, 5, 3 respectively in that order?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:29 UTC</span></div><div class="body">yes</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:29 UTC</span></div><div class="body"><p>Before any code — confirm the ZigZag implementation approach:</p>
+<p>MT5's ZigZag with those parameters works as follows: Depth (12) = minimum bars between pivots, Deviation (5) = minimum price movement in points between pivots, Backstep (3) = minimum bars between a swing high and swing low candidate.</p>
+<p>The Python implementation will replicate that logic on the High/Low columns already in the dataframe, identify all pivot points, measure each leg in bars, sort descending, sum the top two → <code>max_length</code>.</p>
+<p>This runs as a new pre-pass before the frequency pre-pass, and the result gets printed and passed through to cap the mining loops.</p>
+<p>Nothing else in the script changes. GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:31 UTC</span></div><div class="body">that&#x27;s a lot of work. Just keep a max_ZZ_bars variable and update it as you&#x27;re creating the ZZ, then double it and use that.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:31 UTC</span></div><div class="body"><p>Simpler and correct. Track the longest leg as the ZigZag builds, double it → <code>max_length</code>.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:31 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:32 UTC</span></div><div class="body"><p>Three changes needed:</p>
+<ol>
+<li>Add <code>zigzag_max_length()</code> function operating on the raw loaded df (before pass1 strips High/Low)</li>
+<li>Add <code>max_length</code> parameter to <code>pass5_pattern_mining</code>, cap the loop and recalculate <code>total_iters</code></li>
+<li>Call it in <code>run_analysis</code>, print the result, pass it through</li>
+</ol>
+<p>One thing to verify first — what are the exact column names for High and Low in your MT5 CSV export?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:36 UTC</span></div><div class="body">Time,Open,High,Low,Close,TEMA,KC_Upper,KC_Middle,KC_Lower
+2025.04.30 17:00:00,142.669,143.042,142.574,142.638,142.634,143.022,142.634,142.245</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:38 UTC</span></div><div class="body"><p><code>High</code> and <code>Low</code>. GO confirmed — building now.</p>
+<p>Now update the body of pass5 to use max_length, and wire zigzag into run_analysis:</p>
+<p>Now wire zigzag into run_analysis:</p>
+<p>What changed:</p>
+<p><code>zigzag_max_length()</code> runs immediately after loading, before any other pass. It scans High/Low with ZigZag(12,5,3), tracks the longest leg in bars, doubles it, prints the result, and returns <code>max_length</code>. That value caps the outer loop in both sub-passes of Pass 5, so the iteration count — and memory — are bounded from the start.</p>
+<p>The console will show something like:</p>
+<pre><code>Computing ZigZag max_length...
+ZigZag: longest leg = 87 bars → max_length = 174
+Pass 5: 4,997 symbols, max_length=174
+  → 866,736 total iterations per sub-pass
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:55 UTC</span></div><div class="body">PS C:\Temp-C\MQL5&gt; python C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py
+Point size: 0.001
+Filter: length&gt;=4, freq&gt;=2, mode=AND
+Loading C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT.csv...
+Loaded 4,945 bars
+Computing ZigZag max_length...
+ZigZag: longest leg = 30 bars → max_length = 60
+Pass 1 (spreads/zones): 1 / 4,945 (0.0%) | 00:00:00 elapsed | ETA: 00:00:05 remaining   
+Pass 1 (spreads/zones): 4,945 / 4,945 (100.0%) | 00:00:00 elapsed | done                
+Pass 2 (L1 states)  : 4,944 / 4,944 (100.0%) | 00:00:00 elapsed | done                          
+Pass 3 (L0 states)  : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done                          
+Pass 4 (symbols)    : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done                          
+Generated 4,943 symbols
+Pass 5: 4,943 symbols, max_length=60
+  → 289,867 total iterations per sub-pass
+Pass 5a (count)     : 500 / 289,867 (0.2%) | 00:00:00 elapsed | ETA: 00:00:00 remaining Pass 5a (count)     : 289,867 / 289,867 (100.0%) | 00:00:00 elapsed | done              
+  3,084 patterns qualify (freq &gt;= 2)
+Pass 5b (instances) : 500 / 289,867 (0.2%) | 00:00:00 elapsed | ETA: 00:00:00 remaining 
+Pass 5b (instances) : 289,867 / 289,867 (100.0%) | 00:00:00 elapsed | done              
+Found 3,084 significant patterns
+Exported L1 data: 4945 rows to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_L1_output.csv
+Traceback (most recent call last):
+  File &quot;C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py&quot;, line 558, in &lt;module&gt;
+    main()
+    ~~~~^^
+  File &quot;C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py&quot;, line 541, in main
+    df, patterns = run_analysis(
+                   ~~~~~~~~~~~~^
+        MT5_COMMON_FILES + &quot;\\&quot; + args.input_file,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...&lt;3 lines&gt;...
+        filter_mode=args.m
+        ^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File &quot;C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py&quot;, line 501, in run_analysis
+    export_l2_patterns(patterns, f&quot;{base_name}_L2_catalog.csv&quot;)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py&quot;, line 405, in export_l2_patterns
+    pd.DataFrame(rows).to_csv(output_path, index=False, encoding=&#x27;utf-8&#x27;)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File &quot;C:\Users\Millard\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\util\_decorators.py&quot;, line 333, in wrapper
+    return func(*args, **kwargs)
+  File &quot;C:\Users\Millard\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\core\generic.py&quot;, line 3967, in to_csv
+    return DataFrameRenderer(formatter).to_csv(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        path_or_buf,
+        ^^^^^^^^^^^^
+    ...&lt;14 lines&gt;...
+        storage_options=storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File &quot;C:\Users\Millard\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\io\formats\format.py&quot;, line 1014, in to_csv
+    csv_formatter.save()
+    ~~~~~~~~~~~~~~~~~~^^
+  File &quot;C:\Users\Millard\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\io\formats\csvs.py&quot;, line 251, in save
+    with get_handle(
+         ~~~~~~~~~~^
+        self.filepath_or_buffer,
+        ^^^^^^^^^^^^^^^^^^^^^^^^
+    ...&lt;4 lines&gt;...
+        storage_options=self.storage_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ) as handles:
+    ^
+  File &quot;C:\Users\Millard\AppData\Local\Programs\Python\Python313\Lib\site-packages\pandas\io\common.py&quot;, line 873, in get_handle
+    handle = open(
+        handle,
+    ...&lt;3 lines&gt;...
+        newline=&quot;&quot;,
+    )
+PermissionError: [Errno 13] Permission denied: &#x27;C:\\Users\\Millard\\AppData\\Roaming\\MetaQuotes\\Terminal\\Common\\Files\\TEMA_KC_Data_USDJPY.a_CURRENT_L2_catalog.csv&#x27;        
+PS C:\Temp-C\MQL5&gt;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:55 UTC</span></div><div class="body"><p>The L1 output wrote fine, so it's not a directory permissions issue. The L2 catalog file already exists and is open in another program (Excel most likely).</p>
+<p>Close it and re-run.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 20:57 UTC</span></div><div class="body">wow that was kinda too fast. Did it actually run?
+
+PS C:\Temp-C\MQL5&gt; python C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py
+Point size: 0.001
+Filter: length&gt;=4, freq&gt;=2, mode=AND
+Loading C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT.csv...
+Loaded 4,945 bars
+Computing ZigZag max_length...
+ZigZag: longest leg = 30 bars → max_length = 60
+Pass 1 (spreads/zones): 1 / 4,945 (0.0%) | 00:00:00 elapsed | ETA: 00:00:05 remaining   
+Pass 1 (spreads/zones): 4,945 / 4,945 (100.0%) | 00:00:00 elapsed | done                
+Pass 2 (L1 states)  : 4,944 / 4,944 (100.0%) | 00:00:00 elapsed | done                          
+Pass 3 (L0 states)  : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done                          
+Pass 4 (symbols)    : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done                          
+Generated 4,943 symbols
+Pass 5: 4,943 symbols, max_length=60
+  → 289,867 total iterations per sub-pass
+Pass 5a (count)     : 500 / 289,867 (0.2%) | 00:00:00 elapsed | ETA: 00:00:00 remaining Pass 5a (count)     : 289,867 / 289,867 (100.0%) | 00:00:00 elapsed | done              
+  3,084 patterns qualify (freq &gt;= 2)
+Pass 5b (instances) : 500 / 289,867 (0.2%) | 00:00:00 elapsed | ETA: 00:00:00 remaining 
+Pass 5b (instances) : 289,867 / 289,867 (100.0%) | 00:00:00 elapsed | done              
+Found 3,084 significant patterns
+Exported L1 data: 4945 rows to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_L1_output.csv
+Exported L2 patterns: 3084 patterns to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_L2_catalog.csv
+Found 2159 patterns meeting criteria
+Exported 6512 shading blocks for 2159 patterns to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_patterns.csv
+Analysis complete!
+Top 10 most frequent patterns:
+  145x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  139x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  138x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  124x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  115x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U
+  111x (L=2): L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  103x (L=2): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  97x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  91x (L=2): L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L
+  90x (L=2): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+PS C:\Temp-C\MQL5&gt;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 20:57 UTC</span></div><div class="body"><p>Yes, it actually ran. The max_length=60 cap reduced Pass 5 from ~12 million iterations to ~290,000 — about 40x less work, which is why it finished in seconds instead of minutes.</p>
+<p>The output looks valid: 3,084 patterns found, top 10 are length-2 with counts in the 90–145 range, which is plausible for ~5,000 bars.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:00 UTC</span></div><div class="body">Add a print after &quot;top 10 most frequent patterns&quot; that shows the longest 30 patterns with frequency, just give me the code block here.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:00 UTC</span></div><div class="body"><pre><code class="language-python">    if patterns:
+        print(&quot;\nTop 30 longest patterns:&quot;)
+        sorted_by_length = sorted(patterns.items(), key=lambda x: (-len(x[0]), -x[1]['count']))[:30]
+        for pattern, data in sorted_by_length:
+            print(f&quot;  {data['count']}x (L={len(pattern)}): {' -&gt; '.join(pattern)}&quot;)
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:02 UTC</span></div><div class="body">do we still have code in place that limits length to 10?<details><summary>Attached file: unnamed</summary><pre>PS C:\Temp-C\MQL5&gt; python C:\Temp-C\MQL5\Scripts\DevoScripts\tema_kc_pattern_analyzer.py
+Point size: 0.001
+Filter: length&gt;=4, freq&gt;=2, mode=AND
+Loading C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT.csv...
+Loaded 4,945 bars
+Computing ZigZag max_length...
+ZigZag: longest leg = 30 bars → max_length = 90
+Pass 1 (spreads/zones): 4,945 / 4,945 (100.0%) | 00:00:00 elapsed | done
+Pass 2 (L1 states)  : 4,944 / 4,944 (100.0%) | 00:00:00 elapsed | done
+Pass 3 (L0 states)  : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done
+Pass 4 (symbols)    : 4,943 / 4,943 (100.0%) | 00:00:00 elapsed | done
+Generated 4,943 symbols
+Pass 5: 4,943 symbols, max_length=90
+  → 435,922 total iterations per sub-pass
+Pass 5a (count)     : 435,922 / 435,922 (100.0%) | 00:00:00 elapsed | done
+  3,084 patterns qualify (freq &gt;= 2)
+Pass 5b (instances) : 435,922 / 435,922 (100.0%) | 00:00:00 elapsed | done
+Found 3,084 significant patterns
+Exported L1 data: 4945 rows to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_L1_output.csv
+Exported L2 patterns: 3084 patterns to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_L2_catalog.csv
+Found 2159 patterns meeting criteria
+Exported 6512 shading blocks for 2159 patterns to C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_patterns.csv
+
+Analysis complete!
+
+Top 30 most frequent patterns:
+  145x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  139x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  138x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  124x (L=2): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  115x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U
+  111x (L=2): L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  103x (L=2): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  97x (L=2): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  91x (L=2): L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L
+  90x (L=2): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  88x (L=2): L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  88x (L=2): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L
+  77x (L=2): L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  76x (L=2): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  76x (L=2): L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  69x (L=2): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U
+  66x (L=2): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  64x (L=3): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  56x (L=2): L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  56x (L=2): L0:+1|L1:SD+|ZS:N|Z:M -&gt; L0:-1|L1:SD-|ZS:N|Z:M
+  54x (L=2): L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  53x (L=2): L0:+1|L1:SDX|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U
+  53x (L=2): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  50x (L=3): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  50x (L=2): L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  50x (L=3): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  50x (L=3): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  48x (L=2): L0:+1|L1:SD-|ZS:Y|Z:M -&gt; L0:-1|L1:SD-|ZS:N|Z:M
+  48x (L=3): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  47x (L=2): L0:-1|L1:SD-|ZS:N|Z:M -&gt; L0:+1|L1:SD+|ZS:N|Z:M
+
+Top 30 longest patterns:
+  2x (L=11): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=10): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  2x (L=10): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=10): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:-1|L1:SD-|ZS:Y|Z:L -&gt; L0:+1|L1:SDX|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=9): L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SDX|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=9): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:+1|L1:SDX|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  2x (L=9): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=9): L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  2x (L=9): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  2x (L=9): L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=9): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  2x (L=9): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=9): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  2x (L=9): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  3x (L=8): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  3x (L=8): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L
+  3x (L=8): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=8): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U
+  2x (L=8): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=8): L0:+1|L1:SDX|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=8): L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SDX|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L
+  2x (L=8): L0:-1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD+|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:+1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD-|ZS:N|Z:L -&gt; L0:-1|L1:SD+|ZS:N|Z:L
+  2x (L=8): L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U
+  2x (L=8): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD+|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U
+  2x (L=8): L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SD+|ZS:N|Z:U -&gt; L0:-1|L1:SD-|ZS:N|Z:U -&gt; L0:+1|L1:SDX|ZS:N|Z:U
+PS C:\Temp-C\MQL5&gt;</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:02 UTC</span></div><div class="body"><p>No. <code>max_length=60</code> is the cap, and it's working — the ZigZag longest leg was 30, doubled to 60. The data simply has no repeating patterns longer than 11 bars at <code>min_frequency=2</code>. That's a data result, not a code limit.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:06 UTC</span></div><div class="body">explain this data from patterns.csv</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:06 UTC</span></div><div class="body"><p>You haven't shared the file contents. Paste some rows or upload it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:06 UTC</span></div><div class="body">actually, I&#x27;m just wondering what &quot;description&quot; data is</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:06 UTC</span></div><div class="body"><p>From <code>export_visualization_csv</code>:</p>
+<pre><code class="language-python">'description': f&quot;P{pattern_idx+1} L={pattern_len} F={frequency} #{inst_idx+1}&quot;
+</code></pre>
+<p>So for example <code>P3 L=6 F=12 #4</code> means: pattern number 3, length 6 bars, occurred 12 times total, this is the 4th instance of it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:07 UTC</span></div><div class="body">from C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files\TEMA_KC_Data_USDJPY.a_CURRENT_patterns.csv</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:07 UTC</span></div><div class="body"><p>Paste some rows from the file — it's not accessible to me directly.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:07 UTC</span></div><div class="body">pattern_type	start_time	end_time	high_price	low_price	color	description
+P1_L4	2025.05.19 12:00:00	2025.05.19 15:00:00	145.045	144.781	BLUE	P1 L=4 F=26 #1
+P1_L4	2025.05.23 10:00:00	2025.05.23 13:00:00	143.3783	143.3027	BLUE	P1 L=4 F=26 #2
+P1_L4	2025.05.26 04:00:00	2025.05.26 07:00:00	142.5894	142.3206	BLUE	P1 L=4 F=26 #3
+P1_L4	2025.05.27 03:00:00	2025.05.27 06:00:00	142.4636	142.2644	BLUE	P1 L=4 F=26 #4
+P1_L4	2025.06.02 13:00:00	2025.06.02 16:00:00	142.9163	142.7447	BLUE	P1 L=4 F=26 #5
+P1_L4	2025.06.26 10:00:00	2025.06.26 13:00:00	144.2329	143.8981	BLUE	P1 L=4 F=26 #6
+P1_L4	2025.07.21 18:00:00	2025.07.21 21:00:00	147.3423	147.1467	BLUE	P1 L=4 F=26 #7
+P1_L4	2025.07.24 04:00:00	2025.07.24 07:00:00	146.0524	145.9276	BLUE	P1 L=4 F=26 #8
+P1_L4	2025.08.04 00:00:00	2025.08.04 03:00:00	147.6963	147.1527	BLUE	P1 L=4 F=26 #9
+P1_L4	2025.08.13 16:00:00	2025.08.13 19:00:00	147.366	147.126	BLUE	P1 L=4 F=26 #10
+P1_L4	2025.08.15 11:00:00	2025.08.15 14:00:00	146.9987	146.8463	BLUE	P1 L=4 F=26 #11
+P1_L4	2025.09.29 10:00:00	2025.09.29 13:00:00	148.6817	148.5173	BLUE	P1 L=4 F=26 #12
+P1_L4	2025.10.01 09:00:00	2025.10.01 12:00:00	147.244	147.112	BLUE	P1 L=4 F=26 #13
+P1_L4	2025.10.01 15:00:00	2025.10.01 18:00:00	147.1926	146.6814	BLUE	P1 L=4 F=26 #14
+P1_L4	2025.10.02 00:00:00	2025.10.02 03:00:00	147.2123	146.9927	BLUE	P1 L=4 F=26 #15
+P1_L4	2025.10.16 03:00:00	2025.10.16 06:00:00	150.8982	150.5718	BLUE	P1 L=4 F=26 #16
+P1_L4	2025.10.17 08:00:00	2025.10.17 11:00:00	149.7958	149.6182	BLUE	P1 L=4 F=26 #17
+P1_L4	2025.10.28 07:00:00	2025.10.28 10:00:00	152.1718	151.8502	BLUE	P1 L=4 F=26 #18
+P1_L4	2025.11.06 17:00:00	2025.11.06 20:00:00	153.0589	152.9761	BLUE	P1 L=4 F=26 #19
+P1_L4	2025.12.01 14:00:00	2025.12.01 17:00:00	155.1268	154.7572	BLUE	P1 L=4 F=26 #20
+P1_L4	2026.01.19 01:00:00	2026.01.19 04:00:00	157.9043	157.4327	BLUE	P1 L=4 F=26 #21
+P1_L4	2026.01.26 11:00:00	2026.01.26 14:00:00	154.1905	153.5005	BLUE	P1 L=4 F=26 #22
+P1_L4	2026.01.27 14:00:00	2026.01.27 17:00:00	153.31	153.214	BLUE	P1 L=4 F=26 #23
+P1_L4	2026.01.27 22:00:00	2026.01.28 01:00:00	152.5274	152.1506	BLUE	P1 L=4 F=26 #24
+P1_L4	2026.02.10 16:00:00	2026.02.10 19:00:00	154.4078	154.1942	BLUE	P1 L=4 F=26 #25
+P1_L4	2026.02.12 04:00:00	2026.02.12 07:00:00	153.1592	152.4848	BLUE	P1 L=4 F=26 #26
+P2_L4	2025.05.08 11:00:00	2025.05.08 14:00:00	144.8276	144.6284	RED	P2 L=4 F=21 #1
+P2_L4	2025.05.29 02:00:00	2025.05.29 05:00:00	146.1291	145.6839	RED	P2 L=4 F=21 #2
+P2_L4	2025.06.16 22:00:00	2025.06.17 01:00:00	144.8839	144.5971	RED	P2 L=4 F=21 #3
+P2_L4	2025.06.18 01:00:00	2025.06.18 04:00:00	145.4113	145.1437	RED	P2 L=4 F=21 #4
+P2_L4	2025.06.19 13:00:00	2025.06.19 16:00:00	145.7333	145.3937	RED	P2 L=4 F=21 #5
+P2_L4	2025.06.23 12:00:00	2025.06.23 15:00:00	148.0416	147.3624	RED	P2 L=4 F=21 #6
+P2_L4	2025.07.09 05:00:00	2025.07.09 08:00:00	147.1135	146.9755	RED	P2 L=4 F=21 #7
+P2_L4	2025.07.25 04:00:00	2025.07.25 07:00:00	147.4457	147.1133	RED	P2 L=4 F=21 #8
+P2_L4	2025.07.31 21:00:00	2025.08.01 00:00:00	150.8086	150.6814	RED	P2 L=4 F=21 #9
+P2_L4	2025.08.22 06:00:00	2025.08.22 09:00:00	148.7667	148.4943	RED	P2 L=4 F=21 #10
+P2_L4	2025.09.18 16:00:00	2025.09.18 19:00:00	148.0817	147.8453	RED	P2 L=4 F=21 #11
+P2_L4	2025.09.22 05:00:00	2025.09.22 08:00:00	148.3553	148.2437	RED	P2 L=4 F=21 #12
+P2_L4	2025.09.24 15:00:00	2025.09.24 18:00:00	148.7184	148.6656	RED	P2 L=4 F=21 #13
+P2_L4	2025.10.06 21:00:00	2025.10.07 00:00:00	150.3783	150.2307	RED	P2 L=4 F=21 #14
+P2_L4	2025.10.07 21:00:00	2025.10.08 00:00:00	151.9129	151.8181	RED	P2 L=4 F=21 #15
+P2_L4	2025.10.31 09:00:00	2025.10.31 12:00:00	154.3225	154.1245	RED	P2 L=4 F=21 #16
+P2_L4	2025.11.17 17:00:00	2025.11.17 20:00:00	155.209	155.137	RED	P2 L=4 F=21 #17
+P2_L4	2025.12.08 21:00:00	2025.12.09 00:00:00	155.9331	155.8959	RED	P2 L=4 F=21 #18
+P2_L4	2025.12.22 09:00:00	2025.12.22 12:00:00	157.562	157.382	RED	P2 L=4 F=21 #19
+P2_L4	2026.01.09 10:00:00	2026.01.09 13:00:00	157.721	157.565	RED	P2 L=4 F=21 #20
+P2_L4	2026.02.02 00:00:00	2026.02.02 03:00:00	155.2537	155.0173	RED	P2 L=4 F=21 #21
+P3_L4	2025.06.20 23:00:00	2025.06.23 02:00:00	146.5749	146.0481	GREEN	P3 L=4 F=21 #1
+P3_L4	2025.07.28 03:00:00	2025.07.28 06:00:00	147.8866	147.5914	GREEN	P3 L=4 F=21 #2
+P3_L4	2025.07.28 23:00:00	2025.07.29 02:00:00	148.5593	148.4477	GREEN	P3 L=4 F=21 #3
+P3_L4	2025.07.29 02:00:00	2025.07.29 05:00:00	148.7189	148.3121	GREEN	P3 L=4 F=21 #4
+P3_L4	2025.07.30 17:00:00	2025.07.30 20:00:00	149.1057	148.7493	GREEN	P3 L=4 F=21 #5
+P3_L4	2025.08.01 03:00:00	2025.08.01 06:00:00	150.9333	150.5577	GREEN	P3 L=4 F=21 #6
+P3_L4	2025.08.12 02:00:00	2025.08.12 05:00:00	148.4307	148.1223	GREEN	P3 L=4 F=21 #7
+P3_L4	2025.08.12 05:00:00	2025.08.12 08:00:00	148.4272	148.2808	GREEN	P3 L=4 F=21 #8
+P3_L4	2025.08.22 13:00:00	2025.08.22 16:00:00	148.7198	148.6022	GREEN	P3 L=4 F=21 #9
+P3_L4	2025.10.23 12:00:00	2025.10.23 15:00:00	152.7911	152.5139	GREEN	P3 L=4 F=21 #10
+P3_L4	2025.11.05 21:00:00	2025.11.06 00:00:00	154.1287	154.0603	GREEN	P3 L=4 F=21 #11
+P3_L4	2025.11.12 05:00:00	2025.11.12 08:00:00	154.7774	154.3046	GREEN	P3 L=4 F=21 #12
+P3_L4	2025.11.18 00:00:00	2025.11.18 03:00:00	155.2912	155.1808	GREEN	P3 L=4 F=21 #13
+P3_L4	2025.11.19 22:00:00	2025.11.20 01:00:00	157.1755	156.9415	GREEN	P3 L=4 F=21 #14
+P3_L4	2025.12.02 13:00:00	2025.12.02 16:00:00	156.0207	155.9163	GREEN	P3 L=4 F=21 #15
+P3_L4	2025.12.10 02:00:00	2025.12.10 05:00:00	156.7251	156.5799	GREEN	P3 L=4 F=21 #16</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:07 UTC</span></div><div class="body"><p>Each row is one instance of a repeating pattern, ready to be drawn as a shaded rectangle on a chart.</p>
+<p>The columns:</p>
+<ul>
+<li><strong>pattern_type</strong>: P1_L4 = pattern #1, length 4 bars. Patterns are numbered by descending frequency.</li>
+<li><strong>start_time / end_time</strong>: the bar timestamps bracketing that specific instance</li>
+<li><strong>high_price / low_price</strong>: the price range of that instance (high/low of all bars in the span, plus 10% buffer)</li>
+<li><strong>color</strong>: assigned per pattern number, cycles through 10 colors — all instances of the same pattern get the same color</li>
+<li><strong>description</strong>: P1 L=4 F=26 #1 = pattern #1, 4 bars long, occurred 26 times total, this is instance #1</li>
+</ul>
+<p>So P1_L4 with F=26 means the most frequent 4-bar symbol sequence, and the file contains all 26 time ranges where it occurred, all colored BLUE, ready to shade on the chart.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-17 21:08 UTC</span></div><div class="body">explain each one:
+
+P1 L=4 F=26 #25</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-17 21:08 UTC</span></div><div class="body"><ul>
+<li><strong>P1</strong> — pattern number 1 (the most frequent pattern in the dataset)</li>
+<li><strong>L=4</strong> — 4 bars long</li>
+<li><strong>F=26</strong> — this pattern occurred 26 times total across all the data</li>
+<li><strong>#25</strong> — this specific row is the 25th of those 26 instances</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:31 UTC</span></div><div class="body">The script is failing to find meaningful patterns. The longest pattern it identifies is 11 &quot;symbols&quot; long, which is ridiculous. For example, the image shows an extremely common pattern, 47 bars.
+
+What is giving the code tunnel vision?<details><summary>Attached file: unnamed</summary><pre>#!/usr/bin/env python3
+&quot;&quot;&quot;
+TEMA/KC Pattern Analyzer
+L0: PL slope dynamics (SL-agnostic)
+L1: Shape detection (crosses/pivots via spread delta)
+L2: Pattern detection (frequency analysis of shape sequences)
+
+Input: CSV from MT5 with Time, OHLC, TEMA, KC_Upper, KC_Middle, KC_Lower
+Output: Bar-by-bar L0/L1 data, then L2 pattern catalog
+&quot;&quot;&quot;
+
+import pandas as pd
+import numpy as np
+import sys
+import argparse
+import time
+from collections import defaultdict
+from typing import Tuple, Optional
+
+
+# ---------------------------------------------------------------------------
+# Progress tracking
+# ---------------------------------------------------------------------------
+
+class ProgressTracker:
+    &quot;&quot;&quot;
+    Single-line overwriting progress display.
+    Call tick() each iteration (or tick(n) for batches).
+    Call done() when finished.
+    Prints at most once every `interval` seconds to reduce I/O overhead.
+    &quot;&quot;&quot;
+
+    def __init__(self, label: str, total: int, interval: float = 2.0):
+        self.label    = label
+        self.total    = total
+        self.interval = interval
+        self.completed = 0
+        self.start    = time.monotonic()
+        self.last_print = 0.0  # force first print after first tick
+
+    @staticmethod
+    def _fmt_seconds(s: float) -&gt; str:
+        s = int(s)
+        h, rem = divmod(s, 3600)
+        m, sec = divmod(rem, 60)
+        return f&quot;{h:02d}:{m:02d}:{sec:02d}&quot;
+
+    def tick(self, n: int = 1) -&gt; None:
+        self.completed += n
+        now = time.monotonic()
+        if now - self.last_print &lt; self.interval:
+            return
+        self.last_print = now
+        elapsed = now - self.start
+
+        pct = self.completed / self.total * 100 if self.total &gt; 0 else 0.0
+        elapsed_str = self._fmt_seconds(elapsed)
+
+        if elapsed &gt; 0 and self.completed &gt; 0:
+            rate = self.completed / elapsed
+            remaining = (self.total - self.completed) / rate
+            eta_str = self._fmt_seconds(remaining)
+        else:
+            eta_str = &quot;--:--:--&quot;
+
+        line = (f&quot;\r{self.label}: {self.completed:,} / {self.total:,} &quot;
+                f&quot;({pct:.1f}%) | {elapsed_str} elapsed | ETA: {eta_str} remaining   &quot;)
+        print(line, end=&#x27;&#x27;, flush=True)
+
+    def done(self) -&gt; None:
+        elapsed = time.monotonic() - self.start
+        elapsed_str = self._fmt_seconds(elapsed)
+        line = (f&quot;\r{self.label}: {self.total:,} / {self.total:,} &quot;
+                f&quot;(100.0%) | {elapsed_str} elapsed | done                          &quot;)
+        print(line, flush=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def round_to_point(value: float, point: float = 0.001) -&gt; float:
+    &quot;&quot;&quot;Round to nearest point (0.001 for USDJPY).&quot;&quot;&quot;
+    return round(value / point) * point
+
+
+def calculate_spreads(tema: float, kc_upper: float, kc_middle: float, kc_lower: float, point: float) -&gt; dict:
+    &quot;&quot;&quot;Calculate spreads from TEMA to each KC line, rounded to point.&quot;&quot;&quot;
+    return {
+        &#x27;spread_upper&#x27;:  round_to_point(tema - kc_upper,  point),
+        &#x27;spread_middle&#x27;: round_to_point(tema - kc_middle, point),
+        &#x27;spread_lower&#x27;:  round_to_point(tema - kc_lower,  point)
+    }
+
+
+def determine_active_line(spreads: dict) -&gt; Tuple[str, str]:
+    abs_spreads = {
+        &#x27;U&#x27;: abs(spreads[&#x27;spread_upper&#x27;]),
+        &#x27;M&#x27;: abs(spreads[&#x27;spread_middle&#x27;]),
+        &#x27;L&#x27;: abs(spreads[&#x27;spread_lower&#x27;])
+    }
+    active = min(abs_spreads, key=abs_spreads.get)
+    return active, active
+
+
+def calculate_spread_delta_state(spread_curr: float, spread_prev: float) -&gt; str:
+    if spread_curr == 0 and spread_prev == 0:
+        return &#x27;SD0&#x27;
+    if spread_prev != 0 and spread_curr != 0:
+        if (spread_curr &gt; 0) != (spread_prev &gt; 0):
+            return &#x27;SDX&#x27;
+    elif spread_prev == 0 or spread_curr == 0:
+        if spread_prev != 0 or spread_curr != 0:
+            return &#x27;SDX&#x27;
+    delta = abs(spread_curr) - abs(spread_prev)
+    if delta &gt; 0:
+        return &#x27;SD+&#x27;
+    elif delta &lt; 0:
+        return &#x27;SD-&#x27;
+    else:
+        return &#x27;SD0&#x27;
+
+
+def calculate_l0_state(slope_delta: float) -&gt; int:
+    if slope_delta &gt; 0:
+        return 1
+    elif slope_delta &lt; 0:
+        return -1
+    else:
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Passes
+# ---------------------------------------------------------------------------
+
+def pass1_raw_calculations(df: pd.DataFrame, point: float = 0.001) -&gt; pd.DataFrame:
+    n = len(df)
+    prog = ProgressTracker(&quot;Pass 1 (spreads/zones)&quot;, n)
+    results = []
+    for i, row in df.iterrows():
+        spreads = calculate_spreads(
+            row[&#x27;TEMA&#x27;], row[&#x27;KC_Upper&#x27;], row[&#x27;KC_Middle&#x27;], row[&#x27;KC_Lower&#x27;], point
+        )
+        active_line, zone = determine_active_line(spreads)
+        results.append({
+            &#x27;bar_index&#x27;:     i,
+            &#x27;time&#x27;:          row[&#x27;Time&#x27;],
+            &#x27;close&#x27;:         row[&#x27;Close&#x27;],
+            &#x27;tema&#x27;:          row[&#x27;TEMA&#x27;],
+            &#x27;kc_upper&#x27;:      row[&#x27;KC_Upper&#x27;],
+            &#x27;kc_middle&#x27;:     row[&#x27;KC_Middle&#x27;],
+            &#x27;kc_lower&#x27;:      row[&#x27;KC_Lower&#x27;],
+            &#x27;spread_upper&#x27;:  spreads[&#x27;spread_upper&#x27;],
+            &#x27;spread_middle&#x27;: spreads[&#x27;spread_middle&#x27;],
+            &#x27;spread_lower&#x27;:  spreads[&#x27;spread_lower&#x27;],
+            &#x27;active_line&#x27;:   active_line,
+            &#x27;zone&#x27;:          zone
+        })
+        prog.tick()
+    prog.done()
+    return pd.DataFrame(results)
+
+
+def pass2_l1_calculation(df: pd.DataFrame) -&gt; pd.DataFrame:
+    df = df.copy()
+    df[&#x27;L1_state&#x27;]         = None
+    df[&#x27;zone_switch&#x27;]      = &#x27;N&#x27;
+    df[&#x27;active_spread&#x27;]    = None
+    df[&#x27;active_spread_prev&#x27;] = None
+
+    n = len(df)
+    prog = ProgressTracker(&quot;Pass 2 (L1 states)  &quot;, n - 1)
+    for i in range(1, n):
+        curr = df.iloc[i]
+        prev = df.iloc[i - 1]
+        al = curr[&#x27;active_line&#x27;]
+        spread_key = {&#x27;U&#x27;: &#x27;spread_upper&#x27;, &#x27;M&#x27;: &#x27;spread_middle&#x27;, &#x27;L&#x27;: &#x27;spread_lower&#x27;}[al]
+        spread_curr = curr[spread_key]
+        spread_prev = prev[spread_key]
+        l1_state    = calculate_spread_delta_state(spread_curr, spread_prev)
+        zone_switch = &#x27;Y&#x27; if curr[&#x27;active_line&#x27;] != prev[&#x27;active_line&#x27;] else &#x27;N&#x27;
+        df.at[i, &#x27;L1_state&#x27;]          = l1_state
+        df.at[i, &#x27;zone_switch&#x27;]       = zone_switch
+        df.at[i, &#x27;active_spread&#x27;]     = spread_curr
+        df.at[i, &#x27;active_spread_prev&#x27;] = spread_prev
+        prog.tick()
+    prog.done()
+    return df
+
+
+def pass3_l0_calculation(df: pd.DataFrame, point: float = 0.001) -&gt; pd.DataFrame:
+    df = df.copy()
+    df[&#x27;slope_1&#x27;]    = None
+    df[&#x27;slope_2&#x27;]    = None
+    df[&#x27;slope_delta&#x27;] = None
+    df[&#x27;L0_state&#x27;]   = None
+
+    n = len(df)
+    prog = ProgressTracker(&quot;Pass 3 (L0 states)  &quot;, n - 2)
+    for i in range(2, n):
+        tema_n  = df.iloc[i][&#x27;tema&#x27;]
+        tema_n1 = df.iloc[i - 1][&#x27;tema&#x27;]
+        tema_n2 = df.iloc[i - 2][&#x27;tema&#x27;]
+        slope_1     = round_to_point(tema_n1 - tema_n2, point)
+        slope_2     = round_to_point(tema_n  - tema_n1, point)
+        slope_delta = round_to_point(slope_2 - slope_1, point)
+        df.at[i, &#x27;slope_1&#x27;]    = slope_1
+        df.at[i, &#x27;slope_2&#x27;]    = slope_2
+        df.at[i, &#x27;slope_delta&#x27;] = slope_delta
+        df.at[i, &#x27;L0_state&#x27;]   = calculate_l0_state(slope_delta)
+        prog.tick()
+    prog.done()
+    return df
+
+
+def pass4_symbol_encoding(df: pd.DataFrame) -&gt; pd.DataFrame:
+    df = df.copy()
+    df[&#x27;symbol&#x27;] = None
+
+    n = len(df)
+    prog = ProgressTracker(&quot;Pass 4 (symbols)    &quot;, n - 2)
+    for i in range(2, n):
+        row = df.iloc[i]
+        if pd.isna(row[&#x27;L0_state&#x27;]) or pd.isna(row[&#x27;L1_state&#x27;]):
+            prog.tick()
+            continue
+        symbol = (f&quot;L0:{int(row[&#x27;L0_state&#x27;]):+d}&quot;
+                  f&quot;|L1:{row[&#x27;L1_state&#x27;]}&quot;
+                  f&quot;|ZS:{row[&#x27;zone_switch&#x27;]}&quot;
+                  f&quot;|Z:{row[&#x27;zone&#x27;]}&quot;)
+        df.at[i, &#x27;symbol&#x27;] = symbol
+        prog.tick()
+    prog.done()
+    return df
+
+
+def zigzag_max_length(df: pd.DataFrame, depth: int = 12, deviation: int = 5, backstep: int = 3, point: float = 0.001) -&gt; int:
+    &quot;&quot;&quot;
+    Compute ZigZag(depth, deviation, backstep) on High/Low.
+    Track longest leg in bars as it builds. Return 2x that value as max_length.
+    &quot;&quot;&quot;
+    highs  = df[&#x27;High&#x27;].values
+    lows   = df[&#x27;Low&#x27;].values
+    n      = len(highs)
+    dev    = deviation * point
+
+    pivots          = []
+    last_pivot_bar  = 0
+    last_pivot_price = 0.0
+    last_direction  = 0  # 0=none, 1=high, -1=low
+    max_leg_bars    = 0
+
+    for i in range(depth, n):
+        window_start = max(0, i - depth + 1)
+        win_high_idx = window_start + int(np.argmax(highs[window_start:i + 1]))
+        win_low_idx  = window_start + int(np.argmin(lows[window_start:i + 1]))
+        win_high     = highs[win_high_idx]
+        win_low      = lows[win_low_idx]
+
+        new_pivot = None
+
+        # Candidate swing high
+        if win_high_idx == i:
+            if last_direction != 1:
+                if last_direction == -1 and (win_high - last_pivot_price) &gt;= dev:
+                    if (i - last_pivot_bar) &gt;= backstep:
+                        new_pivot = (i, win_high, 1)
+                elif last_direction == 0:
+                    new_pivot = (i, win_high, 1)
+            elif last_direction == 1 and win_high &gt; last_pivot_price:
+                if pivots:
+                    pivots[-1] = (i, win_high, 1)
+                last_pivot_bar   = i
+                last_pivot_price = win_high
+                continue
+
+        # Candidate swing low
+        if win_low_idx == i:
+            if last_direction != -1:
+                if last_direction == 1 and (last_pivot_price - win_low) &gt;= dev:
+                    if (i - last_pivot_bar) &gt;= backstep:
+                        new_pivot = (i, win_low, -1)
+                elif last_direction == 0:
+                    new_pivot = (i, win_low, -1)
+            elif last_direction == -1 and win_low &lt; last_pivot_price:
+                if pivots:
+                    pivots[-1] = (i, win_low, -1)
+                last_pivot_bar   = i
+                last_pivot_price = win_low
+                continue
+
+        if new_pivot:
+            if pivots:
+                leg_bars = new_pivot[0] - pivots[-1][0]
+                if leg_bars &gt; max_leg_bars:
+                    max_leg_bars = leg_bars
+            pivots.append(new_pivot)
+            last_pivot_bar   = new_pivot[0]
+            last_pivot_price = new_pivot[1]
+            last_direction   = new_pivot[2]
+
+    max_length = max_leg_bars * 3
+    print(f&quot;ZigZag: longest leg = {max_leg_bars} bars → max_length = {max_length}&quot;)
+    return max_length
+
+
+def pass5_pattern_mining(df: pd.DataFrame, min_length: int = 2, min_frequency: int = 2, max_length: int = 0) -&gt; dict:
+    valid_mask = df[&#x27;symbol&#x27;].notna()
+    valid_df   = df[valid_mask].copy()
+    symbols    = valid_df[&#x27;symbol&#x27;].tolist()
+    indices    = valid_df.index.tolist()
+    n          = len(symbols)
+
+    if n &lt; min_length:
+        return {}
+
+    if max_length &lt;= 0 or max_length &gt; n // 2:
+        max_length = n // 2
+    print(f&quot;Pass 5: {n:,} symbols, max_length={max_length:,}&quot;)
+
+    total_iters = sum(n - l + 1 for l in range(min_length, max_length + 1))
+    print(f&quot;  → {total_iters:,} total iterations per sub-pass&quot;)
+
+    TICK_BATCH = 500
+
+    # ------------------------------------------------------------------
+    # Sub-pass A: count only, no instance storage
+    # ------------------------------------------------------------------
+    counts     = defaultdict(int)
+    prog       = ProgressTracker(&quot;Pass 5a (count)     &quot;, total_iters)
+    tick_accum = 0
+
+    for length in range(min_length, max_length + 1):
+        for start in range(n - length + 1):
+            counts[tuple(symbols[start:start + length])] += 1
+            tick_accum += 1
+            if tick_accum &gt;= TICK_BATCH:
+                prog.tick(tick_accum)
+                tick_accum = 0
+
+    if tick_accum:
+        prog.tick(tick_accum)
+    prog.done()
+
+    # Keep only patterns that meet the frequency threshold
+    qualifying = {p for p, c in counts.items() if c &gt;= min_frequency}
+    del counts  # release memory before sub-pass B
+    print(f&quot;  {len(qualifying):,} patterns qualify (freq &gt;= {min_frequency})&quot;)
+
+    # ------------------------------------------------------------------
+    # Sub-pass B: record instances only for qualifying patterns
+    # ------------------------------------------------------------------
+    pattern_data = {p: {&#x27;count&#x27;: 0, &#x27;instances&#x27;: []} for p in qualifying}
+    prog         = ProgressTracker(&quot;Pass 5b (instances) &quot;, total_iters)
+    tick_accum   = 0
+
+    for length in range(min_length, max_length + 1):
+        for start in range(n - length + 1):
+            pattern = tuple(symbols[start:start + length])
+            if pattern in qualifying:
+                pattern_data[pattern][&#x27;count&#x27;] += 1
+                pattern_data[pattern][&#x27;instances&#x27;].append(
+                    (indices[start], indices[start + length - 1])
+                )
+            tick_accum += 1
+            if tick_accum &gt;= TICK_BATCH:
+                prog.tick(tick_accum)
+                tick_accum = 0
+
+    if tick_accum:
+        prog.tick(tick_accum)
+    prog.done()
+
+    return pattern_data
+
+
+# ---------------------------------------------------------------------------
+# Export helpers (unchanged)
+# ---------------------------------------------------------------------------
+
+def export_l1_output(df: pd.DataFrame, output_path: str) -&gt; None:
+    output_cols = [
+        &#x27;bar_index&#x27;, &#x27;time&#x27;, &#x27;close&#x27;, &#x27;tema&#x27;,
+        &#x27;spread_upper&#x27;, &#x27;spread_middle&#x27;, &#x27;spread_lower&#x27;,
+        &#x27;active_line&#x27;, &#x27;zone&#x27;, &#x27;zone_switch&#x27;,
+        &#x27;L1_state&#x27;, &#x27;active_spread&#x27;,
+        &#x27;slope_1&#x27;, &#x27;slope_2&#x27;, &#x27;slope_delta&#x27;, &#x27;L0_state&#x27;,
+        &#x27;symbol&#x27;
+    ]
+    existing_cols = [c for c in output_cols if c in df.columns]
+    df[existing_cols].to_csv(output_path, index=False, encoding=&#x27;ANSI&#x27;)
+    print(f&quot;Exported L1 data: {len(df)} rows to {output_path}&quot;)
+
+
+def export_l2_patterns(patterns: dict, output_path: str) -&gt; None:
+    rows = [
+        {
+            &#x27;pattern_length&#x27;: len(pattern),
+            &#x27;frequency&#x27;:      data[&#x27;count&#x27;],
+            &#x27;pattern&#x27;:        &#x27; -&gt; &#x27;.join(pattern)
+        }
+        for pattern, data in sorted(patterns.items(), key=lambda x: -x[1][&#x27;count&#x27;])
+    ]
+    pd.DataFrame(rows).to_csv(output_path, index=False, encoding=&#x27;ANSI&#x27;)
+    print(f&quot;Exported L2 patterns: {len(rows)} patterns to {output_path}&quot;)
+
+
+def export_visualization_csv(df: pd.DataFrame, patterns: dict, output_path: str,
+                              min_length: int = 4, min_frequency: int = 2,
+                              filter_mode: str = &#x27;AND&#x27;) -&gt; None:
+    colors = [&#x27;BLUE&#x27;, &#x27;RED&#x27;, &#x27;GREEN&#x27;, &#x27;MAGENTA&#x27;, &#x27;CYAN&#x27;,
+              &#x27;ORANGE&#x27;, &#x27;PURPLE&#x27;, &#x27;YELLOW&#x27;, &#x27;LIME&#x27;, &#x27;MAROON&#x27;]
+
+    filtered_patterns = []
+    for pattern, data in patterns.items():
+        meets_length = len(pattern) &gt;= min_length
+        meets_freq   = data[&#x27;count&#x27;] &gt;= min_frequency
+        include = (meets_length and meets_freq) if filter_mode == &#x27;AND&#x27; else (meets_length or meets_freq)
+        if include:
+            filtered_patterns.append((pattern, data))
+
+    if not filtered_patterns:
+        print(f&quot;No patterns meet criteria: length&gt;={min_length}, freq&gt;={min_frequency}, mode={filter_mode}&quot;)
+        pd.DataFrame(columns=[&#x27;pattern_type&#x27;, &#x27;start_time&#x27;, &#x27;end_time&#x27;,
+                               &#x27;high_price&#x27;, &#x27;low_price&#x27;, &#x27;color&#x27;, &#x27;description&#x27;]
+                     ).to_csv(output_path, index=False, encoding=&#x27;ANSI&#x27;)
+        return
+
+    print(f&quot;Found {len(filtered_patterns)} patterns meeting criteria&quot;)
+    filtered_patterns.sort(key=lambda x: -x[1][&#x27;count&#x27;])
+
+    rows = []
+    for pattern_idx, (pattern, data) in enumerate(filtered_patterns):
+        color       = colors[pattern_idx % len(colors)]
+        frequency   = data[&#x27;count&#x27;]
+        pattern_len = len(pattern)
+        for inst_idx, (start_bar, end_bar) in enumerate(data[&#x27;instances&#x27;]):
+            try:
+                start_row     = df.loc[start_bar]
+                end_row       = df.loc[end_bar]
+                pattern_slice = df.loc[start_bar:end_bar]
+                if &#x27;high&#x27; in pattern_slice.columns and &#x27;low&#x27; in pattern_slice.columns:
+                    high_price = pattern_slice[&#x27;high&#x27;].max()
+                    low_price  = pattern_slice[&#x27;low&#x27;].min()
+                else:
+                    high_price = pattern_slice[&#x27;close&#x27;].max()
+                    low_price  = pattern_slice[&#x27;close&#x27;].min()
+                price_range = max(high_price - low_price, 0.001)
+                high_price += price_range * 0.1
+                low_price  -= price_range * 0.1
+                rows.append({
+                    &#x27;pattern_type&#x27;: f&quot;P{pattern_idx+1}_L{pattern_len}&quot;,
+                    &#x27;start_time&#x27;:   start_row[&#x27;time&#x27;],
+                    &#x27;end_time&#x27;:     end_row[&#x27;time&#x27;],
+                    &#x27;high_price&#x27;:   round(high_price, 6),
+                    &#x27;low_price&#x27;:    round(low_price,  6),
+                    &#x27;color&#x27;:        color,
+                    &#x27;description&#x27;:  f&quot;P{pattern_idx+1} L={pattern_len} F={frequency} #{inst_idx+1}&quot;
+                })
+            except Exception as e:
+                print(f&quot;Error processing instance {start_bar}-{end_bar}: {e}&quot;)
+
+    pd.DataFrame(rows).to_csv(output_path, index=False, encoding=&#x27;ANSI&#x27;)
+    print(f&quot;Exported {len(rows)} shading blocks for {len(filtered_patterns)} patterns to {output_path}&quot;)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline
+# ---------------------------------------------------------------------------
+
+def run_analysis(input_path: str, output_dir: str = None, point: float = 0.001,
+                 min_length: int = 4, min_frequency: int = 2,
+                 filter_mode: str = &#x27;AND&#x27;) -&gt; Tuple[pd.DataFrame, dict]:
+    if output_dir is None:
+        output_dir = &#x27;.&#x27;
+
+    print(f&quot;Loading {input_path}...&quot;)
+    try:
+        df = pd.read_csv(input_path, encoding=&#x27;utf-16&#x27;)
+    except Exception:
+        df = pd.read_csv(input_path, encoding=&#x27;utf-8&#x27;)
+    print(f&quot;Loaded {len(df):,} bars&quot;)
+
+    print(&quot;Computing ZigZag max_length...&quot;)
+    zz_max = zigzag_max_length(df, point=point)
+
+    df = pass1_raw_calculations(df, point)
+    df = pass2_l1_calculation(df)
+    df = pass3_l0_calculation(df, point)
+    df = pass4_symbol_encoding(df)
+
+    valid_symbols = df[&#x27;symbol&#x27;].notna().sum()
+    print(f&quot;Generated {valid_symbols:,} symbols&quot;)
+
+    patterns = pass5_pattern_mining(df, min_length=2, min_frequency=2, max_length=zz_max)
+    print(f&quot;Found {len(patterns):,} significant patterns&quot;)
+
+    base_name = input_path.replace(&#x27;.csv&#x27;, &#x27;&#x27;)
+    export_l1_output(df,       f&quot;{base_name}_L1_output.csv&quot;)
+    export_l2_patterns(patterns, f&quot;{base_name}_L2_catalog.csv&quot;)
+    export_visualization_csv(df, patterns, f&quot;{base_name}_patterns.csv&quot;,
+                             min_length=min_length, min_frequency=min_frequency,
+                             filter_mode=filter_mode)
+    return df, patterns
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=&#x27;TEMA/KC Pattern Analyzer&#x27;,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=&quot;&quot;&quot;
+Examples:
+  python tema_kc_pattern_analyzer.py data.csv
+  python tema_kc_pattern_analyzer.py data.csv -l 5 -f 3 -m AND
+  python tema_kc_pattern_analyzer.py data.csv 0.01 -l 4 -m OR
+        &quot;&quot;&quot;
+    )
+    parser.add_argument(&#x27;input_file&#x27;, nargs=&#x27;?&#x27;,
+                        default=&#x27;TEMA_KC_Data_USDJPY.a_CURRENT.csv&#x27;,
+                        help=&#x27;Input CSV file from MT5&#x27;)
+    parser.add_argument(&#x27;point&#x27;, nargs=&#x27;?&#x27;, type=float, default=0.001,
+                        help=&#x27;Point size for rounding (default: 0.001)&#x27;)
+    parser.add_argument(&#x27;-l&#x27;, type=int, default=4,
+                        help=&#x27;Minimum pattern length (default: 4)&#x27;)
+    parser.add_argument(&#x27;-f&#x27;, type=int, default=2,
+                        help=&#x27;Minimum pattern frequency (default: 2)&#x27;)
+    parser.add_argument(&#x27;-m&#x27;, choices=[&#x27;AND&#x27;, &#x27;OR&#x27;], default=&#x27;AND&#x27;,
+                        help=&#x27;Filter mode: AND or OR (default: AND)&#x27;)
+
+    args = parser.parse_args()
+    print(f&quot;Point size: {args.point}&quot;)
+    print(f&quot;Filter: length&gt;={args.l}, freq&gt;={args.f}, mode={args.m}&quot;)
+
+    MT5_COMMON_FILES = r&quot;C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\Common\Files&quot;
+
+    df, patterns = run_analysis(
+        MT5_COMMON_FILES + &quot;\\&quot; + args.input_file,
+        point=args.point,
+        min_length=args.l,
+        min_frequency=args.f,
+        filter_mode=args.m
+    )
+
+    print(&quot;\nAnalysis complete!&quot;)
+
+    if patterns:
+        print(&quot;\nTop 30 most frequent patterns:&quot;)
+        for pattern, data in sorted(patterns.items(), key=lambda x: -x[1][&#x27;count&#x27;])[:30]:
+            print(f&quot;  {data[&#x27;count&#x27;]}x (L={len(pattern)}): {&#x27; -&gt; &#x27;.join(pattern)}&quot;)
+
+    if patterns:
+        print(&quot;\nTop 30 longest patterns:&quot;)
+        sorted_by_length = sorted(patterns.items(), key=lambda x: (-len(x[0]), -x[1][&#x27;count&#x27;]))[:30]
+        for pattern, data in sorted_by_length:
+            print(f&quot;  {data[&#x27;count&#x27;]}x (L={len(pattern)}): {&#x27; -&gt; &#x27;.join(pattern)}&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    main()</pre></details><p class="note">[File attached: 1771425092060_image.png &mdash; contents not included in export]</p><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-18 14:32 UTC</span></div><div class="body"><p>The problem is <strong>exact match requirement combined with over-specified symbols</strong>.</p>
+<p>Each symbol encodes 4 dimensions: L0 (3 values) × L1 (4 values) × ZS (2 values) × Z (3 values) = up to 72 distinct symbols per bar. For a 47-bar pattern to register as a repeat, all 47 symbols must match exactly, in order. One bar where SD+ appears instead of SD- breaks the match entirely.</p>
+<p>The visual pattern you see in that chart — the 47-bar move — is a structural shape. The code is looking for something much stricter: identical bar-by-bar state sequences. Those essentially never repeat at length 11+, not because the patterns don't exist, but because the symbol encoding is too fine-grained to tolerate any variation.</p>
+<p><strong>What's specifically causing tunnel vision:</strong></p>
+<p>The Z (which KC line is active) and ZS (zone switch) components are adding specificity that has nothing to do with the visual shape of the move. A rising thrust pattern looks the same whether it's happening near the upper band or the lower band, but the code treats those as completely different symbols.</p>
+<p><strong>The fundamental choice you need to make:</strong></p>
+<p>Do you want to find structurally similar patterns with tolerance for minor variation, or exact state-sequence repeats? Those require different approaches:</p>
+<ul>
+<li>Exact: keep current approach, accept that meaningful repeats cap out around length 8-12</li>
+<li>Structural: fuzzy matching with edit distance, or reduce the symbol to fewer dimensions (e.g., drop Z and ZS, match only on L0+L1)</li>
+</ul>
+<p>Which direction?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:36 UTC</span></div><div class="body">Agreed. The zone information needs to be captured for later use, but shouldn&#x27;t be included in the pattern matching. I absolutely want fuzzy matching. Which method(s) would you recommend? I tried Levenshtein distance once upon a time, since that seems intuitively the closest to what I&#x27;m trying to do, but this is not my area of expertise. Recommendations?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-18 14:37 UTC</span></div><div class="body"><p>Two separate issues to address, and I'd recommend tackling them in order:</p>
+<p><strong>Step 1 — Reduce symbol dimensionality first (not fuzzy, just less strict)</strong></p>
+<p>Drop Z and ZS from the matching key, keep only L0+L1. That reduces from ~72 possible symbols per bar to 12. This alone may dramatically extend the longest repeating exact matches before you even introduce fuzziness. Fast change, no algorithm redesign. Worth doing regardless.</p>
+<p><strong>Step 2 — Fuzzy matching</strong></p>
+<p>Three candidates:</p>
+<p><strong>Levenshtein</strong> — your intuition was right. Allows substitution, insertion, deletion. Insertion/deletion means &quot;this pattern had an extra noise bar in the middle&quot; which is valid for trading. Straightforward to implement and interpret. Weakness: treats all substitutions equally — swapping L0:+1 for L0:-1 costs the same as swapping SD+ for SD-, even though those are very different kinds of differences.</p>
+<p><strong>DTW (Dynamic Time Warping)</strong> — designed specifically for time series that are structurally similar but stretched or compressed in time. A 47-bar thrust and a 38-bar thrust of the same shape would score as similar. This is almost certainly what you're actually seeing with your patterns. The gold standard for this class of problem.</p>
+<p><strong>Hamming</strong> — substitutions only, requires equal-length sequences. Too restrictive for your use case.</p>
+<p><strong>My recommendation:</strong> Step 1 first regardless. Then DTW, because the time-warping property directly addresses why your visual 47-bar pattern isn't being found — it probably appears in varying lengths across instances.</p>
+<p>One question before any design work: do you have a sense of how much length variation you'd consider &quot;same pattern&quot;? e.g., ±20%, ±50%? That determines the DTW window constraint.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:38 UTC</span></div><div class="body">Does DTW result in a score (like Levenshtein) that indicates the degree to which patterns match?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-18 14:39 UTC</span></div><div class="body"><p>Yes. DTW produces a distance score — 0 means identical, higher means more different, with no fixed upper bound (it scales with sequence length and symbol difference magnitude).</p>
+<p>However there's a complication for your use case: DTW compares two sequences of known, fixed identity. Your problem is different — you have one long sequence (~5,000 bars) and need to find all pairs of subsequences within it that are similar to each other. That's called <strong>subsequence DTW</strong> or <strong>similarity search</strong>, and it's significantly more expensive than pairwise comparison.</p>
+<p>The practical approach for your scale is:</p>
+<ol>
+<li>Extract all subsequences of each length tier</li>
+<li>Use DTW distance to cluster them, then report clusters as &quot;this pattern recurs&quot;</li>
+</ol>
+<p>The leading Python library for this is <strong>tslearn</strong>, which has subsequence DTW built in. But before committing to that architecture, Step 1 (dropping Z and ZS from the symbol) is still worth doing first — it's free information and may change what you find.</p>
+<p>Concrete question: when you look at that 47-bar chart pattern, what are you actually seeing that defines it as a pattern? Rising TEMA slope sustained above a KC line for an extended run? Because the answer determines whether DTW on L0+L1 symbols actually captures it, or whether you need something more structural like &quot;TEMA position relative to KC band over time.&quot;</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:47 UTC</span></div><div class="body">we&#x27;re agreed on Z and ZS -- I stated that right up front. So focus, would you?
+
+What I&#x27;m seeing is a nominally sideways KC, a TEMA that breaks out of it briefly, then bounces of the KC lower, KC upper, KC lower again, then makes a strong move breaking completely out of the channel (not even price touches it). That presages a significant move in that direction.
+
+So I grasp broadly what you&#x27;re saying about L0 and L1 not being sufficient to describe the pattern as I just explained. Of course they&#x27;re not. That&#x27;s not the problem. The problem so far has be AIs that want to jump to solution without preparing the groundwork. L0 and L1 are groundwork. They need to be created in such a way as to provide the basis for later pattern recognition while preserving atomic data that will be needed later and without taking turns that preclude that recognition which at those levels they&#x27;re oblivious to.
+
+Make sense?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-18 14:47 UTC</span></div><div class="body"><p>Yes, makes complete sense. L0 and L1 are atomic primitives. They get recorded faithfully with full context (including Z and ZS) for later use. The pattern matching key is a separate concern — a derived view, not the data itself.</p>
+<p>So the immediate next step is simply: strip Z and ZS from the matching key, run the same exact-match pipeline on L0+L1 only, and see what the longest repeating exact sequences look like before introducing any fuzziness. That's the honest baseline.</p>
+<p>GO on that change?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:47 UTC</span></div><div class="body">sure, go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-18 14:48 UTC</span></div><div class="body"><p>One-line change in <code>pass4_symbol_encoding</code>:</p>
+<p>Symbol encoding now produces only <code>L0:+1|L1:SD-</code> style keys. Z and ZS remain in the dataframe columns untouched for later use.</p>
+<p>Run it and report back the longest pattern lengths you see.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-18 14:50 UTC</span></div><div class="body">GOD DAMMIT YOU DIDN&#x27;T USE THE CODE I GAVE YOU. USE THE FUCKING CODE I GIVE YOU. MAKE THE CHANGES TO THAT CODE, NOT SOME OLD COPY IN YOUR HEAD.</div></div>
+<nav class="pager"><a href="658-2026-02-17-mexican-rental-contract-post-lease-occupancy-clause.html">&larr; Mexican rental contract post-lease occupancy clause</a><a href="../index.html">All chats</a><a href="660-2026-02-17-python-script-crashed-vs-code.html">Python script crashed VS Code &rarr;</a></nav></div></body></html>

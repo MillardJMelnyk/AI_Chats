@@ -1,0 +1,45 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reinstalling Windows 11 without data loss</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-08-25_business-meeting-english-expressions-pdf_4a781c25.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-08-24_persistent-forehead-and-ear-pressure-headache_c0aaee20.html">Next →</a></span></div><h1>Reinstalling Windows 11 without data loss</h1><div class="meta">Created 2026-08-24 18:26 UTC · Last updated 2026-08-24 18:30 UTC · 6 messages<br>Original: <a href="https://claude.ai/chat/9bf5a953-3ef2-479a-ada3-fc777e673eaf">claude.ai/chat/9bf5a953-3ef2-479a-ada3-fc777e673eaf</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-24 18:26 UTC</div><p>I need blunt, simple, short, clear instructions how to reinstall Windows 11 from scratch without losing any data.</p>
+<p>Windows just crashed, then instead of restarting, it went into a loop "installing updates", then "something didn't go as planned", then reboot, then "installing updates", then "something didn't go as planned", then reboot... After 3 cycles I hard-shut-down and had to do it a 2nd time because it went right back into the loop again. Finally I got it to break out of the loop.</p>
+<p>Then it crashed again.</p>
+<p>Here's the update page (attached). The update fails every time. (I've tried it almost 10 times now).</p>
+<p>Should I follow the yellow "reinstall" button or is there a better way?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-24 18:26 UTC</div><p>Yes — "Reinstall Now" is the right button. It's an in-place repair install: keeps files, apps, and settings, replaces the OS files. Do this first, though:</p>
+<p><strong>1. Back up anyway.</strong> Copy MQL5 folders, code, manuscript to an external drive or cloud. Repair installs almost never eat data, but a machine that's already crashing mid-update is not one to trust.</p>
+<p><strong>2. Try the cheap repair first</strong> (10 min, often fixes 0x80070057). Admin PowerShell:</p>
+<pre><code>DISM /Online /Cleanup-Image /RestoreHealth
+sfc /scannow
+</code></pre>
+<p>Reboot, retry the update once. If it fails again, go to step 3.</p>
+<p><strong>3. Reset the update stack.</strong> Admin PowerShell:</p>
+<pre><code>net stop wuauserv
+net stop bits
+ren C:\Windows\SoftwareDistribution SoftwareDistribution.old
+ren C:\Windows\System32\catroot2 catroot2.old
+net start wuauserv
+net start bits
+</code></pre>
+<p>Retry the update once.</p>
+<p><strong>4. If still failing, click Reinstall Now.</strong> Plugged in, no other work running, ~1 hour, several reboots. Don't hard-power-off during it.</p>
+<p><strong>Alternative to step 4</strong> if the button errors out: download the Windows 11 ISO from Microsoft, mount it, run <code>setup.exe</code> from inside Windows, choose <strong>Keep personal files and apps</strong>. Same result, more reliable.</p>
+<p>One flag: repeated crashes plus repeated update failures can be a dying SSD or bad RAM, and a repair install won't fix that. Before step 4, run <code>chkdsk C: /scan</code> and check SMART status with CrystalDiskInfo. If the drive is throwing reallocated sectors, clone it before you do anything else.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-24 18:29 UTC</div><p>is there a way to get a list of all installed apps (same as listed on the Programs and Features page) along with full path installation locations?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-24 18:29 UTC</div><p>Yes. Admin PowerShell, one line:</p>
+<pre><code>Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*, HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*, HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object DisplayName | Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation, InstallDate, UninstallString | Sort-Object DisplayName | Export-Csv C:\installed_apps.csv -NoTypeInformation
+</code></pre>
+<p>That's exactly what Programs and Features reads from, plus paths.</p>
+<p>Caveat: <code>InstallLocation</code> is blank for a lot of entries — the installer just never wrote it. <code>UninstallString</code> is in the output because it almost always contains the real path, so you can recover the location manually.</p>
+<p>For Store apps (not in Programs and Features), separate command:</p>
+<pre><code>Get-AppxPackage | Select-Object Name, PackageFullName, InstallLocation | Export-Csv C:\store_apps.csv -NoTypeInformation
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-08-24 18:30 UTC</div><p>where's it going to put the info?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-08-24 18:30 UTC</div><p><code>C:\installed_apps.csv</code> and <code>C:\store_apps.csv</code> — root of the C: drive, exactly where the command says.</p>
+<p>Windows 11 blocks writing to C:\ root without admin, so if PowerShell isn't elevated it errors. Change the path to <code>C:\Users\&lt;you&gt;\Desktop\installed_apps.csv</code> if you'd rather not run as admin.</p></div><div class="nav"><span><a href="2026-08-25_business-meeting-english-expressions-pdf_4a781c25.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-08-24_persistent-forehead-and-ear-pressure-headache_c0aaee20.html">Next →</a></span></div></div></body></html>

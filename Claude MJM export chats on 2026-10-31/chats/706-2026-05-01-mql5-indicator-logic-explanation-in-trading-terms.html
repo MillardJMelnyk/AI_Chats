@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 indicator logic explanation in trading terms</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="705-2026-04-29-jewelry-making-kits-for-9-year-old-girls.html">&larr; Jewelry making kits for 9-year-old girls</a><a href="../index.html">All chats</a><a href="707-2026-05-07-continuing-previous-conversation.html">Continuing previous conversation &rarr;</a></nav>
+<header class="top">
+<h1>MQL5 indicator logic explanation in trading terms</h1>
+<div class="meta">Created 2026-05-01 16:50 UTC &middot; Last updated 2026-05-01 16:53 UTC &middot; 2 messages<br>Original: <a href="https://claude.ai/chat/57cea620-0d61-427d-b34d-860531d19007">claude.ai/chat/57cea620-0d61-427d-b34d-860531d19007</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-05-01 16:50 UTC</span></div><div class="body">I need a simple English description in trading terms (no &quot;codese&quot;) explaining the logic in each of the key measures taken in this MQL5 indicator, how they are normalized, how they are combined into a composite score, and how that score and discrete measurements (binary, multiple choice) are used to decide to emit a trading signal or not.
+
+I want a description for every key part of the logic, but very brief while remaining clear and informative.<p class="note">[File attached: CrossFire_Channel_MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-01 16:53 UTC</span></div><div class="body"><p>Here is the description.</p>
+<hr />
+<h2>CrossFire Channel — Logic Description</h2>
+<hr />
+<h3>Moving Averages</h3>
+<p><strong>MA1 (TEMA, 10-period on Close)</strong> — The fast line. Triple-smoothed EMA applied to close, making it highly responsive to price.</p>
+<p><strong>MA2 (EMA of TEMA, 3-period)</strong> — A short EMA applied to MA1's output. Slightly smoother; used as the primary reference line for entry threshold math.</p>
+<p><strong>MA3 (EMA of HLCC4, 3-period)</strong> — A weighted-close EMA used for context only, not directly in signal decisions.</p>
+<hr />
+<h3>Keltner Channel (KC)</h3>
+<p>A 35-period EMA midline ± 1.5× a 10-period ATR. Establishes three lines: upper band, midline, lower band. Also tracked: current width vs a rolling average width (width_ratio), and midline slope. Used extensively as the spatial reference frame for all other logic.</p>
+<hr />
+<h3>MA Spread</h3>
+<p>MA1 minus MA2, signed. The sign tells you which MA is on top. A rolling average of the absolute spread over 50 bars is maintained as the &quot;normal spread&quot; baseline. Used directly in normalization and sensitivity math.</p>
+<hr />
+<h3>MA Cross Detection</h3>
+<p>On each bar: if the sign of the spread flips from the prior bar, that is a raw cross. A cross is <em>qualified</em> if the absolute spread at the moment of crossing is at or above the effective sensitivity threshold. Qualified crosses advance the primary state machine; raw crosses are tracked separately for reverted-mode logic.</p>
+<hr />
+<h3>MA Braid</h3>
+<p>The slope-adjusted spread (current absolute spread divided by a factor that accounts for how steeply the midpoint between MA1 and MA2 is moving) is compared to the average absolute spread. If the ratio is ≤ 0.25, the MAs are classified as &quot;braided&quot; — tangled together, moving sideways. A braided state suppresses reversal signals at assembly time.</p>
+<hr />
+<h3>Price vs KC (Overshoot and Percentile)</h3>
+<p>Measures how far price's close is beyond the KC outer band in the current direction. If price is inside the band, overshoot is zero. If price overshoots, the overshoot distance is pushed into a 500-bar circular buffer, and the current overshoot's rank within that history is computed as a percentile (0–100). Used to ease or tighten sensitivity when price is at an extreme KC extension.</p>
+<hr />
+<h3>Tether (Bar Position vs MA2)</h3>
+<p>For each bar, the MA2 line's position within the bar's range (high–low, open–close, or a blend depending on mode) is computed as a percentage from 0 (line at the low) to 100 (line at the high). If the line sits in the lower portion of the bar (bar mostly above it) → &quot;sitting&quot; (+1). If the line sits in the upper portion (bar mostly below it) → &quot;hanging&quot; (–1). Otherwise → &quot;straddling&quot; (0). Hanging suppresses long signals; sitting suppresses short signals at assembly time.</p>
+<hr />
+<h3>Channel-Force Context Engine</h3>
+<p>A physics-inspired subsystem that tracks MA2's position within the KC, expressed on a normalized scale of –1 (at lower band) to +1 (at upper band). Every bar, it computes:</p>
+<ul>
+<li><strong>Position and zone</strong> — whether MA2 is inside the channel, outside, or crossing the midline.</li>
+<li><strong>Push and pull forces</strong> — MA2's proximity to each of the three KC lines generates a Gaussian &quot;push&quot; (repulsion from nearby lines) and a power-law &quot;pull&quot; (attraction when farther away). Both decay exponentially across bars. Net force = sum of weighted push + pull.</li>
+<li><strong>Relative slope and acceleration</strong> — MA2's per-bar move divided by KC half-width, minus the KC midline's own move (to isolate MA2's movement relative to the channel). Acceleration is the bar-to-bar change in relative slope.</li>
+<li><strong>Stall pressure</strong> — maximum stretch from a line over the recent shape window minus current distance from the nearest line. Signals that MA2 has extended toward a line and is now retracing.</li>
+<li><strong>Cross and bounce events</strong> — tracks when MA2 crosses or bounces off each of the three KC lines (lower, mid, upper), classifying each as clean (deep penetration) or weak (shallow). A decaying memory signal accumulates these events.</li>
+<li><strong>Regime signal</strong> — a separate decaying accumulator of clean line crosses, representing directional commitment over time.</li>
+<li><strong>Direction score</strong> — a weighted sum of all the above sub-scores (force, slope+acceleration, stall, cross events, regime, cross/bounce history, bounce imbalance). This score is compared to a threshold (0.75) to produce a raw directional read of +1, –1, or 0.</li>
+</ul>
+<hr />
+<h3>Channel Trade Context (Vote System)</h3>
+<p>Translates the Channel-Force engine's outputs into discrete market-structure events, then votes on overall direction. Events evaluated as binary flags:</p>
+<ul>
+<li>Repeated lower bounce (price kept rejecting the lower KC band) → 3 bull votes</li>
+<li>Lower recovery (MA2 clean-crossed the lower band upward) → 3 bull votes</li>
+<li>Midline upward cross or bounce → 2 bull votes</li>
+<li>Upper breakout → 2 bull votes</li>
+<li>CF raw direction positive → 1 bull vote</li>
+<li>CF net force positive → 1 bull vote</li>
+<li>Symmetric bear votes for the mirror events</li>
+</ul>
+<p>A direction is preferred when one side leads by at least the configured margin (default 2). The preferred direction is used to ease (support) or tighten (oppose) the sensitivity multiplier, and can block opposing signals at assembly time.</p>
+<hr />
+<h3>Sensitivity Multiplier System</h3>
+<p>Before any cocked entry can trigger, the base sensitivity threshold is multiplied by a combined factor. Each sub-multiplier works the same way: if the condition's direction <em>opposes</em> the signal, the threshold rises (harder to trigger); if it <em>agrees</em>, the threshold falls (easier). All are capped at 3.0×.</p>
+<ul>
+<li><strong>Spread multiplier</strong> — current spread vs its 50-bar average. Against-spread entry is penalized proportionally to how strongly spread disagrees.</li>
+<li><strong>MA1 slope multiplier</strong> — same logic using MA1's current slope vs its rolling average absolute slope.</li>
+<li><strong>MA2 slope multiplier</strong> — same using MA2's slope.</li>
+<li><strong>KC zone multiplier</strong> — if price has overshot the KC band <em>in the opposite direction</em> from the signal, this eases the threshold proportionally to the overshoot percentile (at the 100th percentile, multiplier reaches the configured minimum of 0.3×).</li>
+<li><strong>KC direction multiplier</strong> — if the KC midline is sloping against the signal direction, the threshold is raised by the configured against-KC multiplier.</li>
+<li><strong>Channel context multiplier</strong> — if the Channel Trade Context strongly supports the signal direction, the threshold is reduced (default 0.65×). If it strongly opposes, the threshold is raised (default 2.0×).</li>
+</ul>
+<p><strong>Combined multiplier</strong> = product of all six. Applied by multiplying the base trigger sensitivity before checking entry conditions.</p>
+<hr />
+<h3>Normalized Feature Scores</h3>
+<p>After a signal candidate is identified, 12 features are scored on a –100 to +100 scale. All are directionally oriented: a score of +100 means the feature strongly supports the candidate direction; –100 means it strongly opposes.</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Normalization method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MA spread</td>
+<td>Signed spread ÷ rolling average spread, scaled ×100</td>
+</tr>
+<tr>
+<td>MA1 slope</td>
+<td>MA1 slope ÷ rolling average absolute slope, scaled ×100</td>
+</tr>
+<tr>
+<td>MA2 slope</td>
+<td>Same as MA1 slope</td>
+</tr>
+<tr>
+<td>KC midline slope</td>
+<td>KC mid slope ÷ flat-slope threshold, scaled ×100</td>
+</tr>
+<tr>
+<td>Price travel since last cross</td>
+<td>Close change since last raw cross bar ÷ trigger sensitivity, scaled ×100</td>
+</tr>
+<tr>
+<td>Tether</td>
+<td>Bar position vs MA2, centered at 50%, scaled ×100</td>
+</tr>
+<tr>
+<td>KC overshoot</td>
+<td>Price-vs-mid sign × overshoot percentile (already 0–100)</td>
+</tr>
+<tr>
+<td>CF net force</td>
+<td>CF net force × direction × 100, clamped</td>
+</tr>
+<tr>
+<td>CF direction score</td>
+<td>CF direction score ÷ CF threshold × 100, clamped</td>
+</tr>
+<tr>
+<td>CF regime signal</td>
+<td>CF regime signal × direction × 100, clamped</td>
+</tr>
+<tr>
+<td>Channel vote score</td>
+<td>(Bull votes – bear votes) ÷ total votes × 100</td>
+</tr>
+<tr>
+<td>Channel context score</td>
+<td>+100 if strongly supported, +50 if preferred, 0 if neutral, –100 if opposed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Average score</strong> = simple mean of all 12. Not used as a gate itself; available for diagnostics.</p>
+<hr />
+<h3>Composite Model Scores</h3>
+<p>Two weighted-average sub-models, each using a subset of the 12 normalized features with different weights:</p>
+<p><strong>Cocked model score</strong> — emphasizes travel since cross (2.0×), spread (1.5×), MA2 slope (1.5×), MA1 slope (1.25×), KC midline slope (1.25×), channel vote (0.5×). Designed for the standard post-cross entry situation.</p>
+<p><strong>Line-reentry model score</strong> — emphasizes spread (1.5×), MA2 slope (1.5×), channel vote (1.25×), MA1 slope (1.25×), travel (1.25×), CF net force (1.0×), CF direction (0.75×), and inverted tether (0.75×, so a bar hanging above the line scores positively for a short reentry). Designed for exits-and-reentries at KC lines.</p>
+<p>The active model is selected by the signal source (cocked → cocked model, line-event exit-reentry → line-reentry model). Either model score can be used as an optional gate with a configurable minimum threshold.</p>
+<hr />
+<h3>Signal Cocking</h3>
+<p>After a qualified MA cross, the system enters a &quot;cocked&quot; state in the cross direction. This is the armed, ready-to-fire condition. The cocked direction persists until a signal fires, a reverted mode occurs, or a spike overrides it. An entry triggers when close moves beyond MA2 ± effective sensitivity in the cocked direction (adjusted by the combined sensitivity multiplier). In spike mode, MA2 is the reference; cocking is bypassed.</p>
+<hr />
+<h3>Spike Detection</h3>
+<p>When price's bar range (high–low) exceeds the KC width by a configurable percentage, a spike is flagged in the direction of the range's displacement from the KC midline. During the spike window (configurable bars), each bar's close is compared to the pre-spike reference level. When price retreats past a configurable percentage of the spike extension, a signal is emitted in the <em>reversal</em> direction (against the spike). Spike signals bypass sensitivity multipliers, blackout, and most blocking logic — they fire immediately.</p>
+<hr />
+<h3>Reverted Mode</h3>
+<p>When MA1 and MA2 cross, and then cross <em>back</em> the other way before a signal has been emitted, reverted mode is set. In reverted mode, the effective sensitivity collapses to 0, which means the cocked entry fires as soon as price is on the correct side of MA2 at all — no threshold required. This catches situations where the cross reversal itself indicates momentum exhaustion.</p>
+<hr />
+<h3>Blackout</h3>
+<p>A minimum number of bars must elapse between consecutive signals (configurable). Spike signals bypass the blackout. If a signal is generated while in blackout, it can be held as a &quot;deferred&quot; signal and released on the next eligible bar, provided the MA relationship hasn't retraced.</p>
+<hr />
+<h3>Dynamic Blackout</h3>
+<p>If the KC is narrow (width ratio below a threshold) <em>and</em> the midline is flat (slope below a threshold), the blackout period is extended by an amount proportional to how narrow the channel is. This prevents over-trading during compressed, sideways conditions.</p>
+<hr />
+<h3>Aggressive Entry Gates (for Cocked Entries)</h3>
+<p>Five optional binary checks, all of which must pass if enabled:</p>
+<ol>
+<li><strong>Threshold breach depth</strong> — price must have penetrated past the sensitivity threshold by at least a minimum fraction (41% by default), not just barely crossed it.</li>
+<li><strong>Spread expansion</strong> — the MA spread must have widened vs the prior bar by at least a minimum fraction.</li>
+<li><strong>Acceleration inflection</strong> — MA1 must be accelerating in the signal direction.</li>
+<li><strong>Travel since raw cross</strong> — the close must have moved at least a minimum fraction of the sensitivity from the last raw cross bar.</li>
+<li><strong>Hug release</strong> — price must have been hugging MA2 (within a narrow band) for a minimum number of the recent lookback bars, confirming it is breaking out of a compression.</li>
+</ol>
+<hr />
+<h3>Line Event Clustering (Rejection Pattern Detection)</h3>
+<p>Independently tracks every time price tests each of the three KC lines (lower, midline, upper), crosses to the other side, and then returns. Each completed test is scored for strength based on: how far it penetrated (relative to KC half-width), whether MA1 or MA2 also crossed (weaker rejection), whether it resolved in a single bar (stronger spike-rejection), and whether it was a no-MA-cross event (strongest). Strength-weighted tests accumulate into &quot;clusters&quot; on each line. When a cluster's accumulated strength exceeds a threshold, it resolves as a signal in the direction that rejected the test (e.g., repeated rejection at the lower band → long signal). Clusters expire by age (30 bars) or when price moves to a different KC zone.</p>
+<p>Channel commitment is also tracked: if a line accumulates enough failed tests against it, the channel is declared committed in that direction, and trades against that commitment can optionally be blocked.</p>
+<hr />
+<h3>Signal Assembly and Priority</h3>
+<p>All candidate signals are evaluated simultaneously each bar: spike, cocked, flip-check, blackout-deferred, and line-event triggers. They are prioritized in that order. The winning candidate then passes through a sequence of blocking checks — any one of which kills it:</p>
+<ol>
+<li><strong>Same direction as current trade</strong> — no redundant entries.</li>
+<li><strong>Outside trading window</strong> — hard time gate.</li>
+<li><strong>Blackout</strong> — not enough bars since last signal (normal candidates only; spikes exempt).</li>
+<li><strong>Braided flip</strong> — attempting a reversal while MAs are braided and candidate is not force-committed.</li>
+<li><strong>Tether suppression</strong> — bar's position relative to MA2 opposes the candidate direction.</li>
+<li><strong>Model score gate</strong> — if enabled for the candidate source, the active model score must meet the minimum threshold.</li>
+<li><strong>Channel context block</strong> — if the channel context strongly supports the opposite direction and the option to block opposing signals is enabled.</li>
+<li><strong>Line event commitment block</strong> — if channel commitment is declared against the candidate direction.</li>
+</ol>
+<p>If the candidate survives all checks, a signal is emitted.</p>
+<hr />
+<h3>Exit Rules</h3>
+<p>Two rules independently monitor each open trade:</p>
+<p><strong>Adverse close dominance</strong> — after exactly N bars (default 5), if at least M of those bars (default 4) closed adversely, the trade exits at the close.</p>
+<p><strong>Adverse recovery requirement</strong> — if price moves adversely past a threshold (default 3.0 points), a timer starts. If price does not recover back to a partial retracement level (50% of the threshold) within N bars (default 5), the trade exits at the close. If it does recover, the rule is disarmed.</p>
+<p>Both rules can optionally be suppressed if the Channel Trade Context strongly supports holding the current trade direction.</p>
+</div></div>
+<nav class="pager"><a href="705-2026-04-29-jewelry-making-kits-for-9-year-old-girls.html">&larr; Jewelry making kits for 9-year-old girls</a><a href="../index.html">All chats</a><a href="707-2026-05-07-continuing-previous-conversation.html">Continuing previous conversation &rarr;</a></nav></div></body></html>

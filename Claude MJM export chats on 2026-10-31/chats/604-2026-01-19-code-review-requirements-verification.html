@@ -1,0 +1,2672 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Code review requirements verification</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="603-2026-01-19-sertraline-safety-during-pregnancy.html">&larr; Sertraline safety during pregnancy</a><a href="../index.html">All chats</a><a href="605-2026-01-19-awaiting-attachment-review.html">Awaiting attachment review &rarr;</a></nav>
+<header class="top">
+<h1>Code review requirements verification</h1>
+<div class="meta">Created 2026-01-19 16:01 UTC &middot; Last updated 2026-01-19 16:09 UTC &middot; 6 messages<br>Original: <a href="https://claude.ai/chat/429530aa-039a-481e-8a8a-51cfb00235ef">claude.ai/chat/429530aa-039a-481e-8a8a-51cfb00235ef</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 16:01 UTC</span></div><div class="body">I&#x27;ll give you the code as soon as you&#x27;ve read the requirements and restated them back to me.<details><summary>Attached file: unnamed</summary><pre>I need to update IndicatorSlopes MJM.mq5 to use a new TextGVar naming scheme that includes subwindow number.
+Background:
+TextGVar objects are used for IPC between source indicators (SIs) and IndicatorSlopes (IS). The naming scheme is changing from:
+MJM_&lt;shortname&gt;_&lt;varname&gt;
+to:
+MJM_&lt;window&gt;_&lt;shortname&gt;_&lt;varname&gt;
+This allows multiple instances of the same indicator in different subwindows without conflict.
+Updated TextGVar MJM.mqh:
+cpp//+------------------------------------------------------------------+
+//| TextGVar.mqh - Text Object Variables for IPC                     |
+//+------------------------------------------------------------------+
+
+string TextGVar_BuildName(const string prefix, int window, const string shortName, const string varName)
+{
+   return prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot; + varName;
+}
+
+//+------------------------------------------------------------------+
+//| Create text object variable                                      |
+//+------------------------------------------------------------------+
+string TextGVar_Create(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string value,
+                     const int xBars = 0)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &gt;= 0)
+      ObjectDelete(0, name);
+   
+   int totalBars = Bars(Symbol(), Period());
+   int oldestBarIndex = totalBars - 1;
+   int barIndex = oldestBarIndex - xBars;
+   if(barIndex &lt; 0) barIndex = 0;
+   
+   datetime timeCoord = iTime(Symbol(), Period(), barIndex);
+   double pipSize = (Digits() == 5 || Digits() == 3) ? Point() * 10 : Point();
+   double yPrice = iHigh(Symbol(), Period(), oldestBarIndex) + (20 * pipSize);
+   
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, yPrice))
+      return &quot;&quot;;
+   
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDarkGray);
+   ObjectSetString(0, name, OBJPROP_FONT, &quot;Consolas&quot;);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   
+   return name + &quot;=&quot; + value;
+}
+
+//+------------------------------------------------------------------+
+//| Read text object value, return default if not found              |
+//+------------------------------------------------------------------+
+string TextGVar_Read(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string defaultValue = &quot;&quot;)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return defaultValue;
+   
+   return ObjectGetString(0, name, OBJPROP_TEXT);
+}
+
+//+------------------------------------------------------------------+
+//| Update existing text object value                                |
+//+------------------------------------------------------------------+
+bool TextGVar_Update(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string newValue)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return false;
+   
+   return ObjectSetString(0, name, OBJPROP_TEXT, newValue);
+}
+
+//+------------------------------------------------------------------+
+//| Delete single text object                                        |
+//+------------------------------------------------------------------+
+bool TextGVar_Delete(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return false;
+   
+   return ObjectDelete(0, name);
+}
+
+//+------------------------------------------------------------------+
+//| Delete all objects matching prefix + window + shortName          |
+//+------------------------------------------------------------------+
+int TextGVar_DeleteAll(const string prefix, int window, const string shortName)
+{
+   string pattern = prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot;;
+   int deleted = 0;
+   
+   for(int i = ObjectsTotal(0) - 1; i &gt;= 0; i--)
+   {
+      string objName = ObjectName(0, i);
+      if(StringFind(objName, pattern) == 0)
+      {
+         if(ObjectDelete(0, objName))
+            deleted++;
+      }
+   }
+   
+   return deleted;
+}
+Changes required in IndicatorSlopes MJM.mq5:
+
+Add indicatorWindow field to LineInfo struct to track which window each line&#x27;s indicator is in.
+Update ReadTextGVar() to accept window parameter:
+
+cppstring ReadTextGVar(int window, const string shortName, const string varName, const string defaultValue = &quot;&quot;)
+{
+   return TextGVar_Read(TEXTGVAR_PREFIX, window, shortName, varName, defaultValue);
+}
+
+Update GetIndicatorPlotCount() to accept window parameter.
+Update GetPlotDisplayName() to accept window parameter.
+Update GetMaxPeriodFromTextGVar() to accept window parameter.
+Update ScanChartIndicators():
+
+Pass win to all TextGVar reads
+Store win in g_lines[idx].indicatorWindow
+
+
+Update CheckLinePropertyChanges():
+
+Use g_lines[i].indicatorWindow when calling ReadTextGVar()
+
+
+Update CheckReinitSignals():
+
+Use g_lines[i].indicatorWindow when calling ReadTextGVar() and TextGVar_Delete()
+
+
+
+Current IS code attached. Make all changes, preserve all commented code, and provide the complete updated file for download.</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 16:02 UTC</span></div><div class="body"><p>Monday, January 20, 2025, 1:05 AM CST</p>
+<p>Requirements restated:</p>
+<p><strong>Objective</strong>: Update IndicatorSlopes MJM.mq5 to use new TextGVar naming scheme that includes subwindow number.</p>
+<p><strong>Naming scheme change</strong>: <code>MJM_&lt;shortname&gt;_&lt;varname&gt;</code> → <code>MJM_&lt;window&gt;_&lt;shortname&gt;_&lt;varname&gt;</code></p>
+<p><strong>Required modifications</strong>:</p>
+<ol>
+<li>
+<p><strong>LineInfo struct</strong>: Add <code>indicatorWindow</code> field to track which window each line's source indicator is in.</p>
+</li>
+<li>
+<p><strong>ReadTextGVar()</strong>: Add <code>window</code> parameter as first argument.</p>
+</li>
+<li>
+<p><strong>GetIndicatorPlotCount()</strong>: Add <code>window</code> parameter.</p>
+</li>
+<li>
+<p><strong>GetPlotDisplayName()</strong>: Add <code>window</code> parameter.</p>
+</li>
+<li>
+<p><strong>GetMaxPeriodFromTextGVar()</strong>: Add <code>window</code> parameter.</p>
+</li>
+<li>
+<p><strong>ScanChartIndicators()</strong>:</p>
+<ul>
+<li>Pass <code>win</code> to all TextGVar read calls</li>
+<li>Store <code>win</code> in <code>g_lines[idx].indicatorWindow</code></li>
+</ul>
+</li>
+<li>
+<p><strong>CheckLinePropertyChanges()</strong>: Use <code>g_lines[i].indicatorWindow</code> when calling ReadTextGVar()</p>
+</li>
+<li>
+<p><strong>CheckReinitSignals()</strong>: Use <code>g_lines[i].indicatorWindow</code> when calling ReadTextGVar() and TextGVar_Delete()</p>
+</li>
+</ol>
+<p><strong>Constraints</strong>: Preserve all commented code, provide complete updated file.</p>
+<p>Ready for the current code.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 16:06 UTC</span></div><div class="body">Here&#x27;s the code, go<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                        IndicatorSlopes MJM.mq5   |
+//|                        Plots slopes of chart&#x27;s indicators        |
+//|                                                                  |
+//| Updated: 2026-01-19                                              |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#define PROGRAM_VERSION &quot;1.05&quot;
+#property version PROGRAM_VERSION
+//+------------------------------------------------------------------+
+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 32
+#property indicator_plots   32
+
+// Plot type declarations for all 32 possible plots
+#property indicator_type1   DRAW_LINE
+#property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_LINE
+#property indicator_type4   DRAW_LINE
+#property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
+#property indicator_type7   DRAW_LINE
+#property indicator_type8   DRAW_LINE
+#property indicator_type9   DRAW_LINE
+#property indicator_type10  DRAW_LINE
+#property indicator_type11  DRAW_LINE
+#property indicator_type12  DRAW_LINE
+#property indicator_type13  DRAW_LINE
+#property indicator_type14  DRAW_LINE
+#property indicator_type15  DRAW_LINE
+#property indicator_type16  DRAW_LINE
+#property indicator_type17  DRAW_LINE
+#property indicator_type18  DRAW_LINE
+#property indicator_type19  DRAW_LINE
+#property indicator_type20  DRAW_LINE
+#property indicator_type21  DRAW_LINE
+#property indicator_type22  DRAW_LINE
+#property indicator_type23  DRAW_LINE
+#property indicator_type24  DRAW_LINE
+#property indicator_type25  DRAW_LINE
+#property indicator_type26  DRAW_LINE
+#property indicator_type27  DRAW_LINE
+#property indicator_type28  DRAW_LINE
+#property indicator_type29  DRAW_LINE
+#property indicator_type30  DRAW_LINE
+#property indicator_type31  DRAW_LINE
+#property indicator_type32  DRAW_LINE
+
+enum ENUM_SLOPE_MODE
+{
+   SLOPE_EMA    = 0,
+   SLOPE_ZSCORE = 1,
+   SLOPE_MEDIAN = 2
+};
+
+//--- Input parameters
+input int             InpSlopeBarCnt   = 3;           // Number of bars for slope calculation
+input bool            InpRawSlope      = true;        // Raw slope? False = use Slope Calc mode; true = raw slope
+input ENUM_SLOPE_MODE InpSlopeMode     = SLOPE_EMA;   // Slope Calc mode (only if Raw slope = false)
+input int             InpEmaPeriod     = 3;           // for EMA on slope
+input int             InpZScorePeriod  = 5;           // for Z-score
+input int             InpMedianPeriod  = 3;           // for Median on slope (odd &gt;=3)
+input int             InpRawNormPeriod = 5;           // Normalization lookback period
+input color           InpSummaryAvgColor = clrWhite;  // Summary Avg Color
+input int             InpSummaryAvgWidth = 4;         // Summary Avg Width
+input color           InpSummaryPctColor = clrBlue;   // Summary % UP/DN Color
+input int             InpSummaryPctWidth = 3;         // Summary % UP/DN Width
+
+//--- Constants
+#define MAX_BUFFERS 30
+#define SUMMARY_AVG_BUFFER 30
+#define SUMMARY_PCT_BUFFER 31
+#define MAX_INDICATORS 20
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+
+//+------------------------------------------------------------------+
+//| Structure to hold line information                               |
+//+------------------------------------------------------------------+
+struct LineInfo
+{
+   int    indicatorHandle;
+   string indicatorShortName;
+   int    lineIndex;
+   int    bufferIndex;
+   int    period;
+   color  lineColor;
+   int    lineStyle;
+   int    lineWidth;
+   string lineName;
+   double cache[];              // Cached timeseries for this line
+   int    lastRatesTotal;       // rates_total at last calculation
+   bool   isValid;
+   //--- Cached TextGVar values for change detection
+   string cachedColorStr;
+   string cachedWidthStr;
+};
+
+//--- Global variables
+LineInfo g_lines[];
+int   g_totalBuffers = 0;
+int   g_totalPlots = 0;
+int   g_lastIndicatorCount = 0;  // Track indicator count for change detection
+int   g_Uninit_Reason = 0;
+
+//--- Indicator buffers
+double Buffer0[], Buffer1[], Buffer2[], Buffer3[], Buffer4[];
+double Buffer5[], Buffer6[], Buffer7[], Buffer8[], Buffer9[];
+double Buffer10[], Buffer11[], Buffer12[], Buffer13[], Buffer14[];
+double Buffer15[], Buffer16[], Buffer17[], Buffer18[], Buffer19[];
+double Buffer20[], Buffer21[], Buffer22[], Buffer23[], Buffer24[];
+double Buffer25[], Buffer26[], Buffer27[], Buffer28[], Buffer29[];
+double Buffer30[], Buffer31[];  // Summary buffers
+
+string sMeShortName = &quot;IndicatorSlopes MJM&quot;;
+
+//+------------------------------------------------------------------+
+//| Unified TextGVar reader                                          |
+//+------------------------------------------------------------------+
+string ReadTextGVar(const string shortName, const string varName, const string defaultValue = &quot;&quot;)
+{
+   return TextGVar_Read(TEXTGVAR_PREFIX, shortName, varName, defaultValue);
+}
+
+//+------------------------------------------------------------------+
+//| Get indicator plot count from TextGVar                           |
+//+------------------------------------------------------------------+
+int GetIndicatorPlotCount(const string shortName)
+{
+   string countStr = ReadTextGVar(shortName, &quot;PlotCount&quot;, &quot;&quot;);
+   if(countStr == &quot;&quot;)
+      return 1;  // Default if not found
+   return (int)StringToInteger(countStr);
+}
+
+//+------------------------------------------------------------------+
+//| Get plot name from TextGVar                                      |
+//+------------------------------------------------------------------+
+string GetPlotDisplayName(const string shortName, int plotIndex)
+{
+   string varName = &quot;Plot[&quot; + IntegerToString(plotIndex) + &quot;]_Name&quot;;
+   string name = ReadTextGVar(shortName, varName, &quot;&quot;);
+   if(name == &quot;&quot;)
+      return &quot;Line &quot; + IntegerToString(plotIndex);  // Default
+   return name;
+}
+
+//+------------------------------------------------------------------+
+//| Get MaxPeriod from TextGVar parameter metadata                   |
+//+------------------------------------------------------------------+
+int GetMaxPeriodFromTextGVar(const string shortName)
+{
+   string countStr = ReadTextGVar(shortName, &quot;ParmCount&quot;, &quot;0&quot;);
+   int parmCount = (int)StringToInteger(countStr);
+   int maxPeriod = 1;
+   
+   for(int p = 0; p &lt; parmCount; p++)
+   {
+      string parmName = ReadTextGVar(shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Name&quot;, &quot;&quot;);
+      
+      // Case-insensitive check for &quot;period&quot;
+      string lowerName = parmName;
+      StringToLower(lowerName);
+      if(StringFind(lowerName, &quot;period&quot;) &gt;= 0)
+      {
+         string parmValue = ReadTextGVar(shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Value&quot;, &quot;1&quot;);
+         int val = (int)StringToInteger(parmValue);
+         if(val &gt; maxPeriod)
+            maxPeriod = val;
+      }
+   }
+   return maxPeriod;
+}
+
+//+------------------------------------------------------------------+
+//| Set buffer by index                                              |
+//+------------------------------------------------------------------+
+void SetBufferByIndex(int bufferIndex)
+{
+   switch(bufferIndex)
+   {
+      case 0: SetIndexBuffer(0, Buffer0, INDICATOR_DATA); ArraySetAsSeries(Buffer0, true); break;
+      case 1: SetIndexBuffer(1, Buffer1, INDICATOR_DATA); ArraySetAsSeries(Buffer1, true); break;
+      case 2: SetIndexBuffer(2, Buffer2, INDICATOR_DATA); ArraySetAsSeries(Buffer2, true); break;
+      case 3: SetIndexBuffer(3, Buffer3, INDICATOR_DATA); ArraySetAsSeries(Buffer3, true); break;
+      case 4: SetIndexBuffer(4, Buffer4, INDICATOR_DATA); ArraySetAsSeries(Buffer4, true); break;
+      case 5: SetIndexBuffer(5, Buffer5, INDICATOR_DATA); ArraySetAsSeries(Buffer5, true); break;
+      case 6: SetIndexBuffer(6, Buffer6, INDICATOR_DATA); ArraySetAsSeries(Buffer6, true); break;
+      case 7: SetIndexBuffer(7, Buffer7, INDICATOR_DATA); ArraySetAsSeries(Buffer7, true); break;
+      case 8: SetIndexBuffer(8, Buffer8, INDICATOR_DATA); ArraySetAsSeries(Buffer8, true); break;
+      case 9: SetIndexBuffer(9, Buffer9, INDICATOR_DATA); ArraySetAsSeries(Buffer9, true); break;
+      case 10: SetIndexBuffer(10, Buffer10, INDICATOR_DATA); ArraySetAsSeries(Buffer10, true); break;
+      case 11: SetIndexBuffer(11, Buffer11, INDICATOR_DATA); ArraySetAsSeries(Buffer11, true); break;
+      case 12: SetIndexBuffer(12, Buffer12, INDICATOR_DATA); ArraySetAsSeries(Buffer12, true); break;
+      case 13: SetIndexBuffer(13, Buffer13, INDICATOR_DATA); ArraySetAsSeries(Buffer13, true); break;
+      case 14: SetIndexBuffer(14, Buffer14, INDICATOR_DATA); ArraySetAsSeries(Buffer14, true); break;
+      case 15: SetIndexBuffer(15, Buffer15, INDICATOR_DATA); ArraySetAsSeries(Buffer15, true); break;
+      case 16: SetIndexBuffer(16, Buffer16, INDICATOR_DATA); ArraySetAsSeries(Buffer16, true); break;
+      case 17: SetIndexBuffer(17, Buffer17, INDICATOR_DATA); ArraySetAsSeries(Buffer17, true); break;
+      case 18: SetIndexBuffer(18, Buffer18, INDICATOR_DATA); ArraySetAsSeries(Buffer18, true); break;
+      case 19: SetIndexBuffer(19, Buffer19, INDICATOR_DATA); ArraySetAsSeries(Buffer19, true); break;
+      case 20: SetIndexBuffer(20, Buffer20, INDICATOR_DATA); ArraySetAsSeries(Buffer20, true); break;
+      case 21: SetIndexBuffer(21, Buffer21, INDICATOR_DATA); ArraySetAsSeries(Buffer21, true); break;
+      case 22: SetIndexBuffer(22, Buffer22, INDICATOR_DATA); ArraySetAsSeries(Buffer22, true); break;
+      case 23: SetIndexBuffer(23, Buffer23, INDICATOR_DATA); ArraySetAsSeries(Buffer23, true); break;
+      case 24: SetIndexBuffer(24, Buffer24, INDICATOR_DATA); ArraySetAsSeries(Buffer24, true); break;
+      case 25: SetIndexBuffer(25, Buffer25, INDICATOR_DATA); ArraySetAsSeries(Buffer25, true); break;
+      case 26: SetIndexBuffer(26, Buffer26, INDICATOR_DATA); ArraySetAsSeries(Buffer26, true); break;
+      case 27: SetIndexBuffer(27, Buffer27, INDICATOR_DATA); ArraySetAsSeries(Buffer27, true); break;
+      case 28: SetIndexBuffer(28, Buffer28, INDICATOR_DATA); ArraySetAsSeries(Buffer28, true); break;
+      case 29: SetIndexBuffer(29, Buffer29, INDICATOR_DATA); ArraySetAsSeries(Buffer29, true); break;
+      case 30: SetIndexBuffer(30, Buffer30, INDICATOR_DATA); ArraySetAsSeries(Buffer30, true); break;
+      case 31: SetIndexBuffer(31, Buffer31, INDICATOR_DATA); ArraySetAsSeries(Buffer31, true); break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Clear all indicator buffers                                      |
+//+------------------------------------------------------------------+
+void ClearAllBuffers()
+{
+   ArrayInitialize(Buffer0, EMPTY_VALUE);
+   ArrayInitialize(Buffer1, EMPTY_VALUE);
+   ArrayInitialize(Buffer2, EMPTY_VALUE);
+   ArrayInitialize(Buffer3, EMPTY_VALUE);
+   ArrayInitialize(Buffer4, EMPTY_VALUE);
+   ArrayInitialize(Buffer5, EMPTY_VALUE);
+   ArrayInitialize(Buffer6, EMPTY_VALUE);
+   ArrayInitialize(Buffer7, EMPTY_VALUE);
+   ArrayInitialize(Buffer8, EMPTY_VALUE);
+   ArrayInitialize(Buffer9, EMPTY_VALUE);
+   ArrayInitialize(Buffer10, EMPTY_VALUE);
+   ArrayInitialize(Buffer11, EMPTY_VALUE);
+   ArrayInitialize(Buffer12, EMPTY_VALUE);
+   ArrayInitialize(Buffer13, EMPTY_VALUE);
+   ArrayInitialize(Buffer14, EMPTY_VALUE);
+   ArrayInitialize(Buffer15, EMPTY_VALUE);
+   ArrayInitialize(Buffer16, EMPTY_VALUE);
+   ArrayInitialize(Buffer17, EMPTY_VALUE);
+   ArrayInitialize(Buffer18, EMPTY_VALUE);
+   ArrayInitialize(Buffer19, EMPTY_VALUE);
+   ArrayInitialize(Buffer20, EMPTY_VALUE);
+   ArrayInitialize(Buffer21, EMPTY_VALUE);
+   ArrayInitialize(Buffer22, EMPTY_VALUE);
+   ArrayInitialize(Buffer23, EMPTY_VALUE);
+   ArrayInitialize(Buffer24, EMPTY_VALUE);
+   ArrayInitialize(Buffer25, EMPTY_VALUE);
+   ArrayInitialize(Buffer26, EMPTY_VALUE);
+   ArrayInitialize(Buffer27, EMPTY_VALUE);
+   ArrayInitialize(Buffer28, EMPTY_VALUE);
+   ArrayInitialize(Buffer29, EMPTY_VALUE);
+   ArrayInitialize(Buffer30, EMPTY_VALUE);
+   ArrayInitialize(Buffer31, EMPTY_VALUE);
+}
+
+//+------------------------------------------------------------------+
+//| Get buffer value by index                                        |
+//+------------------------------------------------------------------+
+double GetBufferValue(int bufferIndex, int bar)
+{
+   switch(bufferIndex)
+   {
+      case 0:  return Buffer0[bar];
+      case 1:  return Buffer1[bar];
+      case 2:  return Buffer2[bar];
+      case 3:  return Buffer3[bar];
+      case 4:  return Buffer4[bar];
+      case 5:  return Buffer5[bar];
+      case 6:  return Buffer6[bar];
+      case 7:  return Buffer7[bar];
+      case 8:  return Buffer8[bar];
+      case 9:  return Buffer9[bar];
+      case 10: return Buffer10[bar];
+      case 11: return Buffer11[bar];
+      case 12: return Buffer12[bar];
+      case 13: return Buffer13[bar];
+      case 14: return Buffer14[bar];
+      case 15: return Buffer15[bar];
+      case 16: return Buffer16[bar];
+      case 17: return Buffer17[bar];
+      case 18: return Buffer18[bar];
+      case 19: return Buffer19[bar];
+      case 20: return Buffer20[bar];
+      case 21: return Buffer21[bar];
+      case 22: return Buffer22[bar];
+      case 23: return Buffer23[bar];
+      case 24: return Buffer24[bar];
+      case 25: return Buffer25[bar];
+      case 26: return Buffer26[bar];
+      case 27: return Buffer27[bar];
+      case 28: return Buffer28[bar];
+      case 29: return Buffer29[bar];
+      default: return EMPTY_VALUE;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Scan chart for indicators and configure slope lines             |
+//+------------------------------------------------------------------+
+void ScanChartIndicators()
+{
+   //--- Reset globals
+   g_totalBuffers = 0;
+   g_totalPlots = 0;
+   int indicatorCount = 0;
+   
+   //--- Clear all buffers to remove old plot data
+   ClearAllBuffers();
+   
+   //--- Hide all plots initially (they&#x27;ll be shown as we configure them)
+   for(int p = 0; p &lt; 32; p++)
+   {
+      PlotIndexSetInteger(p, PLOT_DRAW_TYPE, DRAW_NONE);
+      PlotIndexSetString(p, PLOT_LABEL, &quot;&quot;);
+   }
+   
+   //--- Check sub-windows
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      int subIndicators = ChartIndicatorsTotal(0, win);
+      Print(&quot;Found &quot;, subIndicators, &quot; indicators in window &quot;, win);
+      
+      for(int i = 0; i &lt; subIndicators; i++)
+      {
+         string shortName = ChartIndicatorName(0, win, i);
+         
+         if(shortName == &quot;&quot;)
+            continue;
+
+         //--- Skip processing ourselves
+         if(shortName == sMeShortName)
+            continue;
+      
+         //--- Check indicator limit
+         if(indicatorCount &gt;= MAX_INDICATORS)
+         {
+            Print(&quot;ERROR: Maximum indicator limit (&quot;, MAX_INDICATORS, &quot;) reached. Skipping indicator: &quot;, shortName);
+            continue;
+         }
+      
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;&quot;);
+         
+         int handle = ChartIndicatorGet(0, win, shortName);
+         
+         if(handle == INVALID_HANDLE)
+         {
+            Print(&quot;Bad handle &lt;&quot;, handle, &quot;&gt; for indicator&lt;&quot;, shortName, &quot;&gt;, skipping...&quot;);
+            continue;
+         }
+         
+         //--- Verify indicator provides TextGVar metadata
+         string verifiedShortName = ReadTextGVar(shortName, &quot;ShortName&quot;, &quot;&quot;);
+         if(verifiedShortName == &quot;&quot;)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no TextGVar metadata - skipping&quot;);
+            continue;
+         }
+
+         int plotCount = GetIndicatorPlotCount(shortName);
+         
+         //--- Skip indicators with no plots
+         if(plotCount &lt; 1)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no plots - skipping&quot;);
+            continue;
+         }
+         
+         //--- Check if adding this indicator would exceed buffer limit
+         if(g_totalBuffers + plotCount &gt; MAX_BUFFERS)
+         {
+            Print(&quot;ERROR: Adding indicator &quot;, shortName, &quot; would exceed buffer limit (&quot;, MAX_BUFFERS, &quot;). Skipping...&quot;);
+            continue;
+         }
+         
+         //--- Get max period from TextGVar parameter metadata
+         int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+         
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;, plot count: &lt;&quot;, plotCount, &quot;&gt;, maxPeriod: &lt;&quot;, maxPeriod, &quot;&gt;&quot;);
+         
+         for(int lineIdx = 0; lineIdx &lt; plotCount; lineIdx++)
+         {
+            if(g_totalBuffers &gt;= MAX_BUFFERS)
+            {
+               Print(&quot;ERROR: Buffer limit (&quot;, MAX_BUFFERS, &quot;) reached while processing &quot;, shortName);
+               break;
+            }
+            
+            string lineName = GetPlotDisplayName(shortName, lineIdx);
+            
+            //--- Read color/width from TextGVar, fall back to defaults
+            color defaultColor = GetAutoColor(g_totalPlots);
+            int defaultWidth = 2;
+            
+            string colorStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+            color lineColor = (colorStr != &quot;&quot;) ? StringToColor(colorStr) : defaultColor;
+            
+            string widthStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+            int lineWidth = (widthStr != &quot;&quot;) ? (int)StringToInteger(widthStr) : defaultWidth;
+            int lineStyle = STYLE_SOLID;
+            
+            int idx = ArraySize(g_lines);
+            ArrayResize(g_lines, idx + 1);
+            
+            g_lines[idx].indicatorHandle = handle;
+            g_lines[idx].indicatorShortName = shortName;
+            g_lines[idx].lineIndex = lineIdx;
+            g_lines[idx].bufferIndex = g_totalBuffers;
+            g_lines[idx].period = maxPeriod;
+            g_lines[idx].lineColor = lineColor;
+            g_lines[idx].lineStyle = lineStyle;
+            g_lines[idx].lineWidth = lineWidth;
+            g_lines[idx].lineName = lineName;
+            g_lines[idx].lastRatesTotal = 0;
+            g_lines[idx].isValid = true;
+            g_lines[idx].cachedColorStr = colorStr;
+            g_lines[idx].cachedWidthStr = widthStr;
+            
+            Print(&quot;Line &quot;, idx, &quot;: ShortName&lt;&quot;, shortName, 
+                  &quot;&gt; Handle&lt;&quot;, g_lines[idx].indicatorHandle,
+                  &quot;&gt; ShortName&lt;&quot;, g_lines[idx].indicatorShortName,
+                  &quot;&gt; LineIdx&lt;&quot;, g_lines[idx].lineIndex,
+                  &quot;&gt; BufferIdx&lt;&quot;, g_lines[idx].bufferIndex,
+                  &quot;&gt; Period&lt;&quot;, g_lines[idx].period,
+                  &quot;&gt; Color&lt;&quot;, g_lines[idx].lineColor,
+                  &quot;&gt; Style&lt;&quot;, g_lines[idx].lineStyle,
+                  &quot;&gt; Width&lt;&quot;, g_lines[idx].lineWidth,
+                  &quot;&gt; LineName&lt;&quot;, g_lines[idx].lineName,
+                  &quot;&gt; CachedColorStr&lt;&quot;, g_lines[idx].cachedColorStr,
+                  &quot;&gt; CachedWidthStr&lt;&quot;, g_lines[idx].cachedWidthStr,
+                  &quot;&gt;&quot;);
+            
+            SetBufferByIndex(g_totalBuffers);
+            PlotIndexSetInteger(g_totalPlots, PLOT_DRAW_TYPE, DRAW_LINE);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_STYLE, lineStyle);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_WIDTH, lineWidth);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_COLOR, lineColor);
+            PlotIndexSetString(g_totalPlots, PLOT_LABEL, shortName + &quot; &quot; + lineName + &quot; Slope&quot;);
+
+            g_totalBuffers++;
+            g_totalPlots++;
+         }
+         
+         indicatorCount++;
+      }
+   }
+   
+   //--- Configure summary buffers if we have active line buffers
+   if(g_totalBuffers &gt; 0)
+   {
+      //--- Buffer30: Slopes Avg
+      SetBufferByIndex(SUMMARY_AVG_BUFFER);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_WIDTH, InpSummaryAvgWidth);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_COLOR, InpSummaryAvgColor);
+      PlotIndexSetString(SUMMARY_AVG_BUFFER, PLOT_LABEL, &quot;Slopes Avg&quot;);
+      
+      //--- Buffer31: Slope % UP/DN
+      SetBufferByIndex(SUMMARY_PCT_BUFFER);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_WIDTH, InpSummaryPctWidth);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_COLOR, InpSummaryPctColor);
+      PlotIndexSetString(SUMMARY_PCT_BUFFER, PLOT_LABEL, &quot;Slope % UP/DN&quot;);
+   }
+   
+   Print(&quot;Total slope lines configured&lt;&quot;, g_totalBuffers, &quot;&gt; from &quot;, indicatorCount, &quot; indicators&quot;);
+}
+
+//+------------------------------------------------------------------+
+//| Check for REINIT signals from TextGVar objects                   |
+//| Returns true if rescan is needed                                 |
+//+------------------------------------------------------------------+
+bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      
+      //--- Check if we&#x27;ve already processed this shortName
+      bool alreadyChecked = false;
+      for(int j = 0; j &lt; checkedCount; j++)
+      {
+         if(checkedNames[j] == shortName)
+         {
+            alreadyChecked = true;
+            break;
+         }
+      }
+      
+      if(alreadyChecked)
+         continue;
+      
+      ArrayResize(checkedNames, checkedCount + 1);
+      checkedNames[checkedCount] = shortName;
+      checkedCount++;
+      
+      //--- Check for REINIT signal
+      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+      
+      if(reinitSignal == &quot;&quot;)
+         continue;
+      
+      Print(&quot;REINIT detected for &quot;, shortName, &quot;, triggering rescan&quot;);
+      
+      //--- Delete the REINIT flag
+      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+      
+      return true;
+   }
+   
+   return false;
+}
+
+////+------------------------------------------------------------------+
+////| Check for REINIT signals from TextGVar objects                   |
+////+------------------------------------------------------------------+
+//void CheckReinitSignals()
+//{
+//   //--- Track which shortNames we&#x27;ve already checked (avoid redundant checks for multi-buffer indicators)
+//   string checkedNames[];
+//   int checkedCount = 0;
+//   
+//   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//   {
+//      if(!g_lines[i].isValid)
+//         continue;
+//      
+//      string shortName = g_lines[i].indicatorShortName;
+//      
+//      //--- Check if we&#x27;ve already processed this shortName
+//      bool alreadyChecked = false;
+//      for(int j = 0; j &lt; checkedCount; j++)
+//      {
+//         if(checkedNames[j] == shortName)
+//         {
+//            alreadyChecked = true;
+//            break;
+//         }
+//      }
+//      
+//      if(alreadyChecked)
+//         continue;
+//      
+//      //--- Add to checked list
+//      ArrayResize(checkedNames, checkedCount + 1);
+//      checkedNames[checkedCount] = shortName;
+//      checkedCount++;
+//      
+//      //--- Check for REINIT signal
+//      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+//      
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - BEFORE reinitSignal check, reinitSignal&lt;&quot;, reinitSignal, &quot;&gt;&quot;);
+//      if(reinitSignal == &quot;&quot;)
+//         continue;
+//      
+//      //--- Get max period from TextGVar
+//      int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - Got maxPeriod&lt;&quot;, maxPeriod, &quot;&gt; from TextGVar&quot;);
+//      
+//      //--- Update all lines belonging to this indicator
+//      for(int k = 0; k &lt; ArraySize(g_lines); k++)
+//      {
+//         if(g_lines[k].indicatorShortName == shortName)
+//         {
+//            g_lines[k].period = maxPeriod;
+//            g_lines[k].lastRatesTotal = 0;  // Force full recalculation
+//            Print(&quot;Updated line &quot;, k, &quot; (&quot;, shortName, &quot; &quot;, g_lines[k].lineName, &quot;) period to &quot;, maxPeriod);
+//         }
+//      }
+//      
+//      //--- Delete the REINIT text object
+//      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+//      
+//      ChartRedraw(0);
+//   }
+//}
+
+//+------------------------------------------------------------------+
+//| Get total indicator count across all windows                     |
+//+------------------------------------------------------------------+
+int GetTotalIndicatorCount()
+{
+   int total = 0;
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      total += ChartIndicatorsTotal(0, win);
+   }
+   return total;
+}
+
+//+------------------------------------------------------------------+
+//| Create the palette 
+//+------------------------------------------------------------------+
+color GetAutoColor(int index)
+{
+   color palette[] = {
+      clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold, clrMagenta,
+      clrCyan, clrCoral, clrSpringGreen, clrViolet, clrYellow,
+      clrDeepSkyBlue, clrTomato, clrChartreuse, clrOrchid, clrAqua
+   };
+   return palette[index % ArraySize(palette)];
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   //--- Validate InpSlopeBarCnt
+   if(InpSlopeBarCnt &lt; 2)
+   {
+      Print(&quot;InpSlopeBarCnt must be &gt;= 2&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   IndicatorSetString(INDICATOR_SHORTNAME, sMeShortName);
+   
+   //--- Reset line array
+   ArrayResize(g_lines, 0);
+   
+   //--- Scan chart for indicators
+   ScanChartIndicators();
+   
+   if(g_totalBuffers == 0)
+   {
+      Print(&quot;No indicator plots found on chart!&quot;);
+      
+      //--- Remove this indicator from the chart
+      int chartWindow = ChartWindowFind();
+      if(chartWindow &gt;= 0)
+      {
+         Print(&quot;Removing indicator - ChartWindow&lt;&quot;, chartWindow, &quot;&gt; ShortName&lt;&quot;, sMeShortName, &quot;&gt;&quot;);
+         ChartIndicatorDelete(0, chartWindow, sMeShortName);
+      }
+      
+      return(INIT_FAILED);
+   }
+   
+   EventSetTimer(1);  // Check every 1 second
+   g_lastIndicatorCount = GetTotalIndicatorCount();
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator deinitialization function                       |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   //--- Kill the timer
+   EventKillTimer();
+   
+   //--- Release all indicator handles
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+         IndicatorRelease(g_lines[i].indicatorHandle);
+   }
+   
+   g_Uninit_Reason = reason; 
+}
+
+//+------------------------------------------------------------------+
+//| Timer function - detect indicator changes                        |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   //--- Check for line property changes from TextGVar
+   CheckLinePropertyChanges();
+   
+   //--- Check for REINIT signals
+   bool needsRescan = CheckReinitSignals();
+   
+   //--- Count indicators across all subwindows
+   int currentCount = GetTotalIndicatorCount();
+   
+   if(needsRescan || currentCount != g_lastIndicatorCount)
+   {
+      Print(&quot;Reinitializing...&quot;);
+      g_lastIndicatorCount = currentCount;
+      
+      //--- Release existing handles
+      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+      {
+         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+            IndicatorRelease(g_lines[i].indicatorHandle);
+      }
+      ArrayResize(g_lines, 0);
+      
+      //--- Rescan and rebuild
+      ScanChartIndicators();
+      
+      //--- Force full recalculation on next OnCalculate
+      ChartSetSymbolPeriod(0, _Symbol, _Period);
+   }
+}
+
+
+////+------------------------------------------------------------------+
+////| Timer function - detect indicator changes                        |
+////+------------------------------------------------------------------+
+//void OnTimer()
+//{
+//   //--- Check for REINIT signals
+//   CheckReinitSignals();
+//   
+//   //--- Count indicators across all subwindows
+//   int currentCount = GetTotalIndicatorCount();
+//   
+//   if(currentCount != g_lastIndicatorCount)
+//   {
+//      Print(&quot;Indicator count changed: &quot;, g_lastIndicatorCount, &quot; -&gt; &quot;, currentCount, &quot;. Reinitializing...&quot;);
+//      g_lastIndicatorCount = currentCount;
+//      
+//      //--- Release existing handles
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+//            IndicatorRelease(g_lines[i].indicatorHandle);
+//      }
+//      ArrayResize(g_lines, 0);
+//      
+//      //--- Rescan and rebuild
+//      ScanChartIndicators();
+//      
+//      //--- Force full recalculation on next OnCalculate
+//      ChartSetSymbolPeriod(0, _Symbol, _Period);
+//   }
+//}
+//
+
+//+------------------------------------------------------------------+
+//| Check and apply TextGVar property changes for all lines          |
+//+------------------------------------------------------------------+
+void CheckLinePropertyChanges()
+{
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int lineIdx = g_lines[i].lineIndex;
+      
+      //--- Read current values from TextGVar
+      string currentColorStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+      string currentWidthStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+      
+      bool changed = false;
+      
+      //--- Check color change
+      if(currentColorStr != &quot;&quot; &amp;&amp; currentColorStr != g_lines[i].cachedColorStr)
+      {
+         color newColor = StringToColor(currentColorStr);
+         g_lines[i].lineColor = newColor;
+         g_lines[i].cachedColorStr = currentColorStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_COLOR, newColor);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) color changed to &quot;, currentColorStr);
+      }
+      
+      //--- Check width change
+      if(currentWidthStr != &quot;&quot; &amp;&amp; currentWidthStr != g_lines[i].cachedWidthStr)
+      {
+         int newWidth = (int)StringToInteger(currentWidthStr);
+         g_lines[i].lineWidth = newWidth;
+         g_lines[i].cachedWidthStr = currentWidthStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_WIDTH, newWidth);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) width changed to &quot;, currentWidthStr);
+      }
+      
+      if(changed)
+         ChartRedraw(0);
+   }
+}
+
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+
+//   //--- Dump arrays on first call only
+//   if(prev_calculated == 0)
+//   {
+//      Print(&quot;=== OnCalculate First Run Dump ===&quot;);
+//      Print(&quot;g_totalBuffers&lt;&quot;, g_totalBuffers, &quot;&gt; g_totalPlots&lt;&quot;, g_totalPlots, &quot;&gt; g_lines size&lt;&quot;, ArraySize(g_lines), &quot;&gt;&quot;);
+//      
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         Print(&quot;g_lines[&quot;, i, &quot;]: Handle&lt;&quot;, g_lines[i].indicatorHandle,
+//               &quot;&gt; ShortName&lt;&quot;, g_lines[i].indicatorShortName,
+//               &quot;&gt; LineIdx&lt;&quot;, g_lines[i].lineIndex,
+//               &quot;&gt; BufIdx&lt;&quot;, g_lines[i].bufferIndex,
+//               &quot;&gt; Period&lt;&quot;, g_lines[i].period,
+//               &quot;&gt; Color&lt;&quot;, g_lines[i].lineColor,
+//               &quot;&gt; LineName&lt;&quot;, g_lines[i].lineName,
+//               &quot;&gt; CacheSize&lt;&quot;, ArraySize(g_lines[i].cache),
+//               &quot;&gt; lastRatesTotal&lt;&quot;, g_lines[i].lastRatesTotal,
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;g_knownIndicators size&lt;&quot;, ArraySize(g_knownIndicators), &quot;&gt;&quot;);
+//      for(int i = 0; i &lt; ArraySize(g_knownIndicators); i++)
+//      {
+//         Print(&quot;g_knownIndicators[&quot;, i, &quot;]: ShortName&lt;&quot;, g_knownIndicators[i].shortName,
+//               &quot;&gt; PlotCount&lt;&quot;, g_knownIndicators[i].plotCount,
+//               &quot;&gt; PlotNames size&lt;&quot;, ArraySize(g_knownIndicators[i].plotNames),
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;=== End Dump ===&quot;);
+//   }
+   
+   if(rates_total &lt; InpSlopeBarCnt)
+      return 0;
+
+   //--- Track the earliest bar we need to recalculate for summary
+   int summaryStartBar = 0;
+
+   for(int lineIdx = 0; lineIdx &lt; ArraySize(g_lines); lineIdx++)
+   {
+      //--- Capture before cache update overwrites it
+      bool forceFullRecalc = (g_lines[lineIdx].lastRatesTotal == 0);
+      
+      //--- Guard: need enough bars for indicator period + slope calc
+      int minBarsRequired = g_lines[lineIdx].period + InpSlopeBarCnt;
+      
+      if(rates_total &lt; minBarsRequired)
+         continue;
+      if(!g_lines[lineIdx].isValid)
+         continue;
+      
+      int lastRates = g_lines[lineIdx].lastRatesTotal;
+      int newBars = rates_total - lastRates;
+      
+      //--- First call or history changed: full copy
+      if(lastRates == 0 || newBars &lt; 0 || newBars &gt; rates_total)
+      {
+         ArrayResize(g_lines[lineIdx].cache, rates_total);
+         ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     rates_total,
+                                     g_lines[lineIdx].cache);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer full copy FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+
+         //--- Accept what we got (indicator may have fewer bars due to warmup period)
+         g_lines[lineIdx].lastRatesTotal = rates_total;
+      }
+      else
+      {
+         //--- Incremental update: copy new bars + bar 0 update
+         int barsToCopy = newBars + 1;  // +1 to recalc bar 0
+         if(barsToCopy &gt; rates_total)
+            barsToCopy = rates_total;
+         
+         //--- Resize cache if new bars arrived
+         if(rates_total &gt; ArraySize(g_lines[lineIdx].cache))
+         {
+            ArrayResize(g_lines[lineIdx].cache, rates_total);
+            ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         }
+         
+         double tempBuffer[];
+         ArraySetAsSeries(tempBuffer, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     barsToCopy,
+                                     tempBuffer);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer incremental FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+         
+         //--- Update cache with new values
+         for(int i = 0; i &lt; copyResult; i++)
+         {
+            g_lines[lineIdx].cache[i] = tempBuffer[i];
+         }
+         g_lines[lineIdx].lastRatesTotal = rates_total;       
+      }
+
+      //--- Calculate Z-score normalized slopes
+      //--- Oldest bar we can calculate slope for (need room for slope bars + z-score lookback)
+      int oldestSlopeBar = rates_total - 1 - g_lines[lineIdx].period - (InpSlopeBarCnt - 1) - InpZScorePeriod;
+      if(oldestSlopeBar &lt; 0)
+         oldestSlopeBar = 0;
+      
+      //--- Determine which bars to recalculate
+      int startBar;
+      if(prev_calculated == 0 || forceFullRecalc)
+      {
+         startBar = oldestSlopeBar;
+      }
+      else
+      {
+         startBar = newBars;  // recalc new bars + bar 0
+         if(startBar &gt; oldestSlopeBar)
+            startBar = oldestSlopeBar;
+      }
+      
+      //--- Track for summary calculation
+      if(startBar &gt; summaryStartBar)
+         summaryStartBar = startBar;
+      
+      //+------------------------------------------------------------------+
+      // NOTE: loop MUST run from older bars to newer for EMA correctness
+      //+------------------------------------------------------------------+
+      for(int CalcBarIX = startBar; CalcBarIX &gt;= 0; CalcBarIX--)      
+      {
+         int PrevBarIX = CalcBarIX + InpSlopeBarCnt - 1;
+      
+         //--- Guard against out of range
+         if(PrevBarIX &gt;= ArraySize(g_lines[lineIdx].cache))
+            continue;
+      
+         //--- Calculate raw slope for current bar
+         double currentValue = g_lines[lineIdx].cache[CalcBarIX];
+         double prevValue    = g_lines[lineIdx].cache[PrevBarIX];
+      
+         //--- Guard against EMPTY_VALUE
+         if(currentValue == EMPTY_VALUE || prevValue == EMPTY_VALUE)
+            continue;
+      
+         double slope = (currentValue - prevValue) / (InpSlopeBarCnt - 1);
+         
+         double outValue = 0.0;
+         
+         //================ CALCULATE outValue BY MODE =================
+         if(InpRawSlope)
+         {
+            outValue = slope;
+         }
+         else if(InpSlopeMode == SLOPE_ZSCORE)
+         {
+            //--- Calculate mean and standard deviation of slopes over lookback period
+            double sumSlope = 0.0;
+            double sumSlopeSq = 0.0;
+            int count = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpZScorePeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               double s = (val - valPrev) / (InpSlopeBarCnt - 1);
+               sumSlope   += s;
+               sumSlopeSq += s * s;
+               count++;
+            }
+      
+            if(count &gt; 1)
+            {
+               double mean     = sumSlope / count;
+               double variance = (sumSlopeSq / count) - (mean * mean);
+               double stdDev   = (variance &gt; 0) ? MathSqrt(variance) : 0;
+      
+               if(stdDev &gt; 0)
+                  outValue = (slope - mean) / stdDev;
+               else
+                  outValue = 0.0;
+            }
+            else
+               outValue = 0.0;
+         }
+         else if(InpSlopeMode == SLOPE_EMA)
+         {
+            double alpha = 2.0 / (InpEmaPeriod + 1.0);
+            double prev;
+            
+            if(CalcBarIX + 1 &gt;= rates_total)
+            {
+               prev = slope;
+            }
+            else
+            {
+               switch(g_lines[lineIdx].bufferIndex)
+               {
+                  case 0:  prev = Buffer0[CalcBarIX + 1]; break;
+                  case 1:  prev = Buffer1[CalcBarIX + 1]; break;
+                  case 2:  prev = Buffer2[CalcBarIX + 1]; break;
+                  case 3:  prev = Buffer3[CalcBarIX + 1]; break;
+                  case 4:  prev = Buffer4[CalcBarIX + 1]; break;
+                  case 5:  prev = Buffer5[CalcBarIX + 1]; break;
+                  case 6:  prev = Buffer6[CalcBarIX + 1]; break;
+                  case 7:  prev = Buffer7[CalcBarIX + 1]; break;
+                  case 8:  prev = Buffer8[CalcBarIX + 1]; break;
+                  case 9:  prev = Buffer9[CalcBarIX + 1]; break;
+                  case 10: prev = Buffer10[CalcBarIX + 1]; break;
+                  case 11: prev = Buffer11[CalcBarIX + 1]; break;
+                  case 12: prev = Buffer12[CalcBarIX + 1]; break;
+                  case 13: prev = Buffer13[CalcBarIX + 1]; break;
+                  case 14: prev = Buffer14[CalcBarIX + 1]; break;
+                  case 15: prev = Buffer15[CalcBarIX + 1]; break;
+                  case 16: prev = Buffer16[CalcBarIX + 1]; break;
+                  case 17: prev = Buffer17[CalcBarIX + 1]; break;
+                  case 18: prev = Buffer18[CalcBarIX + 1]; break;
+                  case 19: prev = Buffer19[CalcBarIX + 1]; break;
+                  case 20: prev = Buffer20[CalcBarIX + 1]; break;
+                  case 21: prev = Buffer21[CalcBarIX + 1]; break;
+                  case 22: prev = Buffer22[CalcBarIX + 1]; break;
+                  case 23: prev = Buffer23[CalcBarIX + 1]; break;
+                  case 24: prev = Buffer24[CalcBarIX + 1]; break;
+                  case 25: prev = Buffer25[CalcBarIX + 1]; break;
+                  case 26: prev = Buffer26[CalcBarIX + 1]; break;
+                  case 27: prev = Buffer27[CalcBarIX + 1]; break;
+                  case 28: prev = Buffer28[CalcBarIX + 1]; break;
+                  case 29: prev = Buffer29[CalcBarIX + 1]; break;
+                  default: prev = slope; break;
+               }
+            }
+      
+            if(prev == EMPTY_VALUE)
+               prev = slope;
+      
+            outValue = alpha * slope + (1.0 - alpha) * prev;
+         }
+         else if(InpSlopeMode == SLOPE_MEDIAN)
+         {
+            double tmp[];
+            ArrayResize(tmp, InpMedianPeriod);
+            int k = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpMedianPeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               tmp[k++] = (val - valPrev) / (InpSlopeBarCnt - 1);
+            }
+      
+            if(k &gt; 0)
+            {
+               ArrayResize(tmp, k);
+               ArraySort(tmp);
+               outValue = tmp[k / 2];
+            }
+            else
+               outValue = 0.0;
+         }
+         
+         //================ NORMALIZE outValue =================
+         double minVal = currentValue;
+         double maxVal = currentValue;
+         
+         for(int j = CalcBarIX; 
+             j &lt; CalcBarIX + InpRawNormPeriod &amp;&amp; 
+             j &lt; ArraySize(g_lines[lineIdx].cache); 
+             j++)
+         {
+            double val = g_lines[lineIdx].cache[j];
+            if(val == EMPTY_VALUE)
+               continue;
+            if(val &lt; minVal) minVal = val;
+            if(val &gt; maxVal) maxVal = val;
+         }
+         
+         double range = maxVal - minVal;
+         if(range &gt; 0)
+            outValue = outValue * 100.0 * (InpSlopeBarCnt - 1) / range;
+         else
+            outValue = 0.0;
+         
+         //================ WRITE TO BUFFER =================
+         switch(g_lines[lineIdx].bufferIndex)
+         {
+            case 0:  Buffer0[CalcBarIX]  = outValue; break;
+            case 1:  Buffer1[CalcBarIX]  = outValue; break;
+            case 2:  Buffer2[CalcBarIX]  = outValue; break;
+            case 3:  Buffer3[CalcBarIX]  = outValue; break;
+            case 4:  Buffer4[CalcBarIX]  = outValue; break;
+            case 5:  Buffer5[CalcBarIX]  = outValue; break;
+            case 6:  Buffer6[CalcBarIX]  = outValue; break;
+            case 7:  Buffer7[CalcBarIX]  = outValue; break;
+            case 8:  Buffer8[CalcBarIX]  = outValue; break;
+            case 9:  Buffer9[CalcBarIX]  = outValue; break;
+            case 10: Buffer10[CalcBarIX] = outValue; break;
+            case 11: Buffer11[CalcBarIX] = outValue; break;
+            case 12: Buffer12[CalcBarIX] = outValue; break;
+            case 13: Buffer13[CalcBarIX] = outValue; break;
+            case 14: Buffer14[CalcBarIX] = outValue; break;
+            case 15: Buffer15[CalcBarIX] = outValue; break;
+            case 16: Buffer16[CalcBarIX] = outValue; break;
+            case 17: Buffer17[CalcBarIX] = outValue; break;
+            case 18: Buffer18[CalcBarIX] = outValue; break;
+            case 19: Buffer19[CalcBarIX] = outValue; break;
+            case 20: Buffer20[CalcBarIX] = outValue; break;
+            case 21: Buffer21[CalcBarIX] = outValue; break;
+            case 22: Buffer22[CalcBarIX] = outValue; break;
+            case 23: Buffer23[CalcBarIX] = outValue; break;
+            case 24: Buffer24[CalcBarIX] = outValue; break;
+            case 25: Buffer25[CalcBarIX] = outValue; break;
+            case 26: Buffer26[CalcBarIX] = outValue; break;
+            case 27: Buffer27[CalcBarIX] = outValue; break;
+            case 28: Buffer28[CalcBarIX] = outValue; break;
+            case 29: Buffer29[CalcBarIX] = outValue; break;
+         }
+      }
+   }
+   
+   //================ CALCULATE SUMMARY BUFFERS =================
+   if(g_totalBuffers &gt; 0)
+   {
+      for(int bar = summaryStartBar; bar &gt;= 0; bar--)
+      {
+         double sum = 0.0;
+         int positiveCount = 0;
+         int negativeCount = 0;
+         int validCount = 0;
+         
+         //--- Read from all active line buffers
+         for(int i = 0; i &lt; g_totalBuffers; i++)
+         {
+            double val = GetBufferValue(i, bar);
+            if(val == EMPTY_VALUE)
+               continue;
+            sum += val;
+            if(val &gt; 0)
+               positiveCount++;
+            else if(val &lt; 0)
+               negativeCount++;
+            validCount++;
+         }
+         
+         if(validCount &gt; 0)
+         {
+            double avg = sum / validCount;
+            
+            //--- Mean average, all slopes
+            Buffer30[bar] = avg;
+            
+//            //--- Position avg above/below zero based on majority
+//            if(positiveCount &gt; negativeCount)
+//               Buffer30[bar] = MathAbs(avg);
+//            else if(negativeCount &gt; positiveCount)
+//               Buffer30[bar] = -MathAbs(avg);
+//            else
+//               Buffer30[bar] = 0.0;  // 50/50 on zero line
+//            
+            //--- Calculate percentage UP (positive) vs DN (negative)
+            //--- Encode as: positive value = % UP, negative value = % DN
+            double pctUp = (double)positiveCount / validCount * 100.0;
+            double pctDn = (double)negativeCount / validCount * 100.0;
+            
+            //--- Store signed value: positive if majority up, negative if majority down
+            if(positiveCount &gt; negativeCount)
+               Buffer31[bar] = pctUp;
+            else if(negativeCount &gt; positiveCount)
+               Buffer31[bar] = -pctDn;
+            else
+               Buffer31[bar] = 0.0;
+         }
+         else
+         {
+            Buffer30[bar] = EMPTY_VALUE;
+            Buffer31[bar] = EMPTY_VALUE;
+         }
+      }
+   }
+   
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 16:06 UTC</span></div><div class="body">Here&#x27;s the code, go<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                        IndicatorSlopes MJM.mq5   |
+//|                        Plots slopes of chart&#x27;s indicators        |
+//|                                                                  |
+//| Updated: 2026-01-19                                              |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#define PROGRAM_VERSION &quot;1.05&quot;
+#property version PROGRAM_VERSION
+//+------------------------------------------------------------------+
+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 32
+#property indicator_plots   32
+
+// Plot type declarations for all 32 possible plots
+#property indicator_type1   DRAW_LINE
+#property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_LINE
+#property indicator_type4   DRAW_LINE
+#property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
+#property indicator_type7   DRAW_LINE
+#property indicator_type8   DRAW_LINE
+#property indicator_type9   DRAW_LINE
+#property indicator_type10  DRAW_LINE
+#property indicator_type11  DRAW_LINE
+#property indicator_type12  DRAW_LINE
+#property indicator_type13  DRAW_LINE
+#property indicator_type14  DRAW_LINE
+#property indicator_type15  DRAW_LINE
+#property indicator_type16  DRAW_LINE
+#property indicator_type17  DRAW_LINE
+#property indicator_type18  DRAW_LINE
+#property indicator_type19  DRAW_LINE
+#property indicator_type20  DRAW_LINE
+#property indicator_type21  DRAW_LINE
+#property indicator_type22  DRAW_LINE
+#property indicator_type23  DRAW_LINE
+#property indicator_type24  DRAW_LINE
+#property indicator_type25  DRAW_LINE
+#property indicator_type26  DRAW_LINE
+#property indicator_type27  DRAW_LINE
+#property indicator_type28  DRAW_LINE
+#property indicator_type29  DRAW_LINE
+#property indicator_type30  DRAW_LINE
+#property indicator_type31  DRAW_LINE
+#property indicator_type32  DRAW_LINE
+
+enum ENUM_SLOPE_MODE
+{
+   SLOPE_EMA    = 0,
+   SLOPE_ZSCORE = 1,
+   SLOPE_MEDIAN = 2
+};
+
+//--- Input parameters
+input int             InpSlopeBarCnt   = 3;           // Number of bars for slope calculation
+input bool            InpRawSlope      = true;        // Raw slope? False = use Slope Calc mode; true = raw slope
+input ENUM_SLOPE_MODE InpSlopeMode     = SLOPE_EMA;   // Slope Calc mode (only if Raw slope = false)
+input int             InpEmaPeriod     = 3;           // for EMA on slope
+input int             InpZScorePeriod  = 5;           // for Z-score
+input int             InpMedianPeriod  = 3;           // for Median on slope (odd &gt;=3)
+input int             InpRawNormPeriod = 5;           // Normalization lookback period
+input color           InpSummaryAvgColor = clrWhite;  // Summary Avg Color
+input int             InpSummaryAvgWidth = 4;         // Summary Avg Width
+input color           InpSummaryPctColor = clrBlue;   // Summary % UP/DN Color
+input int             InpSummaryPctWidth = 3;         // Summary % UP/DN Width
+
+//--- Constants
+#define MAX_BUFFERS 30
+#define SUMMARY_AVG_BUFFER 30
+#define SUMMARY_PCT_BUFFER 31
+#define MAX_INDICATORS 20
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+
+//+------------------------------------------------------------------+
+//| Structure to hold line information                               |
+//+------------------------------------------------------------------+
+struct LineInfo
+{
+   int    indicatorHandle;
+   string indicatorShortName;
+   int    lineIndex;
+   int    bufferIndex;
+   int    period;
+   color  lineColor;
+   int    lineStyle;
+   int    lineWidth;
+   string lineName;
+   double cache[];              // Cached timeseries for this line
+   int    lastRatesTotal;       // rates_total at last calculation
+   bool   isValid;
+   //--- Cached TextGVar values for change detection
+   string cachedColorStr;
+   string cachedWidthStr;
+};
+
+//--- Global variables
+LineInfo g_lines[];
+int   g_totalBuffers = 0;
+int   g_totalPlots = 0;
+int   g_lastIndicatorCount = 0;  // Track indicator count for change detection
+int   g_Uninit_Reason = 0;
+
+//--- Indicator buffers
+double Buffer0[], Buffer1[], Buffer2[], Buffer3[], Buffer4[];
+double Buffer5[], Buffer6[], Buffer7[], Buffer8[], Buffer9[];
+double Buffer10[], Buffer11[], Buffer12[], Buffer13[], Buffer14[];
+double Buffer15[], Buffer16[], Buffer17[], Buffer18[], Buffer19[];
+double Buffer20[], Buffer21[], Buffer22[], Buffer23[], Buffer24[];
+double Buffer25[], Buffer26[], Buffer27[], Buffer28[], Buffer29[];
+double Buffer30[], Buffer31[];  // Summary buffers
+
+string sMeShortName = &quot;IndicatorSlopes MJM&quot;;
+
+//+------------------------------------------------------------------+
+//| Unified TextGVar reader                                          |
+//+------------------------------------------------------------------+
+string ReadTextGVar(const string shortName, const string varName, const string defaultValue = &quot;&quot;)
+{
+   return TextGVar_Read(TEXTGVAR_PREFIX, shortName, varName, defaultValue);
+}
+
+//+------------------------------------------------------------------+
+//| Get indicator plot count from TextGVar                           |
+//+------------------------------------------------------------------+
+int GetIndicatorPlotCount(const string shortName)
+{
+   string countStr = ReadTextGVar(shortName, &quot;PlotCount&quot;, &quot;&quot;);
+   if(countStr == &quot;&quot;)
+      return 1;  // Default if not found
+   return (int)StringToInteger(countStr);
+}
+
+//+------------------------------------------------------------------+
+//| Get plot name from TextGVar                                      |
+//+------------------------------------------------------------------+
+string GetPlotDisplayName(const string shortName, int plotIndex)
+{
+   string varName = &quot;Plot[&quot; + IntegerToString(plotIndex) + &quot;]_Name&quot;;
+   string name = ReadTextGVar(shortName, varName, &quot;&quot;);
+   if(name == &quot;&quot;)
+      return &quot;Line &quot; + IntegerToString(plotIndex);  // Default
+   return name;
+}
+
+//+------------------------------------------------------------------+
+//| Get MaxPeriod from TextGVar parameter metadata                   |
+//+------------------------------------------------------------------+
+int GetMaxPeriodFromTextGVar(const string shortName)
+{
+   string countStr = ReadTextGVar(shortName, &quot;ParmCount&quot;, &quot;0&quot;);
+   int parmCount = (int)StringToInteger(countStr);
+   int maxPeriod = 1;
+   
+   for(int p = 0; p &lt; parmCount; p++)
+   {
+      string parmName = ReadTextGVar(shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Name&quot;, &quot;&quot;);
+      
+      // Case-insensitive check for &quot;period&quot;
+      string lowerName = parmName;
+      StringToLower(lowerName);
+      if(StringFind(lowerName, &quot;period&quot;) &gt;= 0)
+      {
+         string parmValue = ReadTextGVar(shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Value&quot;, &quot;1&quot;);
+         int val = (int)StringToInteger(parmValue);
+         if(val &gt; maxPeriod)
+            maxPeriod = val;
+      }
+   }
+   return maxPeriod;
+}
+
+//+------------------------------------------------------------------+
+//| Set buffer by index                                              |
+//+------------------------------------------------------------------+
+void SetBufferByIndex(int bufferIndex)
+{
+   switch(bufferIndex)
+   {
+      case 0: SetIndexBuffer(0, Buffer0, INDICATOR_DATA); ArraySetAsSeries(Buffer0, true); break;
+      case 1: SetIndexBuffer(1, Buffer1, INDICATOR_DATA); ArraySetAsSeries(Buffer1, true); break;
+      case 2: SetIndexBuffer(2, Buffer2, INDICATOR_DATA); ArraySetAsSeries(Buffer2, true); break;
+      case 3: SetIndexBuffer(3, Buffer3, INDICATOR_DATA); ArraySetAsSeries(Buffer3, true); break;
+      case 4: SetIndexBuffer(4, Buffer4, INDICATOR_DATA); ArraySetAsSeries(Buffer4, true); break;
+      case 5: SetIndexBuffer(5, Buffer5, INDICATOR_DATA); ArraySetAsSeries(Buffer5, true); break;
+      case 6: SetIndexBuffer(6, Buffer6, INDICATOR_DATA); ArraySetAsSeries(Buffer6, true); break;
+      case 7: SetIndexBuffer(7, Buffer7, INDICATOR_DATA); ArraySetAsSeries(Buffer7, true); break;
+      case 8: SetIndexBuffer(8, Buffer8, INDICATOR_DATA); ArraySetAsSeries(Buffer8, true); break;
+      case 9: SetIndexBuffer(9, Buffer9, INDICATOR_DATA); ArraySetAsSeries(Buffer9, true); break;
+      case 10: SetIndexBuffer(10, Buffer10, INDICATOR_DATA); ArraySetAsSeries(Buffer10, true); break;
+      case 11: SetIndexBuffer(11, Buffer11, INDICATOR_DATA); ArraySetAsSeries(Buffer11, true); break;
+      case 12: SetIndexBuffer(12, Buffer12, INDICATOR_DATA); ArraySetAsSeries(Buffer12, true); break;
+      case 13: SetIndexBuffer(13, Buffer13, INDICATOR_DATA); ArraySetAsSeries(Buffer13, true); break;
+      case 14: SetIndexBuffer(14, Buffer14, INDICATOR_DATA); ArraySetAsSeries(Buffer14, true); break;
+      case 15: SetIndexBuffer(15, Buffer15, INDICATOR_DATA); ArraySetAsSeries(Buffer15, true); break;
+      case 16: SetIndexBuffer(16, Buffer16, INDICATOR_DATA); ArraySetAsSeries(Buffer16, true); break;
+      case 17: SetIndexBuffer(17, Buffer17, INDICATOR_DATA); ArraySetAsSeries(Buffer17, true); break;
+      case 18: SetIndexBuffer(18, Buffer18, INDICATOR_DATA); ArraySetAsSeries(Buffer18, true); break;
+      case 19: SetIndexBuffer(19, Buffer19, INDICATOR_DATA); ArraySetAsSeries(Buffer19, true); break;
+      case 20: SetIndexBuffer(20, Buffer20, INDICATOR_DATA); ArraySetAsSeries(Buffer20, true); break;
+      case 21: SetIndexBuffer(21, Buffer21, INDICATOR_DATA); ArraySetAsSeries(Buffer21, true); break;
+      case 22: SetIndexBuffer(22, Buffer22, INDICATOR_DATA); ArraySetAsSeries(Buffer22, true); break;
+      case 23: SetIndexBuffer(23, Buffer23, INDICATOR_DATA); ArraySetAsSeries(Buffer23, true); break;
+      case 24: SetIndexBuffer(24, Buffer24, INDICATOR_DATA); ArraySetAsSeries(Buffer24, true); break;
+      case 25: SetIndexBuffer(25, Buffer25, INDICATOR_DATA); ArraySetAsSeries(Buffer25, true); break;
+      case 26: SetIndexBuffer(26, Buffer26, INDICATOR_DATA); ArraySetAsSeries(Buffer26, true); break;
+      case 27: SetIndexBuffer(27, Buffer27, INDICATOR_DATA); ArraySetAsSeries(Buffer27, true); break;
+      case 28: SetIndexBuffer(28, Buffer28, INDICATOR_DATA); ArraySetAsSeries(Buffer28, true); break;
+      case 29: SetIndexBuffer(29, Buffer29, INDICATOR_DATA); ArraySetAsSeries(Buffer29, true); break;
+      case 30: SetIndexBuffer(30, Buffer30, INDICATOR_DATA); ArraySetAsSeries(Buffer30, true); break;
+      case 31: SetIndexBuffer(31, Buffer31, INDICATOR_DATA); ArraySetAsSeries(Buffer31, true); break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Clear all indicator buffers                                      |
+//+------------------------------------------------------------------+
+void ClearAllBuffers()
+{
+   ArrayInitialize(Buffer0, EMPTY_VALUE);
+   ArrayInitialize(Buffer1, EMPTY_VALUE);
+   ArrayInitialize(Buffer2, EMPTY_VALUE);
+   ArrayInitialize(Buffer3, EMPTY_VALUE);
+   ArrayInitialize(Buffer4, EMPTY_VALUE);
+   ArrayInitialize(Buffer5, EMPTY_VALUE);
+   ArrayInitialize(Buffer6, EMPTY_VALUE);
+   ArrayInitialize(Buffer7, EMPTY_VALUE);
+   ArrayInitialize(Buffer8, EMPTY_VALUE);
+   ArrayInitialize(Buffer9, EMPTY_VALUE);
+   ArrayInitialize(Buffer10, EMPTY_VALUE);
+   ArrayInitialize(Buffer11, EMPTY_VALUE);
+   ArrayInitialize(Buffer12, EMPTY_VALUE);
+   ArrayInitialize(Buffer13, EMPTY_VALUE);
+   ArrayInitialize(Buffer14, EMPTY_VALUE);
+   ArrayInitialize(Buffer15, EMPTY_VALUE);
+   ArrayInitialize(Buffer16, EMPTY_VALUE);
+   ArrayInitialize(Buffer17, EMPTY_VALUE);
+   ArrayInitialize(Buffer18, EMPTY_VALUE);
+   ArrayInitialize(Buffer19, EMPTY_VALUE);
+   ArrayInitialize(Buffer20, EMPTY_VALUE);
+   ArrayInitialize(Buffer21, EMPTY_VALUE);
+   ArrayInitialize(Buffer22, EMPTY_VALUE);
+   ArrayInitialize(Buffer23, EMPTY_VALUE);
+   ArrayInitialize(Buffer24, EMPTY_VALUE);
+   ArrayInitialize(Buffer25, EMPTY_VALUE);
+   ArrayInitialize(Buffer26, EMPTY_VALUE);
+   ArrayInitialize(Buffer27, EMPTY_VALUE);
+   ArrayInitialize(Buffer28, EMPTY_VALUE);
+   ArrayInitialize(Buffer29, EMPTY_VALUE);
+   ArrayInitialize(Buffer30, EMPTY_VALUE);
+   ArrayInitialize(Buffer31, EMPTY_VALUE);
+}
+
+//+------------------------------------------------------------------+
+//| Get buffer value by index                                        |
+//+------------------------------------------------------------------+
+double GetBufferValue(int bufferIndex, int bar)
+{
+   switch(bufferIndex)
+   {
+      case 0:  return Buffer0[bar];
+      case 1:  return Buffer1[bar];
+      case 2:  return Buffer2[bar];
+      case 3:  return Buffer3[bar];
+      case 4:  return Buffer4[bar];
+      case 5:  return Buffer5[bar];
+      case 6:  return Buffer6[bar];
+      case 7:  return Buffer7[bar];
+      case 8:  return Buffer8[bar];
+      case 9:  return Buffer9[bar];
+      case 10: return Buffer10[bar];
+      case 11: return Buffer11[bar];
+      case 12: return Buffer12[bar];
+      case 13: return Buffer13[bar];
+      case 14: return Buffer14[bar];
+      case 15: return Buffer15[bar];
+      case 16: return Buffer16[bar];
+      case 17: return Buffer17[bar];
+      case 18: return Buffer18[bar];
+      case 19: return Buffer19[bar];
+      case 20: return Buffer20[bar];
+      case 21: return Buffer21[bar];
+      case 22: return Buffer22[bar];
+      case 23: return Buffer23[bar];
+      case 24: return Buffer24[bar];
+      case 25: return Buffer25[bar];
+      case 26: return Buffer26[bar];
+      case 27: return Buffer27[bar];
+      case 28: return Buffer28[bar];
+      case 29: return Buffer29[bar];
+      default: return EMPTY_VALUE;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Scan chart for indicators and configure slope lines             |
+//+------------------------------------------------------------------+
+void ScanChartIndicators()
+{
+   //--- Reset globals
+   g_totalBuffers = 0;
+   g_totalPlots = 0;
+   int indicatorCount = 0;
+   
+   //--- Clear all buffers to remove old plot data
+   ClearAllBuffers();
+   
+   //--- Hide all plots initially (they&#x27;ll be shown as we configure them)
+   for(int p = 0; p &lt; 32; p++)
+   {
+      PlotIndexSetInteger(p, PLOT_DRAW_TYPE, DRAW_NONE);
+      PlotIndexSetString(p, PLOT_LABEL, &quot;&quot;);
+   }
+   
+   //--- Check sub-windows
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      int subIndicators = ChartIndicatorsTotal(0, win);
+      Print(&quot;Found &quot;, subIndicators, &quot; indicators in window &quot;, win);
+      
+      for(int i = 0; i &lt; subIndicators; i++)
+      {
+         string shortName = ChartIndicatorName(0, win, i);
+         
+         if(shortName == &quot;&quot;)
+            continue;
+
+         //--- Skip processing ourselves
+         if(shortName == sMeShortName)
+            continue;
+      
+         //--- Check indicator limit
+         if(indicatorCount &gt;= MAX_INDICATORS)
+         {
+            Print(&quot;ERROR: Maximum indicator limit (&quot;, MAX_INDICATORS, &quot;) reached. Skipping indicator: &quot;, shortName);
+            continue;
+         }
+      
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;&quot;);
+         
+         int handle = ChartIndicatorGet(0, win, shortName);
+         
+         if(handle == INVALID_HANDLE)
+         {
+            Print(&quot;Bad handle &lt;&quot;, handle, &quot;&gt; for indicator&lt;&quot;, shortName, &quot;&gt;, skipping...&quot;);
+            continue;
+         }
+         
+         //--- Verify indicator provides TextGVar metadata
+         string verifiedShortName = ReadTextGVar(shortName, &quot;ShortName&quot;, &quot;&quot;);
+         if(verifiedShortName == &quot;&quot;)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no TextGVar metadata - skipping&quot;);
+            continue;
+         }
+
+         int plotCount = GetIndicatorPlotCount(shortName);
+         
+         //--- Skip indicators with no plots
+         if(plotCount &lt; 1)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no plots - skipping&quot;);
+            continue;
+         }
+         
+         //--- Check if adding this indicator would exceed buffer limit
+         if(g_totalBuffers + plotCount &gt; MAX_BUFFERS)
+         {
+            Print(&quot;ERROR: Adding indicator &quot;, shortName, &quot; would exceed buffer limit (&quot;, MAX_BUFFERS, &quot;). Skipping...&quot;);
+            continue;
+         }
+         
+         //--- Get max period from TextGVar parameter metadata
+         int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+         
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;, plot count: &lt;&quot;, plotCount, &quot;&gt;, maxPeriod: &lt;&quot;, maxPeriod, &quot;&gt;&quot;);
+         
+         for(int lineIdx = 0; lineIdx &lt; plotCount; lineIdx++)
+         {
+            if(g_totalBuffers &gt;= MAX_BUFFERS)
+            {
+               Print(&quot;ERROR: Buffer limit (&quot;, MAX_BUFFERS, &quot;) reached while processing &quot;, shortName);
+               break;
+            }
+            
+            string lineName = GetPlotDisplayName(shortName, lineIdx);
+            
+            //--- Read color/width from TextGVar, fall back to defaults
+            color defaultColor = GetAutoColor(g_totalPlots);
+            int defaultWidth = 2;
+            
+            string colorStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+            color lineColor = (colorStr != &quot;&quot;) ? StringToColor(colorStr) : defaultColor;
+            
+            string widthStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+            int lineWidth = (widthStr != &quot;&quot;) ? (int)StringToInteger(widthStr) : defaultWidth;
+            int lineStyle = STYLE_SOLID;
+            
+            int idx = ArraySize(g_lines);
+            ArrayResize(g_lines, idx + 1);
+            
+            g_lines[idx].indicatorHandle = handle;
+            g_lines[idx].indicatorShortName = shortName;
+            g_lines[idx].lineIndex = lineIdx;
+            g_lines[idx].bufferIndex = g_totalBuffers;
+            g_lines[idx].period = maxPeriod;
+            g_lines[idx].lineColor = lineColor;
+            g_lines[idx].lineStyle = lineStyle;
+            g_lines[idx].lineWidth = lineWidth;
+            g_lines[idx].lineName = lineName;
+            g_lines[idx].lastRatesTotal = 0;
+            g_lines[idx].isValid = true;
+            g_lines[idx].cachedColorStr = colorStr;
+            g_lines[idx].cachedWidthStr = widthStr;
+            
+            Print(&quot;Line &quot;, idx, &quot;: ShortName&lt;&quot;, shortName, 
+                  &quot;&gt; Handle&lt;&quot;, g_lines[idx].indicatorHandle,
+                  &quot;&gt; ShortName&lt;&quot;, g_lines[idx].indicatorShortName,
+                  &quot;&gt; LineIdx&lt;&quot;, g_lines[idx].lineIndex,
+                  &quot;&gt; BufferIdx&lt;&quot;, g_lines[idx].bufferIndex,
+                  &quot;&gt; Period&lt;&quot;, g_lines[idx].period,
+                  &quot;&gt; Color&lt;&quot;, g_lines[idx].lineColor,
+                  &quot;&gt; Style&lt;&quot;, g_lines[idx].lineStyle,
+                  &quot;&gt; Width&lt;&quot;, g_lines[idx].lineWidth,
+                  &quot;&gt; LineName&lt;&quot;, g_lines[idx].lineName,
+                  &quot;&gt; CachedColorStr&lt;&quot;, g_lines[idx].cachedColorStr,
+                  &quot;&gt; CachedWidthStr&lt;&quot;, g_lines[idx].cachedWidthStr,
+                  &quot;&gt;&quot;);
+            
+            SetBufferByIndex(g_totalBuffers);
+            PlotIndexSetInteger(g_totalPlots, PLOT_DRAW_TYPE, DRAW_LINE);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_STYLE, lineStyle);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_WIDTH, lineWidth);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_COLOR, lineColor);
+            PlotIndexSetString(g_totalPlots, PLOT_LABEL, shortName + &quot; &quot; + lineName + &quot; Slope&quot;);
+
+            g_totalBuffers++;
+            g_totalPlots++;
+         }
+         
+         indicatorCount++;
+      }
+   }
+   
+   //--- Configure summary buffers if we have active line buffers
+   if(g_totalBuffers &gt; 0)
+   {
+      //--- Buffer30: Slopes Avg
+      SetBufferByIndex(SUMMARY_AVG_BUFFER);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_WIDTH, InpSummaryAvgWidth);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_COLOR, InpSummaryAvgColor);
+      PlotIndexSetString(SUMMARY_AVG_BUFFER, PLOT_LABEL, &quot;Slopes Avg&quot;);
+      
+      //--- Buffer31: Slope % UP/DN
+      SetBufferByIndex(SUMMARY_PCT_BUFFER);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_WIDTH, InpSummaryPctWidth);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_COLOR, InpSummaryPctColor);
+      PlotIndexSetString(SUMMARY_PCT_BUFFER, PLOT_LABEL, &quot;Slope % UP/DN&quot;);
+   }
+   
+   Print(&quot;Total slope lines configured&lt;&quot;, g_totalBuffers, &quot;&gt; from &quot;, indicatorCount, &quot; indicators&quot;);
+}
+
+//+------------------------------------------------------------------+
+//| Check for REINIT signals from TextGVar objects                   |
+//| Returns true if rescan is needed                                 |
+//+------------------------------------------------------------------+
+bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      
+      //--- Check if we&#x27;ve already processed this shortName
+      bool alreadyChecked = false;
+      for(int j = 0; j &lt; checkedCount; j++)
+      {
+         if(checkedNames[j] == shortName)
+         {
+            alreadyChecked = true;
+            break;
+         }
+      }
+      
+      if(alreadyChecked)
+         continue;
+      
+      ArrayResize(checkedNames, checkedCount + 1);
+      checkedNames[checkedCount] = shortName;
+      checkedCount++;
+      
+      //--- Check for REINIT signal
+      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+      
+      if(reinitSignal == &quot;&quot;)
+         continue;
+      
+      Print(&quot;REINIT detected for &quot;, shortName, &quot;, triggering rescan&quot;);
+      
+      //--- Delete the REINIT flag
+      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+      
+      return true;
+   }
+   
+   return false;
+}
+
+////+------------------------------------------------------------------+
+////| Check for REINIT signals from TextGVar objects                   |
+////+------------------------------------------------------------------+
+//void CheckReinitSignals()
+//{
+//   //--- Track which shortNames we&#x27;ve already checked (avoid redundant checks for multi-buffer indicators)
+//   string checkedNames[];
+//   int checkedCount = 0;
+//   
+//   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//   {
+//      if(!g_lines[i].isValid)
+//         continue;
+//      
+//      string shortName = g_lines[i].indicatorShortName;
+//      
+//      //--- Check if we&#x27;ve already processed this shortName
+//      bool alreadyChecked = false;
+//      for(int j = 0; j &lt; checkedCount; j++)
+//      {
+//         if(checkedNames[j] == shortName)
+//         {
+//            alreadyChecked = true;
+//            break;
+//         }
+//      }
+//      
+//      if(alreadyChecked)
+//         continue;
+//      
+//      //--- Add to checked list
+//      ArrayResize(checkedNames, checkedCount + 1);
+//      checkedNames[checkedCount] = shortName;
+//      checkedCount++;
+//      
+//      //--- Check for REINIT signal
+//      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+//      
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - BEFORE reinitSignal check, reinitSignal&lt;&quot;, reinitSignal, &quot;&gt;&quot;);
+//      if(reinitSignal == &quot;&quot;)
+//         continue;
+//      
+//      //--- Get max period from TextGVar
+//      int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - Got maxPeriod&lt;&quot;, maxPeriod, &quot;&gt; from TextGVar&quot;);
+//      
+//      //--- Update all lines belonging to this indicator
+//      for(int k = 0; k &lt; ArraySize(g_lines); k++)
+//      {
+//         if(g_lines[k].indicatorShortName == shortName)
+//         {
+//            g_lines[k].period = maxPeriod;
+//            g_lines[k].lastRatesTotal = 0;  // Force full recalculation
+//            Print(&quot;Updated line &quot;, k, &quot; (&quot;, shortName, &quot; &quot;, g_lines[k].lineName, &quot;) period to &quot;, maxPeriod);
+//         }
+//      }
+//      
+//      //--- Delete the REINIT text object
+//      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+//      
+//      ChartRedraw(0);
+//   }
+//}
+
+//+------------------------------------------------------------------+
+//| Get total indicator count across all windows                     |
+//+------------------------------------------------------------------+
+int GetTotalIndicatorCount()
+{
+   int total = 0;
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      total += ChartIndicatorsTotal(0, win);
+   }
+   return total;
+}
+
+//+------------------------------------------------------------------+
+//| Create the palette 
+//+------------------------------------------------------------------+
+color GetAutoColor(int index)
+{
+   color palette[] = {
+      clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold, clrMagenta,
+      clrCyan, clrCoral, clrSpringGreen, clrViolet, clrYellow,
+      clrDeepSkyBlue, clrTomato, clrChartreuse, clrOrchid, clrAqua
+   };
+   return palette[index % ArraySize(palette)];
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   //--- Validate InpSlopeBarCnt
+   if(InpSlopeBarCnt &lt; 2)
+   {
+      Print(&quot;InpSlopeBarCnt must be &gt;= 2&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   IndicatorSetString(INDICATOR_SHORTNAME, sMeShortName);
+   
+   //--- Reset line array
+   ArrayResize(g_lines, 0);
+   
+   //--- Scan chart for indicators
+   ScanChartIndicators();
+   
+   if(g_totalBuffers == 0)
+   {
+      Print(&quot;No indicator plots found on chart!&quot;);
+      
+      //--- Remove this indicator from the chart
+      int chartWindow = ChartWindowFind();
+      if(chartWindow &gt;= 0)
+      {
+         Print(&quot;Removing indicator - ChartWindow&lt;&quot;, chartWindow, &quot;&gt; ShortName&lt;&quot;, sMeShortName, &quot;&gt;&quot;);
+         ChartIndicatorDelete(0, chartWindow, sMeShortName);
+      }
+      
+      return(INIT_FAILED);
+   }
+   
+   EventSetTimer(1);  // Check every 1 second
+   g_lastIndicatorCount = GetTotalIndicatorCount();
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator deinitialization function                       |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   //--- Kill the timer
+   EventKillTimer();
+   
+   //--- Release all indicator handles
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+         IndicatorRelease(g_lines[i].indicatorHandle);
+   }
+   
+   g_Uninit_Reason = reason; 
+}
+
+//+------------------------------------------------------------------+
+//| Timer function - detect indicator changes                        |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   //--- Check for line property changes from TextGVar
+   CheckLinePropertyChanges();
+   
+   //--- Check for REINIT signals
+   bool needsRescan = CheckReinitSignals();
+   
+   //--- Count indicators across all subwindows
+   int currentCount = GetTotalIndicatorCount();
+   
+   if(needsRescan || currentCount != g_lastIndicatorCount)
+   {
+      Print(&quot;Reinitializing...&quot;);
+      g_lastIndicatorCount = currentCount;
+      
+      //--- Release existing handles
+      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+      {
+         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+            IndicatorRelease(g_lines[i].indicatorHandle);
+      }
+      ArrayResize(g_lines, 0);
+      
+      //--- Rescan and rebuild
+      ScanChartIndicators();
+      
+      //--- Force full recalculation on next OnCalculate
+      ChartSetSymbolPeriod(0, _Symbol, _Period);
+   }
+}
+
+
+////+------------------------------------------------------------------+
+////| Timer function - detect indicator changes                        |
+////+------------------------------------------------------------------+
+//void OnTimer()
+//{
+//   //--- Check for REINIT signals
+//   CheckReinitSignals();
+//   
+//   //--- Count indicators across all subwindows
+//   int currentCount = GetTotalIndicatorCount();
+//   
+//   if(currentCount != g_lastIndicatorCount)
+//   {
+//      Print(&quot;Indicator count changed: &quot;, g_lastIndicatorCount, &quot; -&gt; &quot;, currentCount, &quot;. Reinitializing...&quot;);
+//      g_lastIndicatorCount = currentCount;
+//      
+//      //--- Release existing handles
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+//            IndicatorRelease(g_lines[i].indicatorHandle);
+//      }
+//      ArrayResize(g_lines, 0);
+//      
+//      //--- Rescan and rebuild
+//      ScanChartIndicators();
+//      
+//      //--- Force full recalculation on next OnCalculate
+//      ChartSetSymbolPeriod(0, _Symbol, _Period);
+//   }
+//}
+//
+
+//+------------------------------------------------------------------+
+//| Check and apply TextGVar property changes for all lines          |
+//+------------------------------------------------------------------+
+void CheckLinePropertyChanges()
+{
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int lineIdx = g_lines[i].lineIndex;
+      
+      //--- Read current values from TextGVar
+      string currentColorStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+      string currentWidthStr = ReadTextGVar(shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+      
+      bool changed = false;
+      
+      //--- Check color change
+      if(currentColorStr != &quot;&quot; &amp;&amp; currentColorStr != g_lines[i].cachedColorStr)
+      {
+         color newColor = StringToColor(currentColorStr);
+         g_lines[i].lineColor = newColor;
+         g_lines[i].cachedColorStr = currentColorStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_COLOR, newColor);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) color changed to &quot;, currentColorStr);
+      }
+      
+      //--- Check width change
+      if(currentWidthStr != &quot;&quot; &amp;&amp; currentWidthStr != g_lines[i].cachedWidthStr)
+      {
+         int newWidth = (int)StringToInteger(currentWidthStr);
+         g_lines[i].lineWidth = newWidth;
+         g_lines[i].cachedWidthStr = currentWidthStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_WIDTH, newWidth);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) width changed to &quot;, currentWidthStr);
+      }
+      
+      if(changed)
+         ChartRedraw(0);
+   }
+}
+
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+
+//   //--- Dump arrays on first call only
+//   if(prev_calculated == 0)
+//   {
+//      Print(&quot;=== OnCalculate First Run Dump ===&quot;);
+//      Print(&quot;g_totalBuffers&lt;&quot;, g_totalBuffers, &quot;&gt; g_totalPlots&lt;&quot;, g_totalPlots, &quot;&gt; g_lines size&lt;&quot;, ArraySize(g_lines), &quot;&gt;&quot;);
+//      
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         Print(&quot;g_lines[&quot;, i, &quot;]: Handle&lt;&quot;, g_lines[i].indicatorHandle,
+//               &quot;&gt; ShortName&lt;&quot;, g_lines[i].indicatorShortName,
+//               &quot;&gt; LineIdx&lt;&quot;, g_lines[i].lineIndex,
+//               &quot;&gt; BufIdx&lt;&quot;, g_lines[i].bufferIndex,
+//               &quot;&gt; Period&lt;&quot;, g_lines[i].period,
+//               &quot;&gt; Color&lt;&quot;, g_lines[i].lineColor,
+//               &quot;&gt; LineName&lt;&quot;, g_lines[i].lineName,
+//               &quot;&gt; CacheSize&lt;&quot;, ArraySize(g_lines[i].cache),
+//               &quot;&gt; lastRatesTotal&lt;&quot;, g_lines[i].lastRatesTotal,
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;g_knownIndicators size&lt;&quot;, ArraySize(g_knownIndicators), &quot;&gt;&quot;);
+//      for(int i = 0; i &lt; ArraySize(g_knownIndicators); i++)
+//      {
+//         Print(&quot;g_knownIndicators[&quot;, i, &quot;]: ShortName&lt;&quot;, g_knownIndicators[i].shortName,
+//               &quot;&gt; PlotCount&lt;&quot;, g_knownIndicators[i].plotCount,
+//               &quot;&gt; PlotNames size&lt;&quot;, ArraySize(g_knownIndicators[i].plotNames),
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;=== End Dump ===&quot;);
+//   }
+   
+   if(rates_total &lt; InpSlopeBarCnt)
+      return 0;
+
+   //--- Track the earliest bar we need to recalculate for summary
+   int summaryStartBar = 0;
+
+   for(int lineIdx = 0; lineIdx &lt; ArraySize(g_lines); lineIdx++)
+   {
+      //--- Capture before cache update overwrites it
+      bool forceFullRecalc = (g_lines[lineIdx].lastRatesTotal == 0);
+      
+      //--- Guard: need enough bars for indicator period + slope calc
+      int minBarsRequired = g_lines[lineIdx].period + InpSlopeBarCnt;
+      
+      if(rates_total &lt; minBarsRequired)
+         continue;
+      if(!g_lines[lineIdx].isValid)
+         continue;
+      
+      int lastRates = g_lines[lineIdx].lastRatesTotal;
+      int newBars = rates_total - lastRates;
+      
+      //--- First call or history changed: full copy
+      if(lastRates == 0 || newBars &lt; 0 || newBars &gt; rates_total)
+      {
+         ArrayResize(g_lines[lineIdx].cache, rates_total);
+         ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     rates_total,
+                                     g_lines[lineIdx].cache);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer full copy FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+
+         //--- Accept what we got (indicator may have fewer bars due to warmup period)
+         g_lines[lineIdx].lastRatesTotal = rates_total;
+      }
+      else
+      {
+         //--- Incremental update: copy new bars + bar 0 update
+         int barsToCopy = newBars + 1;  // +1 to recalc bar 0
+         if(barsToCopy &gt; rates_total)
+            barsToCopy = rates_total;
+         
+         //--- Resize cache if new bars arrived
+         if(rates_total &gt; ArraySize(g_lines[lineIdx].cache))
+         {
+            ArrayResize(g_lines[lineIdx].cache, rates_total);
+            ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         }
+         
+         double tempBuffer[];
+         ArraySetAsSeries(tempBuffer, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     barsToCopy,
+                                     tempBuffer);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer incremental FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+         
+         //--- Update cache with new values
+         for(int i = 0; i &lt; copyResult; i++)
+         {
+            g_lines[lineIdx].cache[i] = tempBuffer[i];
+         }
+         g_lines[lineIdx].lastRatesTotal = rates_total;       
+      }
+
+      //--- Calculate Z-score normalized slopes
+      //--- Oldest bar we can calculate slope for (need room for slope bars + z-score lookback)
+      int oldestSlopeBar = rates_total - 1 - g_lines[lineIdx].period - (InpSlopeBarCnt - 1) - InpZScorePeriod;
+      if(oldestSlopeBar &lt; 0)
+         oldestSlopeBar = 0;
+      
+      //--- Determine which bars to recalculate
+      int startBar;
+      if(prev_calculated == 0 || forceFullRecalc)
+      {
+         startBar = oldestSlopeBar;
+      }
+      else
+      {
+         startBar = newBars;  // recalc new bars + bar 0
+         if(startBar &gt; oldestSlopeBar)
+            startBar = oldestSlopeBar;
+      }
+      
+      //--- Track for summary calculation
+      if(startBar &gt; summaryStartBar)
+         summaryStartBar = startBar;
+      
+      //+------------------------------------------------------------------+
+      // NOTE: loop MUST run from older bars to newer for EMA correctness
+      //+------------------------------------------------------------------+
+      for(int CalcBarIX = startBar; CalcBarIX &gt;= 0; CalcBarIX--)      
+      {
+         int PrevBarIX = CalcBarIX + InpSlopeBarCnt - 1;
+      
+         //--- Guard against out of range
+         if(PrevBarIX &gt;= ArraySize(g_lines[lineIdx].cache))
+            continue;
+      
+         //--- Calculate raw slope for current bar
+         double currentValue = g_lines[lineIdx].cache[CalcBarIX];
+         double prevValue    = g_lines[lineIdx].cache[PrevBarIX];
+      
+         //--- Guard against EMPTY_VALUE
+         if(currentValue == EMPTY_VALUE || prevValue == EMPTY_VALUE)
+            continue;
+      
+         double slope = (currentValue - prevValue) / (InpSlopeBarCnt - 1);
+         
+         double outValue = 0.0;
+         
+         //================ CALCULATE outValue BY MODE =================
+         if(InpRawSlope)
+         {
+            outValue = slope;
+         }
+         else if(InpSlopeMode == SLOPE_ZSCORE)
+         {
+            //--- Calculate mean and standard deviation of slopes over lookback period
+            double sumSlope = 0.0;
+            double sumSlopeSq = 0.0;
+            int count = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpZScorePeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               double s = (val - valPrev) / (InpSlopeBarCnt - 1);
+               sumSlope   += s;
+               sumSlopeSq += s * s;
+               count++;
+            }
+      
+            if(count &gt; 1)
+            {
+               double mean     = sumSlope / count;
+               double variance = (sumSlopeSq / count) - (mean * mean);
+               double stdDev   = (variance &gt; 0) ? MathSqrt(variance) : 0;
+      
+               if(stdDev &gt; 0)
+                  outValue = (slope - mean) / stdDev;
+               else
+                  outValue = 0.0;
+            }
+            else
+               outValue = 0.0;
+         }
+         else if(InpSlopeMode == SLOPE_EMA)
+         {
+            double alpha = 2.0 / (InpEmaPeriod + 1.0);
+            double prev;
+            
+            if(CalcBarIX + 1 &gt;= rates_total)
+            {
+               prev = slope;
+            }
+            else
+            {
+               switch(g_lines[lineIdx].bufferIndex)
+               {
+                  case 0:  prev = Buffer0[CalcBarIX + 1]; break;
+                  case 1:  prev = Buffer1[CalcBarIX + 1]; break;
+                  case 2:  prev = Buffer2[CalcBarIX + 1]; break;
+                  case 3:  prev = Buffer3[CalcBarIX + 1]; break;
+                  case 4:  prev = Buffer4[CalcBarIX + 1]; break;
+                  case 5:  prev = Buffer5[CalcBarIX + 1]; break;
+                  case 6:  prev = Buffer6[CalcBarIX + 1]; break;
+                  case 7:  prev = Buffer7[CalcBarIX + 1]; break;
+                  case 8:  prev = Buffer8[CalcBarIX + 1]; break;
+                  case 9:  prev = Buffer9[CalcBarIX + 1]; break;
+                  case 10: prev = Buffer10[CalcBarIX + 1]; break;
+                  case 11: prev = Buffer11[CalcBarIX + 1]; break;
+                  case 12: prev = Buffer12[CalcBarIX + 1]; break;
+                  case 13: prev = Buffer13[CalcBarIX + 1]; break;
+                  case 14: prev = Buffer14[CalcBarIX + 1]; break;
+                  case 15: prev = Buffer15[CalcBarIX + 1]; break;
+                  case 16: prev = Buffer16[CalcBarIX + 1]; break;
+                  case 17: prev = Buffer17[CalcBarIX + 1]; break;
+                  case 18: prev = Buffer18[CalcBarIX + 1]; break;
+                  case 19: prev = Buffer19[CalcBarIX + 1]; break;
+                  case 20: prev = Buffer20[CalcBarIX + 1]; break;
+                  case 21: prev = Buffer21[CalcBarIX + 1]; break;
+                  case 22: prev = Buffer22[CalcBarIX + 1]; break;
+                  case 23: prev = Buffer23[CalcBarIX + 1]; break;
+                  case 24: prev = Buffer24[CalcBarIX + 1]; break;
+                  case 25: prev = Buffer25[CalcBarIX + 1]; break;
+                  case 26: prev = Buffer26[CalcBarIX + 1]; break;
+                  case 27: prev = Buffer27[CalcBarIX + 1]; break;
+                  case 28: prev = Buffer28[CalcBarIX + 1]; break;
+                  case 29: prev = Buffer29[CalcBarIX + 1]; break;
+                  default: prev = slope; break;
+               }
+            }
+      
+            if(prev == EMPTY_VALUE)
+               prev = slope;
+      
+            outValue = alpha * slope + (1.0 - alpha) * prev;
+         }
+         else if(InpSlopeMode == SLOPE_MEDIAN)
+         {
+            double tmp[];
+            ArrayResize(tmp, InpMedianPeriod);
+            int k = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpMedianPeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               tmp[k++] = (val - valPrev) / (InpSlopeBarCnt - 1);
+            }
+      
+            if(k &gt; 0)
+            {
+               ArrayResize(tmp, k);
+               ArraySort(tmp);
+               outValue = tmp[k / 2];
+            }
+            else
+               outValue = 0.0;
+         }
+         
+         //================ NORMALIZE outValue =================
+         double minVal = currentValue;
+         double maxVal = currentValue;
+         
+         for(int j = CalcBarIX; 
+             j &lt; CalcBarIX + InpRawNormPeriod &amp;&amp; 
+             j &lt; ArraySize(g_lines[lineIdx].cache); 
+             j++)
+         {
+            double val = g_lines[lineIdx].cache[j];
+            if(val == EMPTY_VALUE)
+               continue;
+            if(val &lt; minVal) minVal = val;
+            if(val &gt; maxVal) maxVal = val;
+         }
+         
+         double range = maxVal - minVal;
+         if(range &gt; 0)
+            outValue = outValue * 100.0 * (InpSlopeBarCnt - 1) / range;
+         else
+            outValue = 0.0;
+         
+         //================ WRITE TO BUFFER =================
+         switch(g_lines[lineIdx].bufferIndex)
+         {
+            case 0:  Buffer0[CalcBarIX]  = outValue; break;
+            case 1:  Buffer1[CalcBarIX]  = outValue; break;
+            case 2:  Buffer2[CalcBarIX]  = outValue; break;
+            case 3:  Buffer3[CalcBarIX]  = outValue; break;
+            case 4:  Buffer4[CalcBarIX]  = outValue; break;
+            case 5:  Buffer5[CalcBarIX]  = outValue; break;
+            case 6:  Buffer6[CalcBarIX]  = outValue; break;
+            case 7:  Buffer7[CalcBarIX]  = outValue; break;
+            case 8:  Buffer8[CalcBarIX]  = outValue; break;
+            case 9:  Buffer9[CalcBarIX]  = outValue; break;
+            case 10: Buffer10[CalcBarIX] = outValue; break;
+            case 11: Buffer11[CalcBarIX] = outValue; break;
+            case 12: Buffer12[CalcBarIX] = outValue; break;
+            case 13: Buffer13[CalcBarIX] = outValue; break;
+            case 14: Buffer14[CalcBarIX] = outValue; break;
+            case 15: Buffer15[CalcBarIX] = outValue; break;
+            case 16: Buffer16[CalcBarIX] = outValue; break;
+            case 17: Buffer17[CalcBarIX] = outValue; break;
+            case 18: Buffer18[CalcBarIX] = outValue; break;
+            case 19: Buffer19[CalcBarIX] = outValue; break;
+            case 20: Buffer20[CalcBarIX] = outValue; break;
+            case 21: Buffer21[CalcBarIX] = outValue; break;
+            case 22: Buffer22[CalcBarIX] = outValue; break;
+            case 23: Buffer23[CalcBarIX] = outValue; break;
+            case 24: Buffer24[CalcBarIX] = outValue; break;
+            case 25: Buffer25[CalcBarIX] = outValue; break;
+            case 26: Buffer26[CalcBarIX] = outValue; break;
+            case 27: Buffer27[CalcBarIX] = outValue; break;
+            case 28: Buffer28[CalcBarIX] = outValue; break;
+            case 29: Buffer29[CalcBarIX] = outValue; break;
+         }
+      }
+   }
+   
+   //================ CALCULATE SUMMARY BUFFERS =================
+   if(g_totalBuffers &gt; 0)
+   {
+      for(int bar = summaryStartBar; bar &gt;= 0; bar--)
+      {
+         double sum = 0.0;
+         int positiveCount = 0;
+         int negativeCount = 0;
+         int validCount = 0;
+         
+         //--- Read from all active line buffers
+         for(int i = 0; i &lt; g_totalBuffers; i++)
+         {
+            double val = GetBufferValue(i, bar);
+            if(val == EMPTY_VALUE)
+               continue;
+            sum += val;
+            if(val &gt; 0)
+               positiveCount++;
+            else if(val &lt; 0)
+               negativeCount++;
+            validCount++;
+         }
+         
+         if(validCount &gt; 0)
+         {
+            double avg = sum / validCount;
+            
+            //--- Mean average, all slopes
+            Buffer30[bar] = avg;
+            
+//            //--- Position avg above/below zero based on majority
+//            if(positiveCount &gt; negativeCount)
+//               Buffer30[bar] = MathAbs(avg);
+//            else if(negativeCount &gt; positiveCount)
+//               Buffer30[bar] = -MathAbs(avg);
+//            else
+//               Buffer30[bar] = 0.0;  // 50/50 on zero line
+//            
+            //--- Calculate percentage UP (positive) vs DN (negative)
+            //--- Encode as: positive value = % UP, negative value = % DN
+            double pctUp = (double)positiveCount / validCount * 100.0;
+            double pctDn = (double)negativeCount / validCount * 100.0;
+            
+            //--- Store signed value: positive if majority up, negative if majority down
+            if(positiveCount &gt; negativeCount)
+               Buffer31[bar] = pctUp;
+            else if(negativeCount &gt; positiveCount)
+               Buffer31[bar] = -pctDn;
+            else
+               Buffer31[bar] = 0.0;
+         }
+         else
+         {
+            Buffer30[bar] = EMPTY_VALUE;
+            Buffer31[bar] = EMPTY_VALUE;
+         }
+      }
+   }
+   
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 16:09 UTC</span></div><div class="body"><p>I'll update the code with all required changes. Creating the complete updated file now.</p>
+<p>Complete. Changes implemented:</p>
+<ol>
+<li><strong>LineInfo struct</strong>: Added <code>indicatorWindow</code> field (line 75)</li>
+<li><strong>ReadTextGVar()</strong>: Added <code>window</code> as first parameter (line 108)</li>
+<li><strong>GetIndicatorPlotCount()</strong>: Added <code>window</code> parameter (line 115)</li>
+<li><strong>GetPlotDisplayName()</strong>: Added <code>window</code> parameter (line 125)</li>
+<li><strong>GetMaxPeriodFromTextGVar()</strong>: Added <code>window</code> parameter (line 135)</li>
+<li><strong>ScanChartIndicators()</strong>: All TextGVar reads now pass <code>win</code>; <code>win</code> stored in <code>g_lines[idx].indicatorWindow</code> (lines 265-276, 308)</li>
+<li><strong>CheckLinePropertyChanges()</strong>: Uses <code>g_lines[i].indicatorWindow</code> for all TextGVar reads (lines 400-406)</li>
+<li><strong>CheckReinitSignals()</strong>: Uses <code>g_lines[i].indicatorWindow</code> for TextGVar_Read() and TextGVar_Delete() (lines 330, 343, 352)</li>
+</ol>
+<p><strong>Additional changes</strong>:</p>
+<ul>
+<li>Version: 1.05 → 1.06</li>
+<li>Date: 2026-01-19 → 2026-01-20</li>
+<li>Added window to debug Print statement (line 320)</li>
+</ul>
+<p>All commented code preserved.</p>
+</div></div>
+<nav class="pager"><a href="603-2026-01-19-sertraline-safety-during-pregnancy.html">&larr; Sertraline safety during pregnancy</a><a href="../index.html">All chats</a><a href="605-2026-01-19-awaiting-attachment-review.html">Awaiting attachment review &rarr;</a></nav></div></body></html>

@@ -1,0 +1,485 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CSV analysis and timing model verification</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-07_signal-rule-gating-implementation-review_fef7c5dc.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-06_modularizing-zigzag-code-with-function-extraction_ac1e78e3.html">Next →</a></span></div><h1>CSV analysis and timing model verification</h1><div class="meta">Created 2026-05-06 19:01 UTC · Last updated 2026-05-06 20:09 UTC · 31 messages<br>Original: <a href="https://claude.ai/chat/689b6671-f3ba-4ae8-8d4b-da7ccacc086b">claude.ai/chat/689b6671-f3ba-4ae8-8d4b-da7ccacc086b</a></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:02 UTC</div><p>I'll work through this systematically.</p>
+<p>Now let me look at the user's local Files directory to find the CSVs from today.</p>
+<p>The CSVs aren't uploaded. Let me confirm the rest of what I can verify, then report.</p>
+<p>A. Timing model — confirmed defective as briefing describes.</p>
+<p>Read it. The split is real and pervasive:<br />
+- Line 6162: <code>int action_bar = i;</code><br />
+- Line 6177: <code>int decision_bar = action_bar - 1;</code><br />
+- Line 6185–6188: <code>bar_close_allowed = (action_bar &lt; rates_total - 1) || (current iteration is live)</code> — gates rules with this flag.<br />
+- Line 6265 and 6751: rules are gated behind <code>if(bar_close_allowed)</code>.<br />
+- Most reads (<code>ComputeMA1Behavior</code>, <code>ComputeMACross</code>, <code>BuildChannelDecisionContext</code>, etc.) feed <code>decision_bar</code> (i.e., <code>i-1</code>) into the calculations — so the indicator is reading values from one bar ago and stamping outputs at <code>open[action_bar]</code>.</p>
+<p>B. PM_dir → MA1vMA2_Cross_dir.</p>
+<p>Confirmed: <code>PM_dir</code> is set in <code>SetCockedFromMACross</code> (line 7975) to the direction of the latest MA1-vs-MA2 cross detected by <code>ComputeMACross</code>. Renaming is mechanical: 24 references in <code>CrossFire_Channel_MJM.mq5</code> (struct field <code>PM_dir</code> and <code>pre_spike_PM_dir</code>, plus the <code>BufPMDir</code> buffer name and <code>"PM_dir"</code> debug-string literals — confirm scope of the rename).</p>
+<p>C. The 4 CSVs from today.</p>
+<p>I do not have access to your <code>MQL5\Files</code> directory — only the two files you uploaded (<code>AGENTS.md</code> and <code>CrossFire_Channel_MJM.mq5</code>) are visible to me. The CSVs aren't here. Please upload them.</p>
+<p>D. Tick dump analysis.</p>
+<p>Cannot perform without the file. Upload the tick dump (and the other three CSVs if relevant) and I'll run the cross-checks: MA1v2 Spread vs MA1−MA2, KC width vs upper−lower, slopes vs deltas, and any index alignment between buffer columns and the bar/tick they're stamped on.</p>
+<p>E. Report.</p>
+<p>Pending C and D. Items A and B are confirmed and ready for a change plan once you upload the CSVs and give GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:03 UTC</div><p>I think this is the only file you need.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:06 UTC</div><p>Now I'll examine the source for the derived values to understand expected relationships, then verify them.</p>
+<p>Now I understand. <code>MA1v2 Spread</code> (column 38) is <code>forces_maspread_value</code> = <code>(sp.spread / cf_W) * InpMASpreadWeight</code>, NOT MA1−MA2. So the column label is misleading — but my job is to verify the user's suspicion that derived values conflict with their inputs. Let me also confirm what <code>sp.spread</code> actually is.</p>
+<p>Confirmed. <code>sp.spread = MA1 - MA2</code>. The column "MA1v2 Spread" is actually <code>(MA1−MA2)/half_width × InpMASpreadWeight</code> — a normalized, weighted version, not raw MA1−MA2. Let me also check how MA1v2 Cross Dir is set.</p>
+<p>Column order in CSV: <code>Force Dir</code> (43), <code>MA1v2 Cross Dir</code> (44), <code>Trade Dir</code> (45), <code>Trade Cocked Dir</code> (46). And the writer order on line 1566-1569: <code>BufForcesTargetDir</code>, <code>BufPMDir</code>, <code>BufForcesCurrentTDir</code>, <code>BufCockedDir</code>. So:<br />
+- <code>Force Dir</code> ← <code>BufForcesTargetDir</code> (sign of raw force sum)<br />
+- <code>MA1v2 Cross Dir</code> ← <code>BufPMDir</code> (PM_dir = MA1-vs-MA2 cross dir) ✓<br />
+- <code>Trade Dir</code> ← <code>BufForcesCurrentTDir</code> (T_dir)<br />
+- <code>Trade Cocked Dir</code> ← <code>BufCockedDir</code></p>
+<p>Now let me run actual checks on the data.</p>
+<p>Two big findings — let me dig into them: (1) the Force component values are constant within a Live Bar despite ticks streaming, and (2) PM_dir is opposite to current sign in 1953 rows. Let me verify.</p>
+<p>Now I have everything. Let me also confirm one more thing — that MA1 and KC Middle have the same number of distinct values per bar (they're the same source).</p>
+<p>Confirmed: in the per-bar table above, KC Middle's distinct count exactly matches MA1's distinct count for every bar (87, 99, 79, 143, etc.) — because KC Middle is computed from MA1 (typical KC: midline = the MA, upper = MA + k·ATR, lower = MA − k·ATR). That's why the symmetry was perfect (zero violations) and the 0 ATR-asymmetry result earlier.</p>
+<p>Now I have the complete picture. Reporting:</p>
+<hr />
+<h2>Findings — Tick Dump Analysis</h2>
+<p><strong>File</strong>: <code>XAUUSD_PERIOD_M1_CrossFire_Channel_MJM_Tick_Dump_server_start_2026-04-30_00-00-00…csv</code> — 5,642 ticks across 50 live bars (M1, ~01:01 → 01:50 server time, 30 Apr 2026).</p>
+<h3>Bar-index columns</h3>
+<ul>
+<li>All 5,642 rows: <code>Action Bar == Live Bar</code> (so this dump is pure live-tick processing — no history-replay rows). <code>Decision Bar == Action Bar − 1</code> in every row, exactly as the defective architecture mandates.</li>
+</ul>
+<h3>Big finding #1 — the force engine is frozen intrabar</h3>
+<p>Every single bar (50/50) emits <strong>identical</strong> values for all five force components (PMA Drive, KCL Repel, KCL Pull, MA1v2 Spread, MA/KC Cross) and Net Force across <strong>every tick of the bar</strong>, even when the bar carries 192 ticks.</p>
+<p>Meanwhile, MA1, MA2, MA3, KC Upper, KC Middle, KC Lower update with nearly every tick (MA1 had 87 distinct values across 192 ticks of bar 467724, etc.).</p>
+<p>Cause is exactly the timing-model defect in the briefing. Lines 6851–6857 read the force-engine inputs from <code>decision_bar = action_bar − 1</code>. On the live bar, <code>decision_bar</code> is <code>live_bar − 1</code>, a finalized historical bar whose buffer slots no longer change. So every tick of the live bar sees the same stale inputs. The MAs and KC plot live values because they are computed in their own update loop (around line 6110) using the actual tick price; the force engine alone is locked one bar back.</p>
+<p>This isn't just a labeling issue — it's structural. The "Net Force" the EA sees, the trigger arming, the cocked-entry candidate evaluation, and every diagnostic that depends on the five components are all using yesterday's reading throughout today's bar.</p>
+<h3>Big finding #2 — <code>MA1v2 Spread</code> column is misleadingly named</h3>
+<p>The column is <code>forces_maspread_value = (sp.spread / cf_W) × InpMASpreadWeight</code>, where <code>sp.spread = MA1 − MA2</code> and <code>cf_W</code> is the KC half-width — so it's a normalized, KC-scaled, weighted version, not a raw difference. Sample row 1: MA1−MA2 = +0.21362, column shows +0.12103. Sign agrees in 5,038 rows, but disagrees in 604.</p>
+<p>Hypothesis: the 604 sign disagreements are the same staleness — when sign(MA1−MA2) flipped intrabar, the force-engine value (computed from <code>decision_bar</code>) didn't update to follow, so live spread sign and emitted MASPREAD value point opposite ways. (Confirmed structurally; not separately verified row-by-row, but the count is consistent.)</p>
+<h3><code>MA1v2 Cross Dir</code> (= <code>PM_dir</code>)</h3>
+<p>Zero flips in this 50-bar window — <code>PM_dir</code> was already +1 at the start and never crossed. 1,953 rows have <code>PM_dir = +1</code> while live MA1−MA2 went briefly negative; longest such run was 705 consecutive ticks. That's the expected behavior for a "last-cross direction" state variable, but it confirms <code>PM_dir</code> is not the same thing as the current spread sign — naming it <code>MA1vMA2_Cross_dir</code> is correct.</p>
+<h3>What's NOT broken</h3>
+<ul>
+<li>KC geometry: 0 ordering violations; Upper−Middle exactly equals Middle−Lower in all 5,642 rows (symmetric ATR bands, as expected since KC Middle = MA1).</li>
+<li>Net Force = sum of the 5 components: exact match in all 5,642 rows.</li>
+<li>Force Dir = sign(Net Force): exact match in all 5,642 rows.</li>
+<li>TickTimeMS monotonic: 0 out-of-order ticks.</li>
+<li><code>Force Score MIN (input)</code> and <code>(actual)</code> both = 0.50 throughout — input is the parameter, actual is the runtime value, identical because they aren't dynamically re-computed in this run.</li>
+</ul>
+<h3>Index alignment</h3>
+<p>The index misalignment you suspected is real and it is exactly the <code>decision_bar</code> vs <code>action_bar</code> split: the force-engine columns are stamped with values computed from a different bar than the price/MA columns in the same row. This is a single root cause behind both the staleness and the spread-sign disagreements.</p>
+<hr />
+<p>No code touched. Awaiting GO for any fix.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:11 UTC</div><p>propose a clear, specific change plan</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:12 UTC</div><p>## Change plan</p>
+<p><strong>File</strong>: <code>Indicators/DevoIndies/CrossFire_Channel_MJM.mq5</code> (only this file).</p>
+<p><strong>Scope</strong>: items A and B from your briefing. Eliminate the decision/action bar split and the bar-close gate; rename <code>PM_dir</code> → <code>MA1vMA2_Cross_dir</code>. Nothing else.</p>
+<hr />
+<h3>Part A — Timing model fix</h3>
+<p><strong>Goal</strong>: every rule evaluates on the current bar at the current price. No "wait one bar." No <code>open[action_bar]</code> fills.</p>
+<p><strong>1. Delete the split inside the main <code>OnCalculate</code> loop (around line 6162).</strong></p>
+<p>Replace:</p>
+<pre><code>int action_bar = i;
+int decision_bar = action_bar - 1;
+</code></pre>
+<p>with a single <code>int bar = i;</code> and propagate that one index everywhere downstream. Drop the early-out <code>if(action_bar &lt; 1)</code> and the <code>if(decision_bar &lt; 1)</code> guard at line 6224 — replace with a single guard that requires whatever lookback the rules actually need (the existing <code>BufMA1[bar] == EMPTY_VALUE</code> check already covers the warmup case).</p>
+<p><strong>2. Delete <code>bar_close_allowed</code> (line 6185–6188) and every gate that uses it.</strong></p>
+<p>Confirmed call sites that currently consult <code>bar_close_allowed</code>:<br />
+- line 6265 — gates a downstream computation<br />
+- line 6751 — gates the cycle-init block<br />
+- line 6849 — gates the entire force-engine block (the cause of staleness in the tick dump)<br />
+- line 6926 — diagnostic skip-reason</p>
+<p>All four become unconditional (subject only to the existing spike-active and warmup checks they already had alongside <code>bar_close_allowed</code>).</p>
+<p><strong>3. Feed every input function the live <code>bar</code>, not <code>decision_bar</code>.</strong></p>
+<p>The functions currently called with <code>decision_bar</code> (lines 6241, 6244, 6247, 6250, 6254, 6257, 6262, 6275, 6280, and the force-engine reads at 6851–6855) all become reads at <code>bar</code>. This is what makes intrabar trading actually work — the MAs, KC values, and force components will update every tick.</p>
+<p><strong>4. Stop stamping outputs at <code>open[action_bar]</code>.</strong></p>
+<p>Find every fill that uses <code>open[action_bar]</code> for non-spike entries and exits and change it to the current price. Per your briefing's §8: on the live bar use the current tick price; during history replay use <code>close[bar]</code> (or the existing per-rule inferred price where the rule already infers one — leave those inferences alone).</p>
+<p>I need to enumerate these stamping sites before final execution. Initial sweep target: every <code>open[action_bar]</code> and every entry/exit fill assignment in <code>AssembleSignal</code> and exit-side rules. I'll list them concretely after a focused read pass and confirm with you before changing them.</p>
+<p><strong>5. Tick-dump headers.</strong></p>
+<p>The dump currently has columns <code>Live Bar, Decision Bar, Action Bar</code>. After the fix there's only one bar index. Replace those three columns with a single <code>Bar</code> column. CSV consumers downstream may break — flag this for your decision before changing the schema. (AGENTS.md says don't change CSV column structure without explicit agreement.) <strong>Decision needed: keep all three columns and write <code>bar</code> into all three for compatibility, or collapse to one.</strong></p>
+<p><strong>6. Adverse-close-dominance accumulator (rule 8 in your inventory).</strong></p>
+<p>Per §7 of your briefing, replace the <code>adverse_close_count++</code> accumulator in <code>ExitStateUpdateRunning</code> with a recompute over <code>close[entry_bar..bar]</code>. This makes the rule tick-evaluable instead of bar-event-driven.</p>
+<p><strong>7. Comment / note cleanup.</strong></p>
+<p>Remove the NOTE-B comment at line 7 referring to the old end-of-bar reset model, and any inline comment referring to <code>decision_bar</code> / <code>action_bar</code> / "wait one bar." Code-level only — no behavioral change from this step.</p>
+<hr />
+<h3>Part B — Rename <code>PM_dir</code> → <code>MA1vMA2_Cross_dir</code></h3>
+<p>Mechanical rename. 24 occurrences of <code>PM_dir</code> in the file. Targets:</p>
+<ul>
+<li>Struct field <code>State.PM_dir</code> (line 202) → <code>State.MA1vMA2_Cross_dir</code></li>
+<li>Struct field <code>State.pre_spike_PM_dir</code> (line 226) → <code>State.pre_spike_MA1vMA2_Cross_dir</code></li>
+<li>All <code>g_chart_state.PM_dir</code> references → <code>g_chart_state.MA1vMA2_Cross_dir</code></li>
+<li>All <code>state.PM_dir</code> references → <code>state.MA1vMA2_Cross_dir</code></li>
+<li>All <code>chart_state.PM_dir</code> references → <code>chart_state.MA1vMA2_Cross_dir</code></li>
+<li>The buffer name <code>BufPMDir</code> (line 1255 and elsewhere) → <code>BufMA1vMA2CrossDir</code></li>
+<li>The <code>Dbg("PM_dir", …)</code> debug-string literals (lines 6350, 6733, 6761, 6947, 7754) → <code>Dbg("MA1vMA2_Cross_dir", …)</code></li>
+<li>The <code>normalized_direction_source = "PM_dir"</code> literal (line 7264) → <code>"MA1vMA2_Cross_dir"</code></li>
+</ul>
+<p><strong>Decision needed: CSV column header.</strong> The tick-dump column is currently labeled <code>MA1v2 Cross Dir</code> (already correctly named). No change needed there — the column header doesn't include the string "PM_dir." Confirming this matches what you want.</p>
+<hr />
+<h3>Out of scope (will not touch)</h3>
+<ul>
+<li>The 604 sign-disagreement rows in the <code>MA1v2 Spread</code> column — that is a <em>consequence</em> of the timing-model defect and resolves automatically once Part A lands. No separate fix.</li>
+<li>The misleading <code>MA1v2 Spread</code> column label (it's actually a normalized/weighted value, not raw MA1−MA2). Leave as-is unless you say to rename.</li>
+<li>The <code>Force Score MIN (input)</code> vs <code>(actual)</code> columns showing identical values — that's working as designed in this run; no change.</li>
+<li>Any other refactor, cleanup, or "while I'm in there" improvement.</li>
+</ul>
+<hr />
+<h3>Open items needing your decision before GO</h3>
+<ol>
+<li>CSV tick-dump schema: keep three bar columns for compatibility, or collapse to one?</li>
+<li>Confirm scope of #4 (the <code>open[action_bar]</code> fill sites) — do you want me to enumerate all of them and show you the list before any edit, or proceed once GO is given?</li>
+<li>Confirm the <code>MA1v2 Spread</code> column header stays as-is.</li>
+</ol>
+<p>Awaiting your answers, then GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:17 UTC</div><ol>
+<li>collapse</li>
+<li>see note below</li>
+<li>no, change it AND the variable name to MA1v2_Spread_NrmWgt (with _ or spaces as approprate) so we know what the data actually is.</li>
+</ol>
+<p>Note on #2: I don't understand why you suggest I look over the list.</p>
+<p>I do not understand #6</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:18 UTC</div><p>## Replies to your notes</p>
+<p><strong>On #2</strong> — fair, that was over-cautious. I'll just enumerate the sites and apply the fix to all of them. No prior list-review step needed.</p>
+<p><strong>On #6 — adverse-close-dominance accumulator</strong></p>
+<p>The rule fires when, in the N bars since entry, M or more closes have moved against the trade. To track that, the current code keeps a running counter <code>adverse_close_count</code> that gets <code>++</code> once per bar — bumped at a bar-boundary event.</p>
+<p>That counter is bar-event-driven. It can only advance when a bar finalizes. Under the new model, where the live bar's close updates every tick, the counter would either (a) keep its old value all through the live bar and miss the live bar's contribution, or (b) double-count if you bump it on every tick.</p>
+<p>The fix: throw out the counter. On every evaluation, recompute the count fresh from <code>close[entry_bar]</code> through <code>close[bar]</code> — a small loop, evaluable on any tick. Then the rule fires the moment the count crosses M, intrabar or otherwise, with no special bar-boundary logic.</p>
+<p>That's what makes the rule tick-evaluable like the others.</p>
+<hr />
+<h2>Updated change plan</h2>
+<p>Same as before with these adjustments:</p>
+<ul>
+<li>CSV: collapse <code>Live Bar, Decision Bar, Action Bar</code> into a single <code>Bar</code> column.</li>
+<li><code>MA1v2 Spread</code> (CSV header) → <code>MA1v2_Spread_NrmWgt</code>.</li>
+<li>Variable <code>forces_maspread_value</code> → <code>forces_MA1v2_Spread_NrmWgt_value</code> (matching the new naming). Buffer <code>BufForcesMaspreadValue</code> → <code>BufForcesMA1v2SpreadNrmWgtValue</code>. Confirming this is the rename you want — say if you'd prefer a different form.</li>
+<li>I'll enumerate the <code>open[action_bar]</code> fill sites silently and fix them all in one pass.</li>
+</ul>
+<p>Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:19 UTC</div><p>The fix: throw out the counter. On every evaluation, recompute the count fresh from <code>close[entry_bar]</code> through <code>close[bar]</code> — a small loop, evaluable on any tick. Then the rule fires the moment the count crosses M, intrabar or otherwise, with no special bar-boundary logic.</p>
+<p>Say that in ENGLISH</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:19 UTC</div><p>Right now the code keeps a running tally — like a tick mark on a notepad — and adds one tick mark each time a bar finishes against the trade.</p>
+<p>Replace that with: every time you check the rule, recount from scratch by looking at every bar from entry up to now and counting the ones that closed against the trade. Don't keep a running tally at all. Just recount.</p>
+<p>That way the count is always current, including on the live bar, and the rule fires the instant the count hits M.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:20 UTC</div><p>makes no sense. the live bar's data on each tick is relevant, but ALL the bars being counted for adverse closes are already closed. Why would the count be redone AT ALL once it's first done?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:21 UTC</div><p>You're right. I was wrong.</p>
+<p>Once a historical bar's close is final, it's final. The count of adverse historical closes only changes when a new bar is added to the count — and that happens once, when a new bar becomes historical (i.e., when the first tick of the bar after it arrives).</p>
+<p>The counter doesn't need to be thrown out. It just needs to be incremented at the right moment: when a bar transitions from live to historical, check whether its (now final) close was adverse, and if so bump the counter once. After that, that bar is done and never needs re-examining.</p>
+<p>The live bar contributes nothing to the count until it itself becomes historical.</p>
+<p>So #6 reduces to: bump the counter on the first tick of each new bar (the EOF-flush moment from §4 of your briefing), evaluating the prior bar's close. No recompute. No per-tick work. Just a single increment per bar-transition.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:21 UTC</div><p>good. revised change plan.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:22 UTC</div><p>## Revised change plan</p>
+<p><strong>File</strong>: <code>Indicators/DevoIndies/CrossFire_Channel_MJM.mq5</code> (only this file).</p>
+<hr />
+<h3>Part A — Timing model fix</h3>
+<ol>
+<li>
+<p><strong>Delete the bar split</strong> at line 6162. Replace <code>action_bar</code> and <code>decision_bar</code> with a single <code>bar = i</code>. Drop the <code>&lt; 1</code> early-outs; rely on the existing <code>BufMA1[bar] == EMPTY_VALUE</code> warmup guard.</p>
+</li>
+<li>
+<p><strong>Delete <code>bar_close_allowed</code></strong> (line 6185–6188) and remove the four gates that consult it (lines 6265, 6751, 6849, 6926). Each becomes unconditional, keeping any other conditions (spike-active, warmup) that were ANDed alongside it.</p>
+</li>
+<li>
+<p><strong>Feed <code>bar</code> to every input function</strong> that currently takes <code>decision_bar</code>: lines 6241, 6244, 6247, 6250, 6254, 6257, 6262, 6275, 6280, and the force-engine reads at 6851–6855.</p>
+</li>
+<li>
+<p><strong>Replace <code>open[action_bar]</code> fill prices</strong> at every entry/exit stamp site for non-spike rules. On the live bar use the current tick price; on historical bars use <code>close[bar]</code>. Per-rule inferred prices that already exist stay as-is. I'll enumerate and fix all sites in one pass.</p>
+</li>
+<li>
+<p><strong>Adverse-close-dominance accumulator</strong>: leave the counter in place. Move the <code>++</code> to fire once per bar-transition (first tick of a new bar, evaluating the just-finalized prior bar's close). No recompute, no per-tick work.</p>
+</li>
+<li>
+<p><strong>Bar-transition handler (§4 EOF flush)</strong>: add a single check at the top of the per-tick path that detects "first tick of a new bar" and runs the wrap-up — currently that's the adverse-close counter bump; other rules will hook in here later if needed.</p>
+</li>
+<li>
+<p><strong>Comment cleanup</strong>: remove the line-7 NOTE-B comment and any inline references to <code>decision_bar</code>, <code>action_bar</code>, or "wait one bar."</p>
+</li>
+</ol>
+<hr />
+<h3>Part B — Renames</h3>
+<ol>
+<li>
+<p><code>PM_dir</code> → <code>MA1vMA2_Cross_dir</code>. All 24 occurrences: struct fields (<code>State.PM_dir</code>, <code>State.pre_spike_PM_dir</code>), every <code>*.PM_dir</code> reference, <code>BufPMDir</code> → <code>BufMA1vMA2CrossDir</code>, and the <code>Dbg("PM_dir", …)</code> and <code>"PM_dir"</code> string literals.</p>
+</li>
+<li>
+<p><code>MA1v2 Spread</code> (CSV header) → <code>MA1v2_Spread_NrmWgt</code>. Variable <code>forces_maspread_value</code> → <code>forces_MA1v2_Spread_NrmWgt_value</code>. Buffer <code>BufForcesMaspreadValue</code> → <code>BufForcesMA1v2SpreadNrmWgtValue</code>.</p>
+</li>
+</ol>
+<hr />
+<h3>Part C — Tick-dump CSV</h3>
+<p>Collapse <code>Live Bar, Decision Bar, Action Bar</code> into a single <code>Bar</code> column.</p>
+<hr />
+<h3>Out of scope</h3>
+<ul>
+<li>604 spread sign-disagreement rows (resolves automatically from Part A).</li>
+<li><code>Force Score MIN (input)</code> vs <code>(actual)</code> columns (working as designed).</li>
+<li>Anything else not listed above.</li>
+</ul>
+<hr />
+<p>Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:24 UTC</div><p>On the live bar use the current tick price; on historical bars use <code>close[bar]</code>. Per-rule inferred prices that already exist stay as-is.</p>
+<p>Those two literally can't be true at the same time.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:24 UTC</div><p>You're right.</p>
+<p>If a per-rule inferred price already exists for a rule, that inference is what governs — on both the live bar and historical bars. The "current tick price on live, close on historical" wording was me describing the default for rules without an inference, then contradicting it by saying inferences override.</p>
+<p>Cleaner statement:</p>
+<ul>
+<li>For rules that already infer their own price, use that inference everywhere.</li>
+<li>For rules with no inference, use the current price of the bar being processed: on the live bar that's the current tick price; on a historical bar that's <code>close[bar]</code>.</li>
+</ul>
+<p>Same idea either way — "current price of the bar being processed" — but the inference, where it exists, defines what "current price" means for that rule.</p>
+<p>Updating Part A item 4:</p>
+<p><strong>4.</strong> Replace <code>open[action_bar]</code> fill prices at every entry/exit stamp site. The fill price becomes the current price of the bar being processed: the current tick price on the live bar, <code>close[bar]</code> on a historical bar. Rules that already infer a different price keep their inference unchanged.</p>
+<p>Rest of the plan stands. Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:24 UTC</div><p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:27 UTC</div><p>I'll execute the plan in clear stages. Let me start by mapping every site I need to touch.</p>
+<p>That's a large surface area. Let me look at the main loop carefully and at the tick-dump writer to understand structure.</p>
+<p>I have enough understanding. Now let me look at the relevant pieces I need to handle: <code>BuildDecisionBarFacts</code>, <code>LoadBarFactsFromOHLC</code>, the per-bar exits, the open[action_bar] sites, the line-event block, and the duplicate "action" computations starting around 6797.</p>
+<p>Now let me look at the duplicate computation near line 6797 where action_bar is recomputed redundantly. After the unification, these two blocks become one.</p>
+<p>Once decision==action, this whole spike-conditional recomputation becomes redundant — <code>braid</code>, <code>tether_ma2</code>, and <code>channel_ctx</code> are already at <code>bar</code>. Let me check the open[action_bar] fill sites and exit/signal stamping:</p>
+<p>Two fill sites: line 6478 (exit fill price) and line 7519 (signal/entry fill price). Both use <code>open[action_bar]</code> for non-spike.</p>
+<p>Now I need to understand "current price" on the live bar — let me find what's available.</p>
+<p><code>current_tick</code> is fetched only when <code>write_output_csvs</code> is true. That's a debug/diagnostic path, not the trading path. The fill prices used in trading must work without diagnostic CSV writes enabled. Let me check what the trade path actually has access to in MQL5.</p>
+<p>In MQL5, <code>OnCalculate</code> doesn't pass tick prices directly — but <code>SymbolInfoTick</code> is always available, or the live bar's <code>close[rates_total-1]</code> IS the latest tick price (it updates every tick). That's the cleanest answer.</p>
+<p>Let me check the line-event block more carefully:</p>
+<p>Note: the exit-fill code at 6410-6425 sets <code>ex_price = recovery_exit_price</code> (an inferred price) — that's a per-rule inference. But then line 6478 unconditionally OVERWRITES it with <code>open[action_bar]</code>. That's the bug. The inference exists, but the open-bar fill destroys it.</p>
+<p>Let me check the signal entry side similarly:</p>
+<p>Now let me look at adverse_close_count to understand its current update path:</p>
+<p>I need to track which bar we last counted adversely so we don't double-count when <code>ExitStateUpdateRunning</code> is called multiple ticks per bar.</p>
+<p>Now I have a complete picture. Let me execute the plan. Strategy: I'll do this in distinct, targeted edits, then verify.</p>
+<h3>Phase 1: Rename PM_dir → MA1vMA2_Cross_dir</h3>
+<p>Wait, the s/pre_spike_PM_dir.../ is run after PM_dir was already renamed, so it would have no effect. Let me verify the result is correct anyway:</p>
+<p>Phase 1 complete — all 24 references renamed and the buffer too.</p>
+<h3>Phase 2: Rename MA1v2 Spread → MA1v2_Spread_NrmWgt</h3>
+<p>Phase 2 done.</p>
+<h3>Phase 3: Tick-dump CSV — collapse 3 bar columns to 1</h3>
+<p>Now refactor <code>TickDumpBufferCells</code> and the writer signatures to a single bar:</p>
+<p>Now fix the two callers of <code>MaybeWriteExpandedTickDump</code>. First the early-return one (around line 6068):</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:48 UTC</div><p>continue</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:53 UTC</div><p>Phase 3 done.</p>
+<h3>Phase 4: Timing model — eliminate decision_bar/action_bar split</h3>
+<p>Strategy: edit the main loop body. After this edit:<br />
+- <code>int bar = i;</code> is the only bar variable<br />
+- <code>bar_facts</code> is loaded at <code>bar</code> (not at <code>decision_bar</code>)<br />
+- <code>action_facts</code> and <code>bar_facts</code> collapse into one (<code>bar_facts</code>)<br />
+- All <code>decision_bar</code> and <code>action_bar</code> references → <code>bar</code><br />
+- <code>bar_close_allowed</code> is removed; conditions ANDed with it become unconditional<br />
+- <code>action_chart_bar</code>, <code>action_time</code> retain identity — <code>action_time = bar_facts.time</code> and <code>action_chart_bar = bar</code><br />
+- The redundant spike-conditional recomputation at 6790-6812 disappears (since they were recomputing what's already at <code>bar</code>)<br />
+- Open-fill prices replaced per the rule</p>
+<p>Let me also check the <code>BuildDecisionBarFacts</code> function — it has a cache-aware path. Loading at <code>bar</code> works fine via <code>LoadBarFactsFromOHLC</code>. But the cache exists for performance. Let me look at it:</p>
+<p>So <code>BuildDecisionBarFacts</code> flips <code>is_historical</code> to true and <code>is_current_bar</code> to false when the bar matches the cached current bar. But under the new model, the bar IS the current bar when bar == rates_total - 1. The cache integration helps preserve live-bar semantics. Let me look at how is_current_bar is otherwise determined:</p>
+<p>Critical: line 5707-5708 sets <code>is_current_bar = (bar == rates_total - 1)</code>, which is correct. The decision-bar-specific override in <code>BuildDecisionBarFacts</code> (5771-5772) forces <code>is_historical = true</code> because it's processing decision_bar = action_bar - 1 which by definition is historical.</p>
+<p>Under the new model, <code>bar</code> IS the bar being processed. We want the natural <code>is_current_bar = (bar == rates_total - 1)</code> semantics. So switch to plain <code>LoadBarFactsFromOHLC</code> at <code>bar</code>.</p>
+<p>But the cache is meaningful for re-using already-built facts including possibly intra-tick state. Let me keep <code>BuildDecisionBarFacts</code> but understand it: it overwrites <code>is_historical = true</code> for cached current matches. This is wrong for our purpose.</p>
+<p>Cleanest move: replace <code>BuildDecisionBarFacts(... decision_bar ...)</code> with <code>LoadBarFactsFromOHLC(... bar ...)</code> and drop <code>action_facts</code> (it was already a <code>LoadBarFactsFromOHLC(action_bar)</code>). One <code>bar_facts</code> for everything.</p>
+<p>Now I'll do the big edit on the main loop. Let me read the full loop body first to plan precisely:</p>
+<p>Note: I replaced <code>closed_decision_context</code> and <code>live_action_context</code> with a single <code>bar_context = "bar"</code>. Now let me check what happened to dependent references and clean them up.</p>
+<p>Now I'll do a sed sweep on the rest of the loop body to replace <code>action_bar</code>, <code>decision_bar</code>, <code>action_chart_bar</code> with <code>bar</code>, <code>closed_decision_context</code> and <code>live_action_context</code> with <code>bar_context</code>, and remove <code>bar_close_allowed</code> properly. The remaining reference list also includes the duplicate spike-conditional recomputation block (6735-6753) which needs to be removed since it's now redundant.</p>
+<p>Let me do the sed sweep first, then handle structural cases by hand:</p>
+<p>Good — only reason-string literals remain (which are descriptive labels, not identifiers). Now I need to verify there are no broken expressions like double <code>bar</code> from <code>bar = bar - 1</code> style.</p>
+<p>These all look fine — pre-existing <code>bar - 1</code> arithmetic. Now I need to handle the gates that remained but were anded with <code>bar_close_allowed</code>. Let me see them:</p>
+<p>I'll handle each. Plan: replace <code>bar_close_allowed &amp;&amp; X</code> → <code>X</code>, replace <code>if(bar_close_allowed)</code> → <code>if(true)</code> removal pattern, replace <code>!bar_close_allowed</code> debug strings/skips appropriately.</p>
+<p>The simplest way: drop all <code>Dbg("bar_close_allowed", bar_close_allowed)</code> lines (debug only), drop the conditional <code>if(bar_close_allowed &amp;&amp; ...)</code> to just <code>if(...)</code>, and rewrite the skip-reason classifiers to not reference it.</p>
+<p>Let me handle these systematically:</p>
+<p>Now strip <code>bar_close_allowed &amp;&amp;</code> from conditionals and convert <code>if(bar_close_allowed)</code> to unconditional execution. View context for the diag-only bar_close-skip blocks:</p>
+<p>Now for each remaining <code>if(bar_close_allowed &amp;&amp; X)</code> and <code>if(!bar_close_allowed)</code> skip-classifier:</p>
+<p>Five remaining. Let me look at them:</p>
+<p>Note the missing <code>+ ","</code> before <code>__FUNCTION__</code> on line 7084 — that's a syntax error introduced by my line-deletion sed. Let me check what got removed:</p>
+<p>Only one. Let me also check for similar damage from the earlier sed deletion (Dbg("bar_close_allowed", ...) ones that ended <code>,</code> chain):</p>
+<p>Need to find ones that broke from missing <code>+ ","</code>. Let me search for lines that look like a Dbg literally followed by <code>__FUNCTION__</code> without a comma+plus:</p>
+<p>Good — no orphans. The line 7084 issue must be from elsewhere. Let me look at this whole block and the previous version to compare:</p>
+<p>Yes, this is from my sed deletion of the <code>Dbg("bar_close_allowed", bar_close_allowed)</code> line that was the last one in the chain. I need to add the comma before <code>__FUNCTION__</code>:</p>
+<p>Now I need to check if my earlier sed deletion of <code>Dbg("bar_close_allowed", bar_close_allowed)</code> lines created orphan trailing-<code>+</code> lines like <code>+ "," + Dbg(... )</code> left without a continuation. Let me search for those structurally:</p>
+<p>Better approach — try to compile and let MQL5 syntax errors find them. We don't have an MQL5 compiler here but I can use a Python regex syntax checker for paren balance, plus look for the specific pattern of <code>+ "," + Dbg(...)</code> followed by <code>__FUNCTION__</code> without a leading comma:</p>
+<p>Good. Now let me handle the redundant spike-conditional recomputation block I noticed earlier:</p>
+<p>This <code>if(spike_cand.direction != 0 ...)</code> block now does exactly the same compute as the preamble does at <code>bar</code>. The result is just copied into <code>assembly_*</code> aliases. I'll eliminate the redundant recompute, but keep the <code>assembly_*</code> aliases since they're used downstream — they're just a convenience name. Actually let me check that:</p>
+<p>The <code>assembly_*</code> aliases are passed to AssembleSignal at 7237. Since under the new model <code>bar</code> IS the bar being processed, the <code>assembly_*</code> values are identical to <code>braid</code>/<code>tether_ma2</code>/<code>channel_ctx</code>. Drop the redundant recompute block:</p>
+<h3>Phase 5: Force-engine reads from <code>bar</code> (the staleness root cause)</h3>
+<p>These were ALREADY captured by the sed sweep — they were <code>decision_bar</code> and got renamed to <code>bar</code>. Verify:</p>
+<p>Force engine reads now come from <code>bar</code>. The staleness root cause is fixed. But I need to confirm <code>pma_netDrive[bar]</code>, <code>cf_netPush[bar]</code>, etc. are populated for the live bar. Let me check Loop 1 (where these are computed):</p>
+<p>Loop 1 runs from <code>cf_context_start</code> to <code>rates_total</code>, so it includes the live bar <code>rates_total - 1</code>. Force buffers are populated at <code>bar</code>.</p>
+<h3>Phase 6: Open[bar] fill prices</h3>
+<p>Two fill sites: 6405 (exit) and 7408 (signal entry). I need helpers for "current price of bar". On the live bar I want the latest tick price; on a historical bar, <code>close[bar]</code>.</p>
+<p>Let me look at the exit site context first to understand the per-rule inferred prices already in play:</p>
+<p>Confirmed: Line 6405 unconditionally clobbers <code>ex_price</code> to <code>open[bar]</code>. And the <code>recovery_exit_price</code> set at line 6342 IS the per-rule inferred price. So the fix at the exit site is: only assign <code>open[bar]</code>-equivalent when <code>ex_price</code> is 0 (not pre-set by an inference).</p>
+<p>I need a "current price of bar" helper. Let me add one near the top of the file:</p>
+<p>I'll add the helper. But first let me think: on the live bar (bar == rates_total - 1), <code>close[bar]</code> IS the latest tick price in MQL5 — close updates on every tick for the live bar. So the simplest definition is: current price of bar IS <code>close[bar]</code>, on both live and historical bars. No special case needed.</p>
+<p>That's the cleanest implementation. Let me apply that:</p>
+<p>Now the signal entry fill site:</p>
+<p>Update the descriptive <code>signal_fill_basis</code> and <code>exit_fill_basis</code> debug strings to reflect the new model:</p>
+<h3>Phase 7: Adverse-close counter — bump on bar transitions</h3>
+<p>The current code calls <code>ExitStateUpdateRunning</code> once per evaluation (was once per bar; now once per tick). I need to change the increment so it only fires when the bar in question becomes historical, i.e., when we observe a new bar appear after an entry.</p>
+<p>Add a <code>last_counted_bar</code> field to <code>SExitState</code>. Increment when <code>bar &gt; last_counted_bar</code> AND the prior bar's close (which is now final) was adverse. Initialize <code>last_counted_bar = entry_bar</code> at entry (so we don't double-count the entry bar's close).</p>
+<p>Actually — re-reading the rule: it counts adverse closes <em>after entry</em>. The entry bar is bar 0 of the trade (or bar 1?). Let me see:</p>
+<p>I need to add <code>last_counted_bar</code> to the struct, init it in ExitStateInit, and gate the increment.</p>
+<p><strong>Status: edit incomplete.</strong> I hit my tool-use limit mid-execution.</p>
+<h2>What's done</h2>
+<ul>
+<li>Phase 1: <code>PM_dir</code> → <code>MA1vMA2_Cross_dir</code> complete (24 references including buffer, debug labels).</li>
+<li>Phase 2: <code>MA1v2 Spread</code> → <code>MA1v2_Spread_NrmWgt</code> complete (CSV header, variable, buffer).</li>
+<li>Phase 3: Tick-dump CSV collapsed to single <code>Bar</code> column; both call sites updated.</li>
+<li>Phase 4: Main loop preamble — <code>int bar = i</code> replaces the split; <code>bar_facts</code> loaded at <code>bar</code>; the warmup/MA-empty/trade-stop guards rewritten without <code>action_facts</code>.</li>
+<li>Phase 4 sweep: every <code>decision_bar</code> / <code>action_bar</code> / <code>action_chart_bar</code> / <code>action_facts</code> / <code>closed_decision_context</code> / <code>live_action_context</code> reference renamed to <code>bar</code> / <code>bar_facts</code> / <code>bar_context</code>.</li>
+<li>Phase 4 gates: every <code>bar_close_allowed</code> removed (debug Dbg lines deleted, conditional gates stripped, skip-reason classifiers updated, <code>EvalBlackoutDeferred</code> made unconditional).</li>
+<li>Phase 4 redundant block: spike-conditional <code>assembly_*</code> recomputation eliminated.</li>
+<li>Phase 5: force-engine reads at <code>bar</code> (the staleness root cause) — verified.</li>
+<li>Phase 6: open[bar] fill prices replaced. Exit fill respects pre-set inferred prices, otherwise <code>close[bar]</code>. Signal fill uses <code>close[bar]</code>.</li>
+<li>Phase 7 (started): added <code>last_counted_bar</code> field to <code>SExitState</code>. Reset initialization done.</li>
+</ul>
+<h2>What's NOT done</h2>
+<ul>
+<li>Phase 7 (continuation): <code>ExitStateInit</code> needs to set <code>last_counted_bar = entry_bar</code>. <code>ExitStateUpdateRunning</code> needs to gate the <code>adverse_close_count++</code> so it only fires once per bar transition (when <code>bar &gt; last_counted_bar</code>).</li>
+<li>Phase 8: NOTE-B comment at line 7 cleanup, plus the comment at old line 4408 referring to <code>decision_bar</code>.</li>
+<li>Verification: I haven't run a final paren/brace balance check or confirmed the file is syntactically clean.</li>
+<li>I haven't yet copied the result to outputs or presented it.</li>
+</ul>
+<p>The file at <code>/home/claude/work/CrossFire_Channel_MJM.mq5</code> is in a partially-edited state and <strong>should not be deployed</strong>. Start a fresh turn and I'll finish Phase 7, do the comment cleanup, run a structural sanity check, and present the file.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 19:56 UTC</div><p>Continue</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 19:58 UTC</div><p>Now gate the adverse-close increment to fire once per bar transition. The rule: each historical bar between entry_bar and the current bar should be counted exactly once. When <code>ExitStateUpdateRunning</code> is called with the current <code>bar</code>, count any bars in the range <code>(last_counted_bar, bar)</code> exclusive of bar (since <code>bar</code> is the current bar — possibly still live, not yet historical).</p>
+<p>Hmm — wait. I need to think about <code>any_profitable_close</code> too. The original code set <code>any_profitable_close = true</code> from <code>cl_pl &gt; 0.0</code> using the current bar's close. That was wrong under the old model too (would fire on partial intrabar movements), but worse now: under the new model the call happens on every tick, so it would flag profitability based on a fleeting tick price, not a finalized close.</p>
+<p>Same logic applies: <code>any_profitable_close</code> should reflect bars whose final close was favorable. Apply the same gating:</p>
+<p>Wait — I should reconsider. The <code>any_profitable_close</code> change is a <strong>scope expansion</strong> beyond the agreed plan. The agreed Phase 7 was specifically about the adverse-close counter. AGENTS.md is explicit: "If you find something broken that was not discussed: note it. Do not fix it. Fix only what was agreed."</p>
+<p>Revert that. Restore <code>any_profitable_close</code> to its original (current-bar) behavior, just gate the adverse counter:</p>
+<p>Phase 7 done. Note for end report: <code>any_profitable_close</code> has the same intrabar problem — flagging from a tick price rather than a finalized close. Out of scope; flagged in report.</p>
+<h3>Phase 8: Comment cleanup</h3>
+<p>All references gone. Let me also check the comment at the old line ~4408 referenced earlier:</p>
+<p>That comment originally said "decision_bar". The sed already rewrote it to "bar". Reads fine. Phase 8 done.</p>
+<h3>Verification: structural sanity check</h3>
+<p>Balanced. Now run the orphan-pattern check:</p>
+<p>Clean. Let me also verify that:<br />
+1. The duplicate <code>bar</code> Dbg fields I left in some debug strings (e.g., <code>Dbg("bar", bar) + ... + Dbg("bar", bar)</code>) compile fine (MQL5 won't reject duplicate keys in a debug string; it's just a string concat).<br />
+2. The <code>bar_facts.time</code> references everywhere are still valid (yes — we have one bar_facts struct now).<br />
+3. No stale <code>Dbg("action_time"...)</code> referring to a now-redundant value (action_time variable still exists, set to bar_facts.time).</p>
+<p>Good. Let me check for one more potentially-problematic case: in the redundant-block I removed, I mentioned that <code>assembly_*</code> aliases are still passed around. Confirm they remain valid:</p>
+<p>Good — defined, copied from canonical, used downstream. One last check: verify the early-return path with <code>tick_bar</code> is consistent and the file size stayed reasonable:</p>
+<p>4 references — 2 declarations (<code>int tick_bar = ...</code>) and 2 uses inside <code>MaybeWriteExpandedTickDump</code> calls. File went from 8415 → 8326 lines (-89), consistent with eliminating the redundant block and dropping debug noise.</p>
+<p>Let me also verify nothing references the cache's <code>BuildDecisionBarFacts</code> anymore (the cache function still exists; just isn't called):</p>
+<p>Function is defined but no longer called. AGENTS.md says minimum changes only — leave the function in place rather than delete it. Out of scope.</p>
+<p>Final spot-check: open the early-return path:</p>
+<p>Good. Let me copy to outputs and present:</p>
+<p>Done.</p>
+<p><strong>Plan items applied:</strong><br />
+- Part A (timing model): split deleted, single <code>bar</code> index throughout the main loop. <code>bar_close_allowed</code> removed everywhere. Force-engine reads at <code>bar</code> (staleness fixed). Redundant spike-conditional recompute removed. Per-rule inferred exit prices preserved; otherwise <code>close[bar]</code>. Adverse-close counter bumped on bar transitions via <code>last_counted_bar</code>.<br />
+- Part B (renames): <code>PM_dir → MA1vMA2_Cross_dir</code>; <code>MA1v2 Spread → MA1v2_Spread_NrmWgt</code> (column, variable, buffer).<br />
+- Part C (CSV): three bar columns collapsed to one.<br />
+- Comments: <code>NOTE-B</code> removed; stale <code>decision_bar</code>/<code>action_bar</code> references cleared.</p>
+<p><strong>Out-of-scope items I noticed but did not touch (per AGENTS.md):</strong><br />
+- <code>any_profitable_close</code> in <code>ExitStateUpdateRunning</code> has the same intrabar issue the adverse counter had — it now flags from a tick price rather than a finalized close. Behavior change vs. old model. Note for your decision later.<br />
+- <code>BuildDecisionBarFacts</code> is no longer called but the function is still defined.</p>
+<p><strong>Brace/paren balance:</strong> 0 mismatches. <strong>Stale-identifier sweep:</strong> 0 hits. The file has not been compiled — only MetaEditor F7 will catch any MQL5-specific issue I missed.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 20:00 UTC</div><p>Out-of-scope items I noticed but did not touch (per AGENTS.md):</p>
+<ul>
+<li><code>any_profitable_close</code> in <code>ExitStateUpdateRunning</code> has the same intrabar issue the adverse counter had — it now flags from a tick price rather than a finalized close. Behavior change vs. old model. Note for your decision later.</li>
+</ul>
+<p>change plan</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 20:01 UTC</div><p>## Change plan — <code>any_profitable_close</code> intrabar fix</p>
+<p><strong>File</strong>: <code>Indicators/DevoIndies/CrossFire_Channel_MJM.mq5</code>.</p>
+<p><strong>Current behavior (post Part A edits)</strong>: <code>ExitStateUpdateRunning</code> is called once per tick on the live bar. At line 8202, <code>cl_pl = ClosePL(...close[bar])</code> is evaluated against <code>close[bar]</code>, which on the live bar is the latest tick price. If the trade is briefly in profit at any tick during the live bar, <code>any_profitable_close = true</code> is set and stays true — even if the bar's actual final close is adverse.</p>
+<p><strong>Fix</strong>: gate the <code>any_profitable_close</code> set the same way <code>adverse_close_count</code> is now gated. Only flag profitability from finalized historical closes — i.e., bars strictly less than <code>bar</code>. Reuse the existing <code>last_counted_bar</code> walk so there's no second loop.</p>
+<p><strong>Edit</strong>: in <code>ExitStateUpdateRunning</code>, move the <code>any_profitable_close</code> set inside the bar-transition loop and remove the standalone tick-based check.</p>
+<p>Before:</p>
+<pre><code>double cl_pl = ClosePL(es.direction, es.entry_price, close[bar]);
+if(cl_pl &gt; 0.0) es.any_profitable_close = true;
+
+for(int b = es.last_counted_bar + 1; b &lt; bar; b++)
+{
+   double b_pl = ClosePL(es.direction, es.entry_price, close[b]);
+   if(b_pl &lt; 0.0) es.adverse_close_count++;
+}
+</code></pre>
+<p>After:</p>
+<pre><code>for(int b = es.last_counted_bar + 1; b &lt; bar; b++)
+{
+   double b_pl = ClosePL(es.direction, es.entry_price, close[b]);
+   if(b_pl &gt; 0.0) es.any_profitable_close = true;
+   if(b_pl &lt; 0.0) es.adverse_close_count++;
+}
+</code></pre>
+<p>The <code>last_counted_bar = bar - 1</code> update remains as-is. Both flags now advance together on bar transitions only.</p>
+<p><strong>No other changes.</strong> Single function, two-line edit (one removal, one addition inside the existing loop).</p>
+<p><strong>Out of scope (still)</strong>: any other state in <code>SExitState</code> set from intrabar tick prices. I haven't surveyed for more; flag if you want me to.</p>
+<p>Awaiting GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 20:03 UTC</div><p>be smarter than that, you're fixing the problem with blinders on. Do you even know at this point what any_profitable_close is used for or if it's used at all? My guess is that you don't. So it's foolhardy to propose a fix yet.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 20:03 UTC</div><p>You're right. I don't.</p>
+<p>Let me find out what it's used for and whether it's used at all, then come back with a plan that actually accounts for the answer.</p>
+<p>Four references total:<br />
+- 824: struct field declaration<br />
+- 837: Reset() sets it to false<br />
+- 8121: written to a debug string (<code>ExitStateDbgFields</code>)<br />
+- 8204: set to true when <code>cl_pl &gt; 0.0</code></p>
+<p>It is read <strong>nowhere</strong> in the file. No exit rule consults it. No gate uses it. No assembly logic branches on it. It only appears in a debug log line.</p>
+<p>So my "fix" would be earnestly correcting a flag that no rule cares about. The intrabar/finalized-close distinction is irrelevant — the flag is dead state.</p>
+<h2>Revised position</h2>
+<p>No fix is warranted. The right action is to either leave it alone (it's dead and harmless) or remove it entirely (clean up dead state). Either is a real choice — but neither is what I was about to do.</p>
+<p>I lean toward <strong>leave it alone</strong> for this turn:<br />
+- Removing it is a scope expansion beyond the timing-model fix.<br />
+- Removing it touches the debug CSV/log output via <code>ExitStateDbgFields</code>, which downstream Python may parse.<br />
+- It costs nothing to leave.</p>
+<p>If you want it removed (struct field, Reset line, the set in <code>ExitStateUpdateRunning</code>, the Dbg field), say so and I'll do that as a separate scoped change. Otherwise it stays.</p>
+<p>Awaiting your call.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 20:04 UTC</div><p>Out of scope (still): any other state in <code>SExitState</code> set from intrabar tick prices. I haven't surveyed for more; flag if you want me to.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 20:04 UTC</div><p>Confirming: do you want me to survey <code>SExitState</code> (and only <code>SExitState</code>) for other fields written from intrabar tick prices, and report — no fixes proposed?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 20:05 UTC</div><p>is that the only thing there could be problems with?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 20:05 UTC</div><p>No.</p>
+<p>The intrabar-tick-vs-finalized-close issue can show up anywhere state is mutated based on a value that wasn't stable under the old (one-call-per-bar) model and now gets touched on every tick.</p>
+<p>Categories of potentially-affected state, broader than <code>SExitState</code>:</p>
+<ol>
+<li>
+<p><strong>Other state structs mutated inside the main loop</strong>: <code>g_chart_state</code> (the main <code>State</code> struct — cocking, blackout, flip-check, reverted-mode, last-signal-bar, cross_bar, spike fields), <code>g_line_event_state</code>, <code>g_kc_overshoot_history</code>, <code>g_bar_facts_cache</code>, <code>g_pma_state</code>, <code>g_makcl_state</code>, <code>g_tradeStats</code>, <code>g_currentTrade</code>, plus any <code>g_csv_open_*</code> globals.</p>
+</li>
+<li>
+<p><strong>Counters and accumulators</strong> anywhere that previously incremented once per bar — same shape of bug as <code>adverse_close_count</code>.</p>
+</li>
+<li>
+<p>**"Latched" boo</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 20:05 UTC</div><p>I don't want explanations. Check the code for potential problems. go.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 20:09 UTC</div><p>Now I'll check each accumulator that's reachable from the per-tick path of the main loop:</p>
+<p>This is <code>AddLineEventTest</code> accumulator. Now: <code>UpdateLineEventState</code> is called inside the main per-tick loop (line ~7050+). Each call could push a new test into cluster strength. Per-tick accumulation is a potential problem.</p>
+<p>Now <code>UpdateLineEventState</code> runs every tick. Each tick that detects a "test end" appends a test and adds/extends a cluster. Cluster strengths accumulate per tick.</p>
+<p>This compares <code>current_close</code> vs <code>prev_close</code> to detect crossings. Under the new model, <code>current_close = close[bar]</code> (live tick price), <code>prev_close = close[bar-1]</code> (prior bar's final close). Crossings will fire on every tick that crosses, then the test starts. As the live tick wobbles around the line, multiple test_start / test_end / test_start cycles can fire within a single bar — each one appending a <code>SLineTest</code> and accumulating cluster strength. <strong>Per-tick accumulation problem.</strong></p>
+<p>Now let me check the spike state and KC overshoot:</p>
+<p><code>ComputePriceVsKC</code> is called per tick on the live bar, and <code>KcOvershootPush</code> adds to history every time <code>overshoot &gt; 0</code>. <strong>Per-tick accumulation problem</strong> — each live-bar tick that overshoots pushes a fresh value into the rolling history, polluting the percentile baseline.</p>
+<p>Now check signal-fired counters and trade-stats updaters in the per-tick path:</p>
+<p>These all run inside <code>if(signal != 0)</code>. Signal firing is gated by <code>last_signal_bar</code> blackout, so a signal fires once per qualifying event. As long as the gate prevents duplicate firing on consecutive ticks of the same bar, these accumulators are fine. Let me verify:</p>
+<p><code>one_per_bar = ((bar - last_signal_bar) &gt;= 1)</code>. Once a signal fires on <code>bar</code>, <code>last_signal_bar = bar</code>, so subsequent ticks on the same bar produce <code>bar - last_signal_bar == 0</code> and <code>one_per_bar == false</code>. <strong>Good: signal gate prevents per-tick firing.</strong></p>
+<p>Now check the cocking state and the spike state:</p>
+<p>Cocking is a state latch. Once <code>is_cocked = true</code>, the gate at 6636 (<code>!g_chart_state.is_cocked</code>) prevents re-entry. So even if it triggers per tick, it only triggers once per cocking event. But <code>cock_level</code> could be updated to a different ref_open if conditions change. Looking again at <code>ApplyCockingResult</code>: it always sets to whichever direction was found. Since the outer gate prevents re-entry once cocked, the per-tick path is fine for cocking.</p>
+<p>Now let me check spike state:</p>
+<p>Spike state operates on <code>high[bar]</code> / <code>low[bar]</code> / <code>open[bar]</code>. On the live bar:<br />
+- <code>high[bar]</code> and <code>low[bar]</code> are the running high/low for the live bar — they DO update intrabar. <code>ProcessSpike</code> updates <code>spike_extremum</code> on each tick that extends the high/low. That's actually correct — the spike's extremum should track the running high/low.<br />
+- <code>TryStartSpike</code> is gated by <code>!chart_state.spike_active</code>, so it only fires once per spike. <br />
+- <code>ProcessSpike</code> returns a non-zero signal once the just-jump threshold is hit; <code>ResetSpike</code> clears active state. But the signal-fired gate (<code>one_per_bar</code>) downstream prevents double-firing within the bar.</p>
+<p><strong>Spike state looks OK</strong>.</p>
+<p>Now check the bar_facts cache and KC-overshoot prefill loop:</p>
+<p>The prefill loop runs once per OnCalculate call and goes from <code>prefill_start</code> to <code>signal_start</code>, i.e., bars before the trade window. Each OnCalculate call (each tick!) will re-push the same historical bars' overshoots into the rolling history — duplicating entries.</p>
+<p>Wait — let me check if this is conditional:</p>
+<p>This loop is between <code>prefill_start</code> and <code>signal_start</code>. <code>signal_start</code> is the first bar in the trade window. Pre-fill writes historical overshoots into rolling history. This loop runs every OnCalculate call — but those bars are historical, their values don't change, so they push the same N values each time. The rolling history capacity is fixed (lookback) but <code>count</code> only grows up to capacity. Repeated pushes overwrite via <code>head = (head+1) % lookback</code>. So after one full pass, history is saturated. Each subsequent OnCalculate call re-pushes the same N historical values, head wrapping. The history content stays consistent (same N historical overshoot values).</p>
+<p>Then in the main loop, the live bar's <code>ComputePriceVsKC</code> pushes the live bar's overshoot ON EVERY TICK. So for a live bar lasting N ticks with overshoot &gt; 0, you get N entries from a single bar pushed into history. <strong>That pollutes the percentile baseline.</strong></p>
+<p>This was already a problem before my Phase A edits, but only triggered on the live bar. Phase A made it run every tick.</p>
+<p>Actually no — let me re-read. Before my edit, <code>ComputePriceVsKC</code> was gated by <code>if(bar_close_allowed)</code>. On the live bar, <code>bar_close_allowed</code> was false unless <code>prev_calculated</code> indicated a new bar boundary. So on most live ticks, <code>ComputePriceVsKC</code> was NOT called and the overshoot history was NOT pushed.</p>
+<p>After my edit (Part A removed <code>bar_close_allowed</code>), <code>ComputePriceVsKC</code> runs every tick. <strong>Newly introduced per-tick accumulation problem.</strong></p>
+<p>Let me also check <code>g_bar_facts_cache.history</code>:</p>
+<p><code>CacheFinalBarFacts</code> is keyed by time, dedupes, only updates existing or appends. Self-correcting. <strong>OK.</strong></p>
+<p>Now check exit flip-check pending bar:</p>
+<p>Note line 7597 and 7613: under the original code these used <code>assembled.is_spike ? action_bar : decision_bar</code>. After my sed renaming both to <code>bar</code>, they collapsed to <code>bar : bar</code> (no-op ternary). Functionally fine — <code>bar</code> is <code>bar</code> either way. Just stylistically dead code; not a bug.</p>
+<p>Now let me check the <code>ResetCycle</code> and <code>EvaluateRevertedMode</code> updates that were gated by <code>bar_close_allowed</code>:</p>
+<p><code>ResetCycle</code> is gated on <code>g_chart_state.MA1vMA2_Cross_dir == 0 &amp;&amp; cx.curr_t2e != 0</code> — sets <code>MA1vMA2_Cross_dir</code> to non-zero, so it self-disables. <strong>OK.</strong></p>
+<p><code>EvaluateRevertedMode</code> is gated on <code>cx.raw_cross</code>. Need to check whether <code>cx.raw_cross</code> can fire on multiple consecutive ticks of the same bar:</p>
+<p><code>cx.raw_cross</code> is computed from <code>prev_ma1 = buf_ma1[bar-1]</code> (final close of previous bar) vs <code>sp.spread = MA1 - MA2</code> (current bar's intrabar value). On a tick that flips the sign, <code>cx.raw_cross = true</code>. Then <code>EvaluateRevertedMode</code> runs — it sets <code>last_aggr_raw_cross_dir = raw_cross_dir</code>. Then the next tick of the same bar: <code>prev_t2e</code> (still computed from prev bar) is unchanged. If <code>curr_t2e</code> flips back, <code>cx.raw_cross</code> fires again.</p>
+<p><strong>Per-tick re-trigger problem</strong>: as the live bar's MA1/MA2 wobble around each other, <code>cx.raw_cross</code> fires on every flip; <code>last_aggr_raw_cross_bar</code> gets bumped each time; <code>reverted_mode</code> could be set true the moment a second cross direction is detected — when the actual end-of-bar sign hasn't been determined yet.</p>
+<p>Now line-event state (<code>UpdateLineEventState</code>):</p>
+<p>I already noted that. Let me also check <code>ChannelDecisionContext.commitment_age</code> accumulation:</p>
+<p>BuildChannelDecisionContext is a pure read of <code>cf_*</code> buffers — no state mutation. <strong>OK.</strong></p>
+<p>Now <code>commitment_age</code>/<code>commitment_score</code> are read but where written?</p>
+<p>Commitment is computed by <code>DeriveCommitmentSnapshot</code> from cluster state — derived per call. Cluster state is the source of truth, and clusters get polluted by per-tick UpdateLineEventState. <strong>Same problem as line-events; not a separate issue.</strong></p>
+<p>Now check the per-tick path for any other state-stamping into buffers:</p>
+<p>Buffer writes — these are slot overwrites (not accumulations), so writing every tick just updates the slot to the latest value. That's the desired tick-by-tick behavior. <strong>OK.</strong></p>
+<p>Done with the survey.</p>
+<hr />
+<h2>Survey results — accumulator/state hazards introduced by Part A</h2>
+<p><strong>Categories:</strong></p>
+<p><strong>1. Real per-tick accumulation problems (broken)</strong></p>
+<ul>
+<li><code>g_kc_overshoot_history</code> — <code>KcOvershootPush</code> runs every tick via <code>ComputePriceVsKC</code> in the main loop. Each live-bar tick with overshoot &gt; 0 pushes another entry into the rolling history. With 100+ ticks per bar (we saw 192 in the prior dump), one live bar can saturate the entire <code>InpKcOvershootLookback</code> window and crowd out legitimate historical samples. Pre-edit, this was gated by <code>bar_close_allowed</code> and pushed at most once per bar.</li>
+<li><code>g_line_event_state.clusters[].accumulated_strength</code> and <code>.test_count</code> — <code>UpdateLineEventState</code> runs every tick. <code>DetectAndRecordTest</code> compares <code>current_close</code> (live tick price) to <code>prev_close</code> (prior bar's close). As the live tick wobbles around a KC line, each crossing fires a test_start; each return fires a test_end and pushes another <code>SLineTest</code>, calling <code>AddOrExtendCluster</code> which adds to <code>accumulated_strength</code> and <code>test_count</code>. Within a single live bar, repeated wobbling can multiply cluster strength arbitrarily. Pre-edit: gated by <code>bar_close_allowed</code>, fired at most once per bar.</li>
+<li><code>g_line_event_state.line_tests[]</code> (the test history array, written by <code>AppendLineTest</code>) — same root cause; multiplies test entries within a bar.</li>
+</ul>
+<p><strong>2. Per-tick re-trigger problems (broken)</strong></p>
+<ul>
+<li><code>g_chart_state.last_aggr_raw_cross_dir</code> / <code>last_aggr_raw_cross_bar</code> / <code>reverted_mode</code> — <code>EvaluateRevertedMode</code> runs every tick where <code>cx.raw_cross</code> is true. As live MA1/MA2 wobble around each other, <code>cx.raw_cross</code> can fire multiple times within a bar (each direction flip). <code>reverted_mode</code> is set true the moment a second cross direction is observed, even if by end of bar the spread has settled back. Pre-edit: <code>cx.raw_cross</code> was computed against <code>decision_bar</code> (a fully-closed bar), so the cross was a stable historical fact.</li>
+</ul>
+<p><strong>3. State that's safe (correctly tick-evaluable)</strong></p>
+<ul>
+<li>Spike state (<code>spike_active</code>/<code>spike_dir</code>/<code>spike_extremum</code>) — uses live <code>high[bar]</code>/<code>low[bar]</code>; tracking running extremes is correct intrabar behavior.</li>
+<li><code>last_signal_bar</code> / <code>last_counted_bar</code> — both gated by <code>(bar - last) &gt;= 1</code>, so they self-prevent re-firing.</li>
+<li>Cocking (<code>is_cocked</code>) — gated by <code>!is_cocked</code> on entry.</li>
+<li>Buffer slot writes (<code>BufForcesXxx[bar] = ...</code>, <code>BufExitTrade[bar] = ...</code>) — slot overwrites, not accumulations.</li>
+<li><code>g_audit_*</code> and <code>g_csv_*</code> counters — only incremented inside <code>if(signal != 0)</code>, gated by <code>last_signal_bar</code>.</li>
+<li><code>g_currentTrade</code> / <code>g_tradeStats</code> / <code>g_audit_has_open_trade</code> — mutated only via <code>HandleSignalEvent</code> inside the signal-fire block.</li>
+<li><code>cache.history_count</code> — keyed by time, dedupes.</li>
+<li><code>g_pma_state</code> / <code>g_makcl_state</code> / <code>cf_*</code> arrays — populated by Loop 1 which runs once per OnCalculate before Loop 2; they index by bar, so writing at <code>bar</code> overwrites the slot. (Worth a separate look but not an accumulator pattern.)</li>
+<li><code>any_profitable_close</code> — already discussed; dead state.</li>
+</ul>
+<p><strong>4. Dead remnant</strong></p>
+<ul>
+<li><code>assembled.is_spike ? bar : bar</code> ternaries at lines 7597 and 7613 (no-op since rename collapsed both arms).</li>
+</ul>
+<p><strong>Out-of-scope items I did NOT survey</strong>:<br />
+- Loop 1 (<code>PMA_ComputeAt</code> / <code>MAKCL_ComputeAt</code> / <code>CF_ProcessBarContext</code>) internal state. Loop 1 itself was always running per OnCalculate call, but those engines may have their own per-bar accumulators that now run on every tick because OnCalculate runs every tick. I'd need to read into the .mqh files to confirm — those weren't uploaded.<br />
+- <code>ExpireStaleClusters</code> — uses <code>current_bar</code> to age clusters out. May mis-classify live-bar age.<br />
+- The flip-check timing now that <code>flip_check_bar = bar + 1</code> and the gate is <code>bar &gt;= flip_check_bar</code> — could fire on the very first tick of the next bar. May or may not be desired.</p>
+<p>No fixes proposed. Awaiting your direction.</p></div><div class="nav"><span><a href="2026-05-07_signal-rule-gating-implementation-review_fef7c5dc.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-06_modularizing-zigzag-code-with-function-extraction_ac1e78e3.html">Next →</a></span></div></div></body></html>

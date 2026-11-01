@@ -1,0 +1,255 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mobile hotspot connection failing on laptop</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-09-03_onenote-pricing-on-pc_b1ef5362.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-03_english-translation-of-quer-taro-house-rental-contract_683ea9c8.html">Next →</a></span></div><h1>Mobile hotspot connection failing on laptop</h1><div class="meta">Created 2026-09-03 22:07 UTC · Last updated 2026-09-04 03:22 UTC · 61 messages<br>Original: <a href="https://claude.ai/chat/3928c8ce-91be-45bd-90b8-ed840af4d237">claude.ai/chat/3928c8ce-91be-45bd-90b8-ed840af4d237</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-03 22:07 UTC</div><p>my mobile hotspot was working fine before on my laptop so that i could connect my phone to it but now my phone cant connect and just stays on obtaining ip before stopping trying to connect</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:07 UTC</div><p>Assuming Windows laptop — the hotspot's DHCP (Internet Connection Sharing) has died. Fixes in order:</p>
+<ol>
+<li>Toggle the hotspot off, wait 10 seconds, toggle on. Then forget the network on your phone and reconnect.</li>
+<li>Restart the ICS service: Win+R → <code>services.msc</code> → <strong>Internet Connection Sharing (ICS)</strong> → right-click → Restart. If it's set to Disabled or Manual, set Startup type to Automatic first.</li>
+<li>Re-share the connection: Control Panel → Network Connections → right-click your internet adapter (Wi-Fi or Ethernet) → Properties → Sharing tab → untick "Allow other network users to connect", OK, then re-tick it and pick the hotspot adapter (Local Area Connection* something).</li>
+<li>If still stuck, elevated Command Prompt:</li>
+</ol>
+<pre><code>netsh winsock reset
+netsh int ip reset
+ipconfig /flushdns
+</code></pre>
+<p>then reboot.<br />
+5. Last resort: Device Manager → View → Show hidden devices → uninstall <strong>Microsoft Wi-Fi Direct Virtual Adapter</strong> entries, then Scan for hardware changes.</p>
+<p>Third-party VPN or antivirus with a network filter driver is the usual thing that breaks this after it was previously working — disable it before testing if you have one.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-03 22:10 UTC</div><p>Restart the ICS service: Win+R → <code>services.msc</code> → Internet Connection Sharing (ICS) → right-click → Restart. If it's set to Disabled or Manual, set Startup type to Automatic first.</p>
+<p>i did this and now it sayd connected with no internet access?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:10 UTC</div><p>That's progress — DHCP is working now, so it's NAT/routing, not the hotspot itself.</p>
+<ol>
+<li>Check the laptop actually has internet right now. Open a page on it. If it doesn't, nothing downstream will.</li>
+<li>Re-do the sharing binding, since restarting ICS often drops it: Control Panel → Network and Sharing Center → Change adapter settings → right-click the adapter that has your internet → Properties → Sharing → untick the box, OK → reopen → tick it → in the dropdown pick the hotspot adapter → OK. Then toggle the hotspot off/on.</li>
+<li>Forget the network on the phone and rejoin, so it pulls a fresh gateway and DNS.</li>
+<li>If it's still no-internet, set DNS manually on the phone's Wi-Fi (static/advanced): 8.8.8.8 and 1.1.1.1. If that fixes it, ICS's DNS proxy is the problem.</li>
+<li>Elevated Command Prompt, then reboot:</li>
+</ol>
+<pre><code>netsh int ip reset
+netsh winsock reset
+ipconfig /flushdns
+</code></pre>
+<p>One thing that will block this permanently: if the laptop's own internet is a cellular/USB-tethered connection, some carriers and some Windows builds refuse to share it onward. Was the laptop on Wi-Fi or Ethernet when this used to work?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-03 22:10 UTC</div><p>i mean i am talking to you so it obviously does have internet</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:10 UTC</div><p>Fair. Then it's the NAT binding — the laptop routes for itself but isn't forwarding for the hotspot.</p>
+<p>Do this in order:</p>
+<ol>
+<li>Control Panel → Network and Sharing Center → Change adapter settings → right-click the adapter carrying your internet → Properties → Sharing tab. Untick "Allow other network users to connect", OK. Reopen, tick it, select the hotspot adapter in the dropdown, OK. Toggle the hotspot off and on.</li>
+<li>Forget the network on the phone, rejoin.</li>
+<li>If still no internet, set the phone's Wi-Fi DNS manually to 8.8.8.8 / 1.1.1.1.</li>
+<li>If that fixes it, ICS's DNS proxy is broken — restart the "DNS Client" service on the laptop.</li>
+</ol>
+<p>If the sharing dropdown has no hotspot adapter listed, the virtual adapter is stale: Device Manager → View → Show hidden devices → uninstall Microsoft Wi-Fi Direct Virtual Adapter entries → Scan for hardware changes → restart hotspot.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-03 22:15 UTC</div><p>there is no network and sharing</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:15 UTC</div><p>Two things:</p>
+<p><strong>Adapter list</strong> (the old Network and Sharing Center is hidden in Win11): Win+R → type <code>ncpa.cpl</code> → Enter. That's the same window. Right-click your Wi-Fi adapter → Properties → Sharing tab.</p>
+<p>Or: Advanced network settings → <strong>More network adapter options</strong>.</p>
+<p><strong>But first</strong>, click the <code>&gt;</code> arrow on the Mobile hotspot row. On that page check:<br />
+- <strong>Share my Internet connection from</strong> = Wi-Fi<br />
+- <strong>Share over</strong> = Wi-Fi</p>
+<p>If "Share from" is set to Ethernet, that's your no-internet — Ethernet has no connection. Set it to Wi-Fi, toggle the hotspot off and back on, then forget/rejoin on the phone.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:16 UTC</div><p>Correction to my last message — your internet is on <strong>Ethernet</strong>, not Wi-Fi. The Wi-Fi adapter is not connected.</p>
+<ol>
+<li>In the Mobile hotspot settings page, set <strong>Share my Internet connection from</strong> = <strong>Ethernet</strong>. Share over = Wi-Fi.</li>
+<li>In this adapter window, right-click <strong>Ethernet</strong> → Properties → <strong>Sharing</strong> tab → untick "Allow other network users to connect", OK. Reopen it, tick it, and in the dropdown select <strong>Local Area Connection* 10</strong>. OK.</li>
+<li>Toggle the hotspot off and on, forget the network on the phone, rejoin.</li>
+</ol>
+<p>If the Sharing tab is missing on Ethernet, tell me.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-03 22:17 UTC</div><p>thats how it always has been</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:17 UTC</div><p>Settings are correct. Do step 2 then — the ICS binding is what's broken.</p>
+<p>In <code>ncpa.cpl</code>: right-click <strong>Ethernet</strong> → Properties → <strong>Sharing</strong> tab → untick "Allow other network users to connect", OK. Reopen, tick it, select <strong>Local Area Connection* 10</strong> in the dropdown, OK.</p>
+<p>Then toggle the hotspot off and on, forget the network on the phone, rejoin.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-03 22:18 UTC</div><p>There it is — "Home networking connection" says <strong>Select a private network connection</strong>. Nothing is bound. That's your no-internet.</p>
+<p>Open that dropdown and pick <strong>Local Area Connection* 10</strong>, then OK.</p>
+<p>If the dropdown is empty or Local Area Connection* 10 isn't in it: untick the top box, OK, then reopen and tick it again — the list repopulates.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 01:04 UTC</div><p>it was working but the same problem happened again, how did we fix it?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 01:04 UTC</div><p>Two things: restarting the <strong>Internet Connection Sharing (ICS)</strong> service (<code>services.msc</code>), and then setting <strong>Home networking connection</strong> to <strong>Local Area Connection* 10</strong> in Ethernet → Properties → Sharing (<code>ncpa.cpl</code>) — it had reset to "Select a private network connection."</p>
+<p>Check that dropdown first; it drops the binding on reboot or when the virtual adapter number changes. If the adapter is now Local Area Connection* 11 or similar, that's why — rebind to whatever the current one is.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 01:06 UTC</div><p>that option is not showing</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 01:06 UTC</div><p>The dropdown is gone because only one other adapter exists — the hotspot's virtual adapter isn't up, so there's nothing to bind to.</p>
+<p>Turn the Mobile hotspot <strong>off</strong>, then <strong>on</strong>, then reopen this Sharing tab. The dropdown should reappear with Local Area Connection* something.</p>
+<p>If it doesn't: <code>ncpa.cpl</code> — check whether a "Local Area Connection* N" entry exists at all. If it's missing, Device Manager → View → Show hidden devices → Network adapters → uninstall <strong>Microsoft Wi-Fi Direct Virtual Adapter</strong> entries → Scan for hardware changes → turn the hotspot on again.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 01:06 UTC</div><p>Bound correctly now. Click OK, then forget the network on your phone and rejoin.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 01:08 UTC</div><p>did that and still says no internet access</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 01:08 UTC</div><p>Do these in order, stopping when it works:</p>
+<ol>
+<li>Untick the top box, OK. Reopen, tick it, confirm the dropdown shows Local Area Connection* 10, OK. Toggle the hotspot off and on. Rejoin on the phone.</li>
+<li>Restart the ICS service again in <code>services.msc</code> (this is what fixed it last time), then toggle the hotspot.</li>
+<li>Set the phone's Wi-Fi DNS manually to 8.8.8.8 / 1.1.1.1 and see if pages load. If they do, it's ICS's DNS proxy, not routing.</li>
+<li>Reboot the laptop, then re-check the Sharing binding before turning the hotspot on.</li>
+</ol>
+<p>The fact that it keeps breaking points at either a VPN/antivirus network filter driver or the virtual adapter renumbering. What VPN or security software is on the laptop?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:02 UTC</div><p>what do i do it is still happening saying ocnnected with no internet even though the computer has internetg</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:02 UTC</div><p>First, confirm it's actually dead rather than just the warning icon. On the phone, turn mobile data <strong>off</strong>, then open a website. If pages load, it's only Android's connectivity check failing and you can ignore it.</p>
+<p>If pages really don't load:</p>
+<ol>
+<li>On the phone, check the Wi-Fi IP address. It should be <strong>192.168.137.x</strong>. If it's anything else, ICS isn't the one handing out addresses.</li>
+<li>Set the phone's Wi-Fi DNS manually to 8.8.8.8 and 1.1.1.1 (Advanced → IP settings → Static, gateway 192.168.137.1). If pages load after that, it's ICS's DNS proxy.</li>
+<li>Turn off any third-party antivirus or VPN completely and retest. Windows Defender Firewall too, temporarily.</li>
+<li>If none of that works: Settings → Network &amp; internet → Advanced network settings → <strong>Network reset</strong>. Reboot, then set the hotspot up fresh. This clears the stale ICS state that keeps coming back.</li>
+</ol>
+<p>Tell me what IP the phone gets and whether static DNS changes anything — that splits routing from DNS and I'll stop guessing.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:03 UTC</div><p>mobile data is off idiot i said that it says connected to wifif but no access</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:03 UTC</div><p>Then run the two checks and tell me the results:</p>
+<ol>
+<li>On the phone, Wi-Fi → tap the network → what IP address does it show?</li>
+<li>On the phone, set that Wi-Fi to Static: IP 192.168.137.50, gateway 192.168.137.1, DNS 8.8.8.8 and 1.1.1.1. Does a website load?</li>
+</ol>
+<p>Without those two answers I'm guessing between routing and DNS, and I've been guessing for six messages.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:04 UTC</div><p>IP 192.168.137.25  is what it shows</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:04 UTC</div><p>Good — ICS is handing out addresses, so DHCP and the gateway are fine. The break is downstream of that.</p>
+<p>Now set the phone's Wi-Fi to Static: IP 192.168.137.50, gateway 192.168.137.1, DNS 8.8.8.8 and 1.1.1.1. Then open a website.</p>
+<p>That one test tells us whether it's DNS or routing, and the fix differs completely.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:05 UTC</div><p>how do i do that?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:05 UTC</div><p>On Android:</p>
+<ol>
+<li>Settings → Network &amp; internet → Internet</li>
+<li>Tap the gear/pencil icon next to your hotspot network (or long-press the network → Modify network)</li>
+<li>Expand <strong>Advanced options</strong></li>
+<li>IP settings: change <strong>DHCP</strong> to <strong>Static</strong></li>
+<li>Fill in:<br />
+   - IP address: <code>192.168.137.50</code><br />
+   - Gateway: <code>192.168.137.1</code><br />
+   - Network prefix length: <code>24</code><br />
+   - DNS 1: <code>8.8.8.8</code><br />
+   - DNS 2: <code>1.1.1.1</code></li>
+<li>Save, then open a website.</li>
+</ol>
+<p>On iPhone: Settings → Wi-Fi → tap the ⓘ next to the network → Configure IP → Manual → same IP, subnet mask <code>255.255.255.0</code>, router <code>192.168.137.1</code>. Then back out, tap Configure DNS → Manual → add 8.8.8.8 and 1.1.1.1.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:06 UTC</div><p>thre is no internet in network and internet, dont guess</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:06 UTC</div><p>Then tell me the phone: Android or iPhone, and which brand — Samsung, Xiaomi, Pixel, something else. The menu path differs per manufacturer and I'm not going to invent one.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:06 UTC</div><p>android motorola</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:06 UTC</div><p>On Motorola:</p>
+<ol>
+<li>Settings → <strong>Network &amp; internet</strong> → <strong>Wi-Fi</strong></li>
+<li>Tap the <strong>gear icon</strong> to the right of your connected hotspot network (not the network name itself)</li>
+<li>Scroll down and tap <strong>Advanced options</strong> to expand it</li>
+<li><strong>IP settings</strong>: tap it, change <strong>DHCP</strong> → <strong>Static</strong></li>
+<li>Fill in:<br />
+   - IP address: <code>192.168.137.50</code><br />
+   - Gateway: <code>192.168.137.1</code><br />
+   - Network prefix length: <code>24</code><br />
+   - DNS 1: <code>8.8.8.8</code><br />
+   - DNS 2: <code>1.1.1.1</code></li>
+<li>Tap <strong>Save</strong>, then open a website</li>
+</ol>
+<p>If there's no gear icon, long-press the network name and choose <strong>Modify network</strong> — Advanced options is in there.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:07 UTC</div><p>i cant tap the gear if i do it just takes me to the same netowrk thing</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:07 UTC</div><p>That screen it takes you to is the right one — the static IP settings are on it, you just have to scroll.</p>
+<p>On that network detail page, scroll to the bottom. Look for <strong>Advanced</strong> or <strong>Advanced options</strong> and tap to expand. <strong>IP settings</strong> is inside, currently set to DHCP. Change it to Static.</p>
+<p>If you scroll to the bottom and there's genuinely no Advanced section, tell me what options that page does show and I'll work from that.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:08 UTC</div><p>no such advanced or advanced options appears...</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:08 UTC</div><p>Read me what that page does show — the option names top to bottom. I'll work from that.</p>
+<p>Meanwhile, a faster route that skips the phone entirely: on the laptop, open <code>services.msc</code> and restart these three, in this order:</p>
+<ol>
+<li><strong>Internet Connection Sharing (ICS)</strong></li>
+<li><strong>Windows Firewall</strong> (or Windows Defender Firewall)</li>
+<li><strong>WLAN AutoConfig</strong></li>
+</ol>
+<p>Then toggle the hotspot off and on. That combination clears the ICS NAT/DNS proxy state, which is what keeps dying on you.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:08 UTC</div><p>signal strength frequency security network usage privacy auto connect add device under netowrk details it lists wifi type ips ect but i cant click on anything there</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:09 UTC</div><p>Two possibilities: that page has a <strong>pencil/edit icon</strong> at the top right, or you have to <strong>forget the network first</strong> — Motorola only exposes Advanced options when you're entering the password on a fresh connection.</p>
+<p>Try the forget route:<br />
+1. Forget the network<br />
+2. Tap it to reconnect — the password box appears<br />
+3. <strong>Advanced options</strong> is on that password screen, below the password field. Expand it, set IP settings to Static, fill in the values, then connect.</p>
+<p>If that still doesn't show it, drop the phone side. Do the three service restarts on the laptop instead — ICS, Windows Defender Firewall, WLAN AutoConfig, in that order — then toggle the hotspot off and on and reconnect the phone normally.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:09 UTC</div><p>ok now i am in advanced options</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:09 UTC</div><p>Tap <strong>IP settings</strong>, change <strong>DHCP</strong> to <strong>Static</strong>, then enter:</p>
+<ul>
+<li>IP address: <code>192.168.137.50</code></li>
+<li>Gateway: <code>192.168.137.1</code></li>
+<li>Network prefix length: <code>24</code></li>
+<li>DNS 1: <code>8.8.8.8</code></li>
+<li>DNS 2: <code>1.1.1.1</code></li>
+</ul>
+<p>Connect, then open a website and tell me if it loads.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:11 UTC</div><p>yes</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:11 UTC</div><p>Then it's DNS, not routing. ICS's DNS proxy is dead — the phone was getting 192.168.137.1 as its DNS server and nothing was answering.</p>
+<p>You can leave the phone on static and it will keep working. To fix it properly on the laptop so DHCP clients work again:</p>
+<ol>
+<li><code>services.msc</code> → restart <strong>DNS Client</strong>, then <strong>Internet Connection Sharing (ICS)</strong> — in that order.</li>
+<li>Toggle the hotspot off and on.</li>
+<li>Set the phone back to DHCP and test.</li>
+</ol>
+<p>If it breaks again, it's a third-party firewall or antivirus blocking port 53 on the hotspot adapter. What security software is on the laptop?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:12 UTC</div><p>i cant restart dns client as it is greyed out</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:12 UTC</div><p>That's normal — DNS Client can't be restarted from the Services window on Windows 10/11. Skip it.</p>
+<p>Elevated Command Prompt (right-click Start → Terminal (Admin)):</p>
+<pre><code>net stop dnscache
+net start dnscache
+net stop sharedaccess
+net start sharedaccess
+</code></pre>
+<p>Then toggle the hotspot off and on, set the phone back to DHCP, and test.</p>
+<p>If <code>net stop dnscache</code> refuses, just do the sharedaccess pair — that's ICS itself and it's the one that matters.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:12 UTC</div><p>terminal or spower shell?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:12 UTC</div><p>Either. Terminal is just a wrapper around PowerShell — those <code>net</code> commands work the same in both.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:13 UTC</div><p>the commands do i enter all at once?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:13 UTC</div><p>One at a time, Enter after each. Wait for each to finish before the next.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:14 UTC</div><p>ok i entered the commands</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:14 UTC</div><p>ICS restarted cleanly (dnscache refusing is expected).</p>
+<p>Now:<br />
+1. Check <code>ncpa.cpl</code> → Ethernet → Properties → Sharing — confirm Home networking connection still shows Local Area Connection* 10. Restarting ICS sometimes clears it.<br />
+2. Toggle the hotspot off and on.<br />
+3. Set the phone back to DHCP and test.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:15 UTC</div><p>all it says now is wifi</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:15 UTC</div><p>Wrong — it rebound to the physical Wi-Fi adapter, which isn't connected to anything. That's why the phone gets nothing.</p>
+<p>Open that dropdown and select <strong>Local Area Connection* 10</strong> instead, then OK.</p>
+<p>If Local Area Connection* 10 isn't in the list, the virtual adapter is down: toggle the hotspot off and on, then reopen this and pick it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:15 UTC</div><p>i really need you to stop dicking around be thorough and fix this without guessing</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:15 UTC</div><p>Fair. Here's what's actually established versus what I've been guessing at.</p>
+<p><strong>Proven:</strong> ICS assigns addresses (phone got 192.168.137.25). Routing works — static config with public DNS loads pages. So the break is DNS only: the phone gets 192.168.137.1 as its DNS server and ICS's DNS proxy isn't answering on it.</p>
+<p><strong>Not established:</strong> why the proxy dies, and why the sharing binding keeps reverting. I've been proposing fixes for both without evidence. That stops here.</p>
+<p>Run these in the elevated PowerShell you already have open and paste the output:</p>
+<pre><code>Get-NetIPAddress -InterfaceAlias &quot;Local Area Connection* 10&quot;
+</code></pre>
+<pre><code>Get-NetTCPConnection -LocalPort 53 -ErrorAction SilentlyContinue; Get-Process -Id (Get-NetUDPEndpoint -LocalPort 53).OwningProcess -ErrorAction SilentlyContinue | Select-Object Name,Id
+</code></pre>
+<pre><code>Get-NetFirewallProfile | Select-Object Name,Enabled
+</code></pre>
+<pre><code>Get-MpComputerStatus | Select-Object AMRunningMode
+</code></pre>
+<pre><code>Get-NetAdapter | Select-Object Name,InterfaceDescription,Status
+</code></pre>
+<p>That tells me: whether the virtual adapter holds 192.168.137.1, what process owns port 53 (if anything), whether a third-party firewall replaced Defender, and the current adapter names so the binding stops being a moving target.</p>
+<p>Two answers I still need from you, because no command gives them:</p>
+<ol>
+<li>What VPN or antivirus is installed, if any.</li>
+<li>Did this break after a Windows update, or after installing something.</li>
+</ol>
+<p>Set the phone back to static for now so you have a working connection while we diagnose.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:16 UTC</div><p>IPAddress         : fe80::4cbf:10c9:bcc5:182f%7<br />
+InterfaceIndex    : 7<br />
+InterfaceAlias    : Local Area Connection<em> 10<br />
+AddressFamily     : IPv6<br />
+Type              : Unicast<br />
+PrefixLength      : 64<br />
+PrefixOrigin      : WellKnown<br />
+SuffixOrigin      : Link<br />
+AddressState      : Preferred<br />
+ValidLifetime     : Infinite ([TimeSpan]::MaxValue)<br />
+PreferredLifetime : Infinite ([TimeSpan]::MaxValue)<br />
+SkipAsSource      : False<br />
+PolicyStore       : ActiveStore<br />
+IPAddress         : 169.254.199.117<br />
+InterfaceIndex    : 7<br />
+InterfaceAlias    : Local Area Connection</em> 10<br />
+AddressFamily     : IPv4<br />
+Type              : Unicast<br />
+PrefixLength      : 16<br />
+PrefixOrigin      : WellKnown<br />
+SuffixOrigin      : Link<br />
+AddressState      : Preferred<br />
+ValidLifetime     : Infinite ([TimeSpan]::MaxValue)<br />
+PreferredLifetime : Infinite ([TimeSpan]::MaxValue)<br />
+SkipAsSource      : False<br />
+PolicyStore       : ActiveStore</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:16 UTC</div><p>That's the answer. The virtual adapter has <strong>169.254.199.117</strong> — an APIPA self-assigned address, meaning ICS never applied 192.168.137.1 to it. The hotspot has no gateway, no DNS server, no NAT.</p>
+<p>Cause: the binding is currently pointing at <strong>Wi-Fi</strong> instead of Local Area Connection* 10, exactly as your last screenshot showed. ICS is sharing Ethernet to an adapter that isn't the hotspot, so the hotspot adapter got nothing.</p>
+<p>Fix, in order:</p>
+<ol>
+<li><code>ncpa.cpl</code> → Ethernet → Properties → Sharing → untick "Allow other network users to connect" → OK.</li>
+<li>Toggle the Mobile hotspot <strong>off</strong>.</li>
+<li>Toggle the Mobile hotspot <strong>on</strong>. This recreates the virtual adapter.</li>
+<li>Reopen Ethernet → Properties → Sharing → tick the box → in the dropdown select <strong>Local Area Connection* 10</strong> (or whatever number it now shows — read it from <code>ncpa.cpl</code> first) → OK.</li>
+<li>Back in PowerShell, run <code>Get-NetIPAddress -InterfaceAlias "Local Area Connection* 10"</code> again.</li>
+</ol>
+<p>It must show <strong>192.168.137.1</strong>. If it does, set the phone back to DHCP and it will work. If it still shows 169.254.x.x, the binding didn't take and I'll need the rest of those command outputs.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:18 UTC</div><p>IPAddress         : fe80::4cbf:10c9:bcc5:182f%7<br />
+InterfaceIndex    : 7<br />
+InterfaceAlias    : Local Area Connection<em> 10<br />
+AddressFamily     : IPv6<br />
+Type              : Unicast<br />
+PrefixLength      : 64<br />
+PrefixOrigin      : WellKnown<br />
+SuffixOrigin      : Link<br />
+AddressState      : Preferred<br />
+ValidLifetime     : Infinite ([TimeSpan]::MaxValue)<br />
+PreferredLifetime : Infinite ([TimeSpan]::MaxValue)<br />
+SkipAsSource      : False<br />
+PolicyStore       : ActiveStore<br />
+IPAddress         : 192.168.137.1<br />
+InterfaceIndex    : 7<br />
+InterfaceAlias    : Local Area Connection</em> 10<br />
+AddressFamily     : IPv4<br />
+Type              : Unicast<br />
+PrefixLength      : 24<br />
+PrefixOrigin      : Manual<br />
+SuffixOrigin      : Manual<br />
+AddressState      : Preferred<br />
+ValidLifetime     : Infinite ([TimeSpan]::MaxValue)<br />
+PreferredLifetime : Infinite ([TimeSpan]::MaxValue)<br />
+SkipAsSource      : False<br />
+PolicyStore       : ActiveStore<br />
+PS C:\WINDOWS\system32&gt;</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:18 UTC</div><p>192.168.137.1 is there. Set the phone back to DHCP and connect.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:20 UTC</div><p>it works for my phone but on my girlfriends phone it doesnt</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:20 UTC</div><p>Check what her phone shows: does it get a 192.168.137.x address, or does it sit on "obtaining IP"?</p>
+<ul>
+<li><strong>No IP / obtaining IP</strong>: forget the network on her phone and rejoin. If still nothing, her phone may be on 5GHz-only while the hotspot is 2.4GHz, or MAC randomization is tripping it — turn off "Use randomized MAC" for that network in her Wi-Fi settings.</li>
+<li><strong>Gets 192.168.137.x but no internet</strong>: same DNS problem you had. Set her DNS to 8.8.8.8 / 1.1.1.1.</li>
+</ul>
+<p>Which is it?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-09-04 03:22 UTC</div><p>can i see how much bandwidth is beeing used off the modem in our house? someone moved in and put another ethernet cable in and now the internet has gone down dramticaly and i feel they might be crypto mining or something</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-09-04 03:22 UTC</div><p>Yes — your Totalplay router's admin page. Open a browser on the laptop and go to <code>http://192.168.1.1</code> (Totalplay's default; the login is usually printed on the router itself). Look for <strong>Device List</strong>, <strong>Connected Devices</strong>, or <strong>Traffic Statistics</strong>. Most Totalplay units show connected clients and per-device up/down totals.</p>
+<p>What you'll actually get varies by model — some ISP routers only list devices, not bandwidth per device. If yours doesn't show traffic stats, alternatives:</p>
+<ul>
+<li><strong>GlassWire</strong> or <strong>NetLimiter</strong> on your own laptop shows your traffic only, not theirs. Not useful here.</li>
+<li><strong>Wireshark</strong> on the laptop won't see their traffic either — it's a switched network, you only see your own.</li>
+<li>Best practical check: unplug their cable for a minute and see if your speed jumps. That answers it without any tooling.</li>
+</ul>
+<p>Crypto mining is a bad fit for the symptom, though. GPU mining uses almost no bandwidth — a few KB/s. Something that tanks a whole household connection is more likely torrenting, cloud backup, 4K streaming, or a security camera uploading constantly.</p>
+<p>Before you go down this road: is this a housemate whose internet you share by arrangement, or someone who plugged in without asking? That changes what's reasonable to do about it.</p></div><div class="nav"><span><a href="2026-09-03_onenote-pricing-on-pc_b1ef5362.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-09-03_english-translation-of-quer-taro-house-rental-contract_683ea9c8.html">Next →</a></span></div></div></body></html>

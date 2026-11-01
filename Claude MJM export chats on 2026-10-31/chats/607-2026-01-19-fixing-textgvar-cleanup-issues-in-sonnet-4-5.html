@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fixing TextGVar cleanup issues in Sonnet 4.5</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="606-2026-01-19-si-file-modifications-for-chart-window-integration.html">&larr; SI file modifications for chart window integration</a><a href="../index.html">All chats</a><a href="608-2026-01-20-mql5-textgvar-cleanup-and-reinit-flag-detection.html">MQL5 TextGVar cleanup and REINIT flag detection &rarr;</a></nav>
+<header class="top">
+<h1>Fixing TextGVar cleanup issues in Sonnet 4.5</h1>
+<div class="meta">Created 2026-01-19 20:02 UTC &middot; Last updated 2026-01-20 12:14 UTC &middot; 60 messages<br>Original: <a href="https://claude.ai/chat/a869d754-ea08-4fa9-a405-7e032b50789d">claude.ai/chat/a869d754-ea08-4fa9-a405-7e032b50789d</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:03 UTC</span></div><div class="body">Sonnet 4.5 screwed my SIs up.
+
+problems:
+TextGVar objects not getting cleaned up by SIs, neither on parameter changes nor on removal of SI from chart.
+Negative subwindow numbers: MJM_-1_ATR(14)__REINIT
+Changes:
+1. All SIs need to use:
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+2. Replace all &quot;MJM&quot; and &quot;MJM_&quot; hardcoded values to TEXTGVAR_PREFIX 
+3. Likewise add #define TEXTGVAR_REINIT and use it to replace all &quot;_REINIT&quot; and &quot;REINIT&quot; hardcoded values.
+4. All TextGVar_Create() calls need to be changed to receive the return value in new global variable g_TextGVar_Pattern (follows the pattern TEXTGVAR_PREFIX + &quot;_&quot; + subwindowNBR + &quot;_&quot; + shortname (including parameters in ()). 
+5. 3 new global variables:
+	a. g_IndyName for no-parameters shortname value from the already constructed shortname up to and not including &quot;(&quot;, to be used for instead of the hard-coded value in lines like: TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Plot[0]_Name&quot;, &quot;ATR&quot;); (in this case &quot;ATR&quot;)
+	b. g_TextGVar_DeletePrefix as the delete all objects prefix from g_TextGVar_Pattern up to and not including &quot;(&quot;
+6. Removes statements like &quot;string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_MA(&quot;;&quot; in OnDeinit and replace references to &quot;pattern&quot; variable with g_TextGVar_DeletePrefix
+
+Tell me if I&#x27;m on the right track and catch any mistakes, contradictions, etc.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:03 UTC</span></div><div class="body"><p>Monday, January 19, 2026, 10:47 AM CST</p>
+<p>You're mostly on track, but there are issues:</p>
+<p><strong>Contradiction/Gap:</strong>
+Point 5a says g_IndyName comes &quot;from the already constructed shortname up to and not including '('&quot; — but then you want to use it <em>inside</em> TextGVar_Create() where ShortName is being constructed. That's a chicken-and-egg problem. You need g_IndyName set <em>before</em> calling TextGVar_Create(), not derived from its output.</p>
+<p><strong>The -1 subwindow problem:</strong>
+This is a root cause issue, not solved by naming conventions. The <code>-1</code> means ChartWindowFind() is being called before the indicator window exists (during init, before first OnCalculate, or the shortname doesn't match). Fixing the naming won't fix this — you need to either:</p>
+<ul>
+<li>Defer TextGVar creation until first OnCalculate when window is confirmed</li>
+<li>Or validate subwindow &gt;= 0 before any TextGVar operations</li>
+</ul>
+<p><strong>Double underscore:</strong>
+Your example shows <code>MJM_-1_ATR(14)__REINIT</code> — is that double underscore intentional? If pattern ends with <code>)</code> and you append <code>_REINIT</code>, you get single underscore. Check if you have <code>+ &quot;_&quot; + TEXTGVAR_REINIT</code> where TEXTGVAR_REINIT already includes the underscore.</p>
+<p><strong>Timing concern:</strong>
+g_TextGVar_DeletePrefix must be set during OnInit (after shortname construction, before any TextGVar creation) so OnDeinit can use it. If TextGVar_Create() fails or isn't called, deletion will fail.</p>
+<p><strong>Suggested flow:</strong></p>
+<ol>
+<li>Construct shortname with params → &quot;ATR(14)&quot;</li>
+<li>Extract g_IndyName → &quot;ATR&quot;</li>
+<li>Get valid subwindow (or defer)</li>
+<li>Build g_TextGVar_DeletePrefix → &quot;MJM_0_ATR&quot;</li>
+<li>Call TextGVar_Create(), store result in g_TextGVar_Pattern</li>
+</ol>
+<p>Want me to look at the actual code?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:07 UTC</span></div><div class="body">One at a time
+Contradiction/Gap: where did I say I want to use g_IndyName inside TextGVar_Create()?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:07 UTC</span></div><div class="body"><p>You're right, I misread it.</p>
+<p>You said g_IndyName replaces the hardcoded &quot;ATR&quot; in the <em>last parameter</em> of TextGVar_Create() — that's a default value being stored, not part of ShortName construction.</p>
+<p>ShortName is already built before that call. You extract g_IndyName from it, then use g_IndyName as the value parameter. No contradiction.</p>
+<p>My mistake. Point 5a is fine.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:09 UTC</span></div><div class="body">thought so.
+
+The -1 subwindow problem: Why, in all this time of testing the TextGVar objects utilizing the subwindow number is this the first and only time I&#x27;ve seen it? If it&#x27;s a code placement/timing issue, it would happen every time. and it would not self-rectify, unless we&#x27;re calling ChartWindowFind multiple times between OnInit runs.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:09 UTC</span></div><div class="body"><p>Good point. If it were a fundamental timing issue, you'd have seen it consistently.</p>
+<p>So what's different about this specific occurrence? The <code>_REINIT</code> suffix in the name suggests this happened during a parameter change cycle.</p>
+<p>Question: When the -1 appeared, what string was being passed to ChartWindowFind() at that moment? If the shortname lookup string was malformed or had <code>_REINIT</code> appended to it (or some other corruption), it wouldn't match the registered indicator name and would return -1.</p>
+<p>That would explain why it's rare — only happens if the string used for window lookup gets contaminated during the reinit flow.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:12 UTC</span></div><div class="body">OK, we&#x27;ll see if it happens again. I can&#x27;t answer your questions because I wasn&#x27;t looking when it happened.
+
+NO PARAMETERS PASSED TO THE TEXTGVAR FUNCTIONS SHOULD EVER CONTAIN AN UNDERSCORE. LEAVE THE UNDERSCORES TO IT.
+
+OK,  tell me your understanding of the necessary changes.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:12 UTC</span></div><div class="body"><p><strong>Defines:</strong></p>
+<ul>
+<li><code>TEXTGVAR_PREFIX</code> = &quot;MJM&quot;</li>
+<li><code>TEXTGVAR_REINIT</code> = &quot;REINIT&quot;</li>
+</ul>
+<p><strong>Global variables:</strong></p>
+<ul>
+<li><code>g_IndyName</code> — indicator name without parameters, extracted from ShortName up to first &quot;(&quot;</li>
+<li><code>g_TextGVar_Pattern</code> — full pattern returned by TextGVar_Create(), format: MJM_0_ATR(14)</li>
+<li><code>g_TextGVar_DeletePrefix</code> — g_TextGVar_Pattern up to first &quot;(&quot;, format: MJM_0_ATR</li>
+</ul>
+<p><strong>OnInit flow:</strong></p>
+<ol>
+<li>Construct ShortName with parameters → &quot;ATR(14)&quot;</li>
+<li>Extract g_IndyName from ShortName → &quot;ATR&quot;</li>
+<li>Get subwindow number</li>
+<li>Call TextGVar_Create() using TEXTGVAR_PREFIX, subwindow, ShortName, etc.</li>
+<li>Store return value in g_TextGVar_Pattern</li>
+<li>Extract g_TextGVar_DeletePrefix from g_TextGVar_Pattern</li>
+</ol>
+<p><strong>OnDeinit:</strong></p>
+<ul>
+<li>Delete using g_TextGVar_DeletePrefix instead of locally constructed pattern variable</li>
+</ul>
+<p><strong>Throughout:</strong></p>
+<ul>
+<li>Replace all hardcoded &quot;MJM&quot; / &quot;MJM_&quot; with TEXTGVAR_PREFIX</li>
+<li>Replace all hardcoded &quot;REINIT&quot; / &quot;_REINIT&quot; with TEXTGVAR_REINIT</li>
+<li>Never pass underscores into TextGVar functions — they handle delimiter insertion internally</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:14 UTC</span></div><div class="body">I want to doubvle-check this one: Delete using g_TextGVar_DeletePrefix instead of locally constructed pattern variable
+
+Here is the OnDeinit from the ATR SI. What will be the effect of this change?
+
+void OnDeinit(const int reason)
+{
+   int myWindow = ChartWindowFind();
+   
+   //--- Clean any stale REINITs for ATR in this window
+   string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_ATR(&quot;;
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, pattern) == 0 &amp;&amp; StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+         ObjectDelete(0, objName);
+   }
+   
+   TextGVar_DeleteAll(&quot;MJM&quot;, myWindow, ShortName);
+   
+   if(reason == REASON_PARAMETERS)
+      TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;_REINIT&quot;, TimeToString(TimeCurrent()));
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:14 UTC</span></div><div class="body"><p>The key effect: you stop calling ChartWindowFind() at deinit time.</p>
+<p>Current code re-queries the window number during OnDeinit. If that call ever returns -1 (or a different number), the pattern won't match objects created during OnInit with the correct window number, and cleanup fails.</p>
+<p>Using g_TextGVar_DeletePrefix means you're using the window number captured at creation time — guaranteed to match what was used when the objects were created.</p>
+<p>Minor difference: current pattern includes the trailing &quot;(&quot; which g_TextGVar_DeletePrefix won't have. But since you're also checking for &quot;_REINIT&quot; in the name, that secondary filter keeps it safe.</p>
+<p>Same logic applies to the TextGVar_DeleteAll call — it's currently using a fresh ChartWindowFind() via myWindow. Should that also use the stored prefix/window, or does TextGVar_DeleteAll handle this internally?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:19 UTC</span></div><div class="body">&quot;The key effect: you stop calling ChartWindowFind() at deinit time.&quot;
+That&#x27;s the effect on the source code. I&#x27;m asking what&#x27;s the runtime effect. It will delete all prior TextGVar objects, right?
+
+&quot;Should that also use the stored prefix/window, or does TextGVar_DeleteAll handle this internally?&quot;
+
+I&#x27;ll give you the TextGVar_DeleteAll so you can check.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:19 UTC</span></div><div class="body"><p>Yes, runtime effect is the same: it deletes all prior TextGVar objects for this indicator in this window.</p>
+<p>The stale REINIT loop catches orphaned REINIT markers from previous parameter changes, then TextGVar_DeleteAll wipes the rest.</p>
+<p>Go ahead with TextGVar_DeleteAll.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:21 UTC</span></div><div class="body">Wait a minute. Why do we have a separate stale REINIT loop? If we&#x27;re reinitializing, shouldn&#x27;t all the SIs TextGVars get removed, because they&#x27;re all going to get rebuilt?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:21 UTC</span></div><div class="body"><p>You're right to question it.</p>
+<p>If TextGVar_DeleteAll properly deletes all objects matching the prefix (MJM_0_ATR), then the REINIT-suffixed objects should get caught too, since &quot;MJM_0_ATR(14)_REINIT&quot; starts with &quot;MJM_0_ATR&quot;.</p>
+<p>The separate loop is either:</p>
+<ol>
+<li>Redundant — TextGVar_DeleteAll already handles it</li>
+<li>Compensation — TextGVar_DeleteAll uses exact ShortName matching and misses the REINIT-suffixed variants</li>
+</ol>
+<p>Need to see TextGVar_DeleteAll to know which.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:23 UTC</span></div><div class="body">We just need to create a current REINIT object AFTER wiping out all the old ones, right? Or are we forgetting something that we&#x27;ll clobber again, which the separate loop was intended to fix?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:23 UTC</span></div><div class="body"><p>The flow should be:</p>
+<ol>
+<li>TextGVar_DeleteAll — wipes everything for this indicator</li>
+<li>If REASON_PARAMETERS, create new REINIT marker</li>
+</ol>
+<p>The separate stale REINIT loop before TextGVar_DeleteAll looks like either:</p>
+<ul>
+<li>Belt-and-suspenders paranoia</li>
+<li>A fix for a bug that no longer exists</li>
+<li>Compensation for TextGVar_DeleteAll not catching REINIT variants</li>
+</ul>
+<p>Let's see TextGVar_DeleteAll. If it matches on prefix (not exact name), the separate loop is dead code.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:45 UTC</span></div><div class="body">whole mqh file, I commented out the update function, it&#x27;s not used anywhere.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//| TextGVar.mqh - Text Object Variables for IPC                     |
+//+------------------------------------------------------------------+
+
+string TextGVar_BuildName(const string prefix, int window, const string shortName, const string varName)
+{
+   return prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot; + varName;
+}
+//+------------------------------------------------------------------+
+//| TextGVar.mqh - Text Object Variables for IPC                     |
+//+------------------------------------------------------------------+
+string TextGVar_GetGenericName(const string prefix, int window, const string shortName, const string varName)
+{
+   return prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot; + varName;
+}
+
+//+------------------------------------------------------------------+
+//| Create text object variable                                      |
+//+------------------------------------------------------------------+
+string TextGVar_Create(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string value,
+                     const int xBars = 0)
+{
+
+//Print(&quot;IN TextGVar_Create: prefix&lt;&quot;, prefix, &quot;&gt; &quot;, &quot;window&lt;&quot;, window, &quot;&gt; &quot;, &quot;shortName&lt;&quot;, shortName, &quot;&gt; &quot;, &quot;varName&lt;&quot;, varName, &quot;&gt; &quot;, &quot;value&lt;&quot;, value, &quot;&gt; &quot;, &quot;xBars&lt;&quot;, xBars, &quot;&gt;&quot;);
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+Print(&quot;IN TextGVar_Create: name&lt;&quot;, name, &quot;&gt; string name = TextGVar_BuildName(prefix, window, shortName, varName);&quot;);
+   
+   if(ObjectFind(0, name) &gt;= 0)
+      ObjectDelete(0, name);
+   
+   int totalBars = Bars(Symbol(), Period());
+   int oldestBarIndex = totalBars - 1;
+   int barIndex = oldestBarIndex - xBars;
+   if(barIndex &lt; 0) barIndex = 0;
+   
+   datetime timeCoord = iTime(Symbol(), Period(), barIndex);
+   double pipSize = (Digits() == 5 || Digits() == 3) ? Point() * 10 : Point();
+   double yPrice = iHigh(Symbol(), Period(), oldestBarIndex) + (20 * pipSize);
+   
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, yPrice))
+      return &quot;&quot;;
+   
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDarkGray);
+   ObjectSetString(0, name, OBJPROP_FONT, &quot;Consolas&quot;);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   
+   return name;
+}
+
+//+------------------------------------------------------------------+
+//| Read text object value, return default if not found              |
+//+------------------------------------------------------------------+
+string TextGVar_Read(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName,
+                     const string defaultValue = &quot;&quot;)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return defaultValue;
+   
+   return ObjectGetString(0, name, OBJPROP_TEXT);
+}
+
+////+------------------------------------------------------------------+
+////| Update existing text object value                                |
+////+------------------------------------------------------------------+
+//bool TextGVar_Update(const string prefix,
+//                     int window,
+//                     const string shortName,
+//                     const string varName,
+//                     const string newValue)
+//{
+//   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+//   
+//   if(ObjectFind(0, name) &lt; 0)
+//      return false;
+//   
+//   return ObjectSetString(0, name, OBJPROP_TEXT, newValue);
+//}
+//
+//+------------------------------------------------------------------+
+//| Delete single text object                                        |
+//+------------------------------------------------------------------+
+bool TextGVar_Delete(const string prefix,
+                     int window,
+                     const string shortName,
+                     const string varName)
+{
+   string name = TextGVar_BuildName(prefix, window, shortName, varName);
+   
+   if(ObjectFind(0, name) &lt; 0)
+      return false;
+   
+   return ObjectDelete(0, name);
+}
+
+//+------------------------------------------------------------------+
+//| Delete all objects matching prefix + window + shortName          |
+//+------------------------------------------------------------------+
+int TextGVar_DeleteAll(const string prefix, int window, const string shortName)
+{
+   string pattern = prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot;;
+   int deleted = 0;
+   
+   for(int i = ObjectsTotal(0) - 1; i &gt;= 0; i--)
+   {
+      string objName = ObjectName(0, i);
+      if(StringFind(objName, pattern) == 0)
+      {
+         if(ObjectDelete(0, objName))
+            deleted++;
+      }
+   }
+   
+   return deleted;
+}</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:46 UTC</span></div><div class="body"><p>Found the issue.</p>
+<p>TextGVar_DeleteAll pattern includes the full shortName with parameters:</p>
+<pre><code class="language-cpp">string pattern = prefix + &quot;_&quot; + IntegerToString(window) + &quot;_&quot; + shortName + &quot;_&quot;;
+// Results in: MJM_0_ATR(14)_
+</code></pre>
+<p>The separate stale REINIT loop uses:</p>
+<pre><code class="language-cpp">string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_ATR(&quot;;
+// Results in: MJM_0_ATR(
+</code></pre>
+<p>That catches ATR with ANY parameters — so if you had ATR(14) and changed to ATR(20), the stale loop catches <code>MJM_0_ATR(14)_REINIT</code> which TextGVar_DeleteAll (called with new shortName &quot;ATR(20)&quot;) would miss.</p>
+<p><strong>Your g_TextGVar_DeletePrefix solves this.</strong> Since it's the pattern up to &quot;(&quot; (e.g., &quot;MJM_0_ATR&quot;), it catches all parameter variants. The separate stale REINIT loop becomes redundant.</p>
+<p>New OnDeinit could just be:</p>
+<ol>
+<li>Delete everything starting with g_TextGVar_DeletePrefix</li>
+<li>If REASON_PARAMETERS, create new REINIT marker</li>
+</ol>
+<p>You might not even need TextGVar_DeleteAll anymore — or modify it to accept a prefix-only parameter.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:48 UTC</span></div><div class="body">OK, so what happens if we have 2 EMAs on the main chart window 0 (ATR will never have subwindow 0) with different parameters. One would wipe out the other&#x27;s TextGVars, right?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:48 UTC</span></div><div class="body"><p>Right. If g_TextGVar_DeletePrefix is &quot;MJM_0_EMA&quot;, both EMA(9) and EMA(21) would have the same prefix, and whichever deinits first wipes the other's TextGVars.</p>
+<p>So the stale REINIT loop isn't redundant — it's specifically scoped to only delete objects that:</p>
+<ol>
+<li>Start with the parameter-less prefix (catches all param variants)</li>
+<li>AND contain &quot;_REINIT&quot; (avoids killing active TextGVars)</li>
+</ol>
+<p>TextGVar_DeleteAll with full shortName stays safe because it includes parameters — EMA(9) only deletes MJM_0_EMA(9)_* stuff.</p>
+<p>g_TextGVar_DeletePrefix up to &quot;(&quot; only works safely for the REINIT cleanup, not as a general delete pattern.</p>
+<p>Revised thinking:</p>
+<ul>
+<li>Keep g_TextGVar_Pattern (full pattern with params) — for exact matching</li>
+<li>g_TextGVar_DeletePrefix (up to &quot;(&quot;) — only for REINIT cleanup loop, not for TextGVar_DeleteAll</li>
+<li>TextGVar_DeleteAll continues using full ShortName with parameters</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:50 UTC</span></div><div class="body">So, for almost all cases, the shortname WITH parameters would be safer and catch only the sets we want. But we introduced the subwindow number to fix what problem?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:50 UTC</span></div><div class="body"><p>Same indicator with same parameters in different subwindows.</p>
+<p>ATR(14) in window 1 and ATR(14) in window 2 would both be &quot;MJM_ATR(14)_*&quot; without the window number. They'd collide.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:50 UTC</span></div><div class="body">OK, what would we NOT catch with both subwindow and shortname including parameters?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:50 UTC</span></div><div class="body"><p>Stale REINIT markers from previous parameter values.</p>
+<p>You change ATR(14) to ATR(20). The old <code>MJM_1_ATR(14)_REINIT</code> stays orphaned because TextGVar_DeleteAll is now looking for <code>MJM_1_ATR(20)_*</code>.</p>
+<p>That's the one edge case the parameter-less prefix + REINIT check solves.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:51 UTC</span></div><div class="body">OK, so that&#x27;s what the loop does for us.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:51 UTC</span></div><div class="body"><p>Yes. The loop stays. It specifically catches orphaned REINIT markers from parameter changes that TextGVar_DeleteAll can't see.</p>
+<p>So revised global variables:</p>
+<ul>
+<li><code>g_TextGVar_Pattern</code> — full pattern from TextGVar_Create(), used for exact matching</li>
+<li><code>g_TextGVar_DeletePrefix</code> — up to &quot;(&quot;, used ONLY in the stale REINIT loop</li>
+</ul>
+<p>TextGVar_DeleteAll continues receiving full ShortName with parameters.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:53 UTC</span></div><div class="body">OK, so when we do the deleteall, will we or won&#x27;t we catch existing REINIT flags?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:53 UTC</span></div><div class="body"><p>Yes. TextGVar_DeleteAll pattern is <code>MJM_0_ATR(14)_</code> and the REINIT object is <code>MJM_0_ATR(14)_REINIT</code> — starts with the pattern, gets deleted.</p>
+<p>The stale REINIT loop only matters for orphans from <em>different</em> parameters (ATR(10)_REINIT when you're now ATR(14)).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:55 UTC</span></div><div class="body">So the loop catches all REINIT flags without specifying parameters, the delete all specifies parameters.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:55 UTC</span></div><div class="body"><p>Correct. Order is:</p>
+<ol>
+<li>Loop: delete all REINIT flags for this indicator/window (any parameters)</li>
+<li>TextGVar_DeleteAll: delete all TextGVars for this specific indicator/window/parameters</li>
+<li>If REASON_PARAMETERS: create new REINIT marker</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:55 UTC</span></div><div class="body">If we do</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:55 UTC</span></div><div class="body"><p>Go ahead.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:56 UTC</span></div><div class="body">if we do #3 in OnDeinit, we won&#x27;t have the correct parameters, will we?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:56 UTC</span></div><div class="body"><p>Right. OnDeinit has the OLD parameters. You create <code>MJM_1_ATR(14)_REINIT</code>, then OnInit runs with new parameters and looks for... what?</p>
+<p>If OnInit searches using g_TextGVar_DeletePrefix (parameter-less), it finds any REINIT for ATR in that window — works.</p>
+<p>If OnInit searches using full ShortName with new parameters, it looks for <code>MJM_1_ATR(20)_REINIT</code> and misses the old one.</p>
+<p>How is OnInit currently finding the REINIT marker?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 20:58 UTC</span></div><div class="body">The SIs don&#x27;t look for it, they just create it. 
+
+Never mind, I was glitching. #3 is fine except I&#x27;d like to go the other way. If NOT (any of the reasons meaning the indicator is stopping) create the REINIT flag, otherwise create it.
+
+Make sense?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 20:58 UTC</span></div><div class="body"><p>Yes. Create REINIT for any reinit scenario (parameter change, timeframe change, template reapply, etc.), skip it only when the indicator is truly going away.</p>
+<p>So:</p>
+<pre><code class="language-cpp">if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+   // create REINIT marker
+</code></pre>
+<p>Or flip it positive — list the reasons that ARE restarts:</p>
+<pre><code class="language-cpp">if(reason == REASON_PARAMETERS || reason == REASON_CHARTCHANGE || reason == REASON_TEMPLATE || reason == REASON_RECOMPILE)
+   // create REINIT marker
+</code></pre>
+<p>Which approach do you prefer?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:00 UTC</span></div><div class="body">if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+   // create REINIT marker
+
+OK, let&#x27;s recap, what are you going to do, specifically and completely?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:00 UTC</span></div><div class="body"><p><strong>Defines to add (each SI):</strong></p>
+<ul>
+<li><code>#define TEXTGVAR_PREFIX &quot;MJM&quot;</code></li>
+<li><code>#define TEXTGVAR_REINIT &quot;REINIT&quot;</code></li>
+</ul>
+<p><strong>Global variables to add (each SI):</strong></p>
+<ul>
+<li><code>g_IndyName</code> — indicator name extracted from ShortName up to &quot;(&quot;</li>
+<li><code>g_TextGVar_Pattern</code> — return value from TextGVar_Create()</li>
+<li><code>g_TextGVar_DeletePrefix</code> — g_TextGVar_Pattern up to &quot;(&quot;</li>
+</ul>
+<p><strong>OnInit:</strong></p>
+<ol>
+<li>Construct ShortName with parameters → &quot;ATR(14)&quot;</li>
+<li>Extract g_IndyName → &quot;ATR&quot;</li>
+<li>Get subwindow number</li>
+<li>Call TextGVar_Create() with TEXTGVAR_PREFIX, capture return in g_TextGVar_Pattern</li>
+<li>Extract g_TextGVar_DeletePrefix from g_TextGVar_Pattern</li>
+</ol>
+<p><strong>OnDeinit:</strong></p>
+<ol>
+<li>Loop: delete all objects starting with g_TextGVar_DeletePrefix that contain TEXTGVAR_REINIT</li>
+<li>TextGVar_DeleteAll with TEXTGVAR_PREFIX, window, full ShortName</li>
+<li>If <code>reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE</code>, create REINIT marker</li>
+</ol>
+<p><strong>Throughout:</strong></p>
+<ul>
+<li>Replace all hardcoded &quot;MJM&quot; / &quot;MJM_&quot; with TEXTGVAR_PREFIX</li>
+<li>Replace all hardcoded &quot;REINIT&quot; / &quot;_REINIT&quot; with TEXTGVAR_REINIT</li>
+<li>No underscores passed to TextGVar functions</li>
+</ul>
+<p>Anything missing?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:02 UTC</span></div><div class="body">I think that&#x27;s it. We&#x27;ll apply that to the ATR SI, test, and when it&#x27;s all good, do the final, tested fixes to the other 13. Agreed?
+
+And no unnecessary changes, commented line or in-line comment deletions, etc? Agreed?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:02 UTC</span></div><div class="body"><p>Agreed on both counts.</p>
+<p>Ready for the ATR SI file.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:16 UTC</span></div><div class="body">Add two more things. 
+
+ALL the internal file names in the comment block at the top need to match the actual file names Ind_* MJM.mq5 (SPACE before MJM). 
+
+DO NOT CHANGE &quot; MJM&quot; INTO &quot;_MJM&quot; WHEN RETURNING FILES FOR DOWNLOAD.
+
+Here&#x27;s the code:<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//| Ind_ATR.mq5 - Average True Range                                 |
+//+------------------------------------------------------------------+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;ATR&quot;
+#property indicator_type1   DRAW_LINE
+
+input int   InpPeriod = 14;           // Period
+input color InpATRColor = clrDodgerBlue; // ATR Color
+input int   InpATRWidth = 2;          // ATR Width
+
+double ATRBuffer[];
+string ShortName;
+
+int OnInit()
+{
+   int myWindow = ChartWindowFind();
+   
+   SetIndexBuffer(0, ATRBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, InpPeriod);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpATRColor);
+   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpATRWidth);
+
+   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+   
+   //--- Indicator metadata
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;ShortName&quot;, ShortName);
+   
+   //--- Plot metadata
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Plot[0]_Name&quot;, &quot;ATR&quot;);
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Plot[0]_Color&quot;, ColorToString(InpATRColor));
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Plot[0]_Width&quot;, IntegerToString(InpATRWidth));
+   
+   //--- Parameter metadata
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;ParmCount&quot;, &quot;1&quot;);
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Parm[0]_Name&quot;, &quot;Period&quot;);
+   TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;Parm[0]_Value&quot;, IntegerToString(InpPeriod));
+   
+//   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+//   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+//   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+//   
+//   TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;Line &quot; + IntegerToString(0) + &quot;_Color&quot;, ColorToString(InpATRColor));
+//   TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;Line &quot; + IntegerToString(0) + &quot;_Width&quot;, IntegerToString(InpATRWidth));
+//   
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   int myWindow = ChartWindowFind();
+   
+   //--- Clean any stale REINITs for ATR in this window
+   string pattern = &quot;MJM_&quot; + IntegerToString(myWindow) + &quot;_ATR(&quot;;
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, pattern) == 0 &amp;&amp; StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+         ObjectDelete(0, objName);
+   }
+   
+   TextGVar_DeleteAll(&quot;MJM&quot;, myWindow, ShortName);
+   
+   if(reason == REASON_PARAMETERS)
+      TextGVar_Create(&quot;MJM&quot;, myWindow, ShortName, &quot;_REINIT&quot;, TimeToString(TimeCurrent()));
+}
+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt; InpPeriod) return(0);
+   
+   int start;
+   if(prev_calculated == 0)
+   {
+      ATRBuffer[0] = high[0] - low[0];
+      double sum = 0;
+      for(int i = 1; i &lt; InpPeriod; i++)
+      {
+         double tr = MathMax(high[i] - low[i], 
+                     MathMax(MathAbs(high[i] - close[i-1]), 
+                             MathAbs(low[i] - close[i-1])));
+         ATRBuffer[i] = tr;
+         sum += tr;
+      }
+      ATRBuffer[InpPeriod-1] = sum / InpPeriod;
+      start = InpPeriod;
+   }
+   else
+      start = prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      double tr = MathMax(high[i] - low[i], 
+                  MathMax(MathAbs(high[i] - close[i-1]), 
+                          MathAbs(low[i] - close[i-1])));
+      ATRBuffer[i] = (ATRBuffer[i-1] * (InpPeriod - 1) + tr) / InpPeriod;
+   }
+   
+   return(rates_total);
+}</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:18 UTC</span></div><div class="body"><p>Changes made:</p>
+<ol>
+<li>Header comment: &quot;Ind_ATR MJM.mq5&quot;</li>
+<li>Added <code>#define TEXTGVAR_PREFIX &quot;MJM&quot;</code> and <code>#define TEXTGVAR_REINIT &quot;REINIT&quot;</code></li>
+<li>Added globals: <code>g_IndyName</code>, <code>g_TextGVar_Pattern</code>, <code>g_TextGVar_DeletePrefix</code></li>
+<li>OnInit extracts g_IndyName from ShortName, captures return from first TextGVar_Create into g_TextGVar_Pattern, extracts g_TextGVar_DeletePrefix</li>
+<li>Replaced hardcoded &quot;ATR&quot; in Plot[0]_Name with g_IndyName</li>
+<li>All &quot;MJM&quot; → TEXTGVAR_PREFIX</li>
+<li>OnDeinit stale REINIT loop now uses g_TextGVar_DeletePrefix and TEXTGVAR_REINIT</li>
+<li>OnDeinit condition changed from <code>reason == REASON_PARAMETERS</code> to <code>reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE</code></li>
+<li>REINIT marker creation uses TEXTGVAR_REINIT (no underscore — TextGVar_BuildName adds it)</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:30 UTC</span></div><div class="body">Still not picking up after itself. I haven&#x27;t even tried testing IS with it yet.<p class="note">[File attached: 1768858192331_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:30 UTC</span></div><div class="body"><p>The -1 is back: <code>MJM_-1_ATR(14)_REINIT</code></p>
+<p>Problem: OnDeinit still calls <code>ChartWindowFind()</code> and uses <code>myWindow</code> for both TextGVar_DeleteAll and the REINIT creation. When ChartWindowFind() returns -1 at deinit time:</p>
+<ol>
+<li>TextGVar_DeleteAll looks for <code>MJM_-1_ATR(14)_*</code> — misses the real objects at window 1</li>
+<li>REINIT gets created with -1</li>
+</ol>
+<p>Fix: Store window number in a global during OnInit, use it in OnDeinit.</p>
+<p>Add global:</p>
+<pre><code class="language-cpp">int g_MyWindow;
+</code></pre>
+<p>OnInit:</p>
+<pre><code class="language-cpp">g_MyWindow = ChartWindowFind();
+</code></pre>
+<p>OnDeinit — remove <code>int myWindow = ChartWindowFind();</code> and use <code>g_MyWindow</code> everywhere.</p>
+<p>Want me to generate the corrected file?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:34 UTC</span></div><div class="body">that&#x27;s a side issue. The point is I added the ATR with period 14, all looked good. (image 1). Then I changed the period to 5 and got image 2. First, let&#x27;s make sure that the objects for the old period setting are removed properly. The -1 has nothing to do with that, because the SIs don&#x27;t look for their own REINIT flags.<p class="note">[File attached: 1768858453053_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768858455290_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:34 UTC</span></div><div class="body"><p>Actually, the -1 IS the cause. Look at what happens:</p>
+<p>OnDeinit runs with old parameters (ATR(14)):</p>
+<ol>
+<li><code>int myWindow = ChartWindowFind();</code> → returns -1</li>
+<li>TextGVar_DeleteAll(TEXTGVAR_PREFIX, <strong>-1</strong>, &quot;ATR(14)&quot;)</li>
+<li>Pattern becomes <code>MJM_-1_ATR(14)_</code></li>
+<li>Real objects are <code>MJM_1_ATR(14)_*</code> — no match, nothing deleted</li>
+</ol>
+<p>The stale REINIT loop has the same problem — g_TextGVar_DeletePrefix is <code>MJM_1_ATR</code> (correct, from OnInit), but the objects survive because TextGVar_DeleteAll with the bad window number runs and deletes nothing.</p>
+<p>The fix is the same: store window number in a global during OnInit, use that in OnDeinit instead of calling ChartWindowFind() again.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:47 UTC</span></div><div class="body">Wait a minute. We can get the window number in OnInit, put it in a variable global to the local code, use it in OnDeinit, get it again in OnInit. That won&#x27;t get the -1, I believe.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:47 UTC</span></div><div class="body"><p>Correct. That's exactly the fix.</p>
+<ol>
+<li>OnInit runs → <code>g_MyWindow = ChartWindowFind();</code> → gets valid window (1)</li>
+<li>Parameter change triggers OnDeinit → uses <code>g_MyWindow</code> (1) → cleanup works</li>
+<li>OnInit runs again → <code>g_MyWindow = ChartWindowFind();</code> → gets valid window (1)</li>
+</ol>
+<p>ChartWindowFind() returning -1 only happens during OnDeinit because the indicator window context is already being torn down. By using the value stored during OnInit, you sidestep the issue entirely.</p>
+<p>Want me to generate the corrected file with <code>g_MyWindow</code>?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:51 UTC</span></div><div class="body">I&#x27;ll make the change here than give you the other 13 files.
+
+it&#x27;s already in OnInit. It was a mistake to add it for the second time to OnDeinit. I knew it wasn&#x27;t doing this before. I simply deleted the line in OnDeinit.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:51 UTC</span></div><div class="body"><p>Got it. The <code>int myWindow = ChartWindowFind();</code> in OnDeinit was shadowing the value already set in OnInit. Deleting that line means OnDeinit now uses the correct window number from initialization.</p>
+<p>Ready for the other 13.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:55 UTC</span></div><div class="body">it was called twice to a local variable, so I had to declare a global and change all references to &quot;myWindow&quot; accordingly.
+
+string g_MyWindow;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:55 UTC</span></div><div class="body"><p>That should be <code>int g_MyWindow;</code> — ChartWindowFind() returns an integer.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:55 UTC</span></div><div class="body">right you are</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:55 UTC</span></div><div class="body"><p>Ready for the 13 files.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 21:57 UTC</span></div><div class="body">works perfectly now. OK, now I need to test it in tandem with IS.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 21:57 UTC</span></div><div class="body"><p>Go ahead. I'll wait for the results.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-19 22:07 UTC</span></div><div class="body">for tomorrow (I&#x27;m pooped), the ATR seemed to be cleaning up after itself, but just now running it along with IS, it flopped. Also, after making a parameter change, It correctly put out a REINIT flag, but IS isn&#x27;t picking it up on the scan for REINITS. We&#x27;ll start with that tomorrow.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-19 22:08 UTC</span></div><div class="body"><p>Got it. Two issues for tomorrow:</p>
+<ol>
+<li>ATR cleanup failing when IS is also running</li>
+<li>IS not detecting ATR's REINIT flag during scan</li>
+</ol>
+<p>Rest up.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 12:14 UTC</span></div><div class="body">give me a prompt to start with fresh tomorrow</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 12:14 UTC</span></div><div class="body"><hr />
+<p><strong>Prompt for tomorrow:</strong></p>
+<p>Continuing MQL5 TextGVar cleanup work.</p>
+<p><strong>Context:</strong></p>
+<ul>
+<li>14 SIs (Standard Indicators) use TextGVar objects for IPC</li>
+<li>IS (Indicator Scanner) scans for REINIT flags from SIs after parameter changes</li>
+<li>Implemented fixes to ATR SI: global window number (g_MyWindow), TEXTGVAR_PREFIX/TEXTGVAR_REINIT defines, g_IndyName, g_TextGVar_Pattern, g_TextGVar_DeletePrefix</li>
+<li>ATR now creates REINIT flags correctly on parameter change</li>
+</ul>
+<p><strong>Current issues:</strong></p>
+<ol>
+<li>ATR cleanup failing when IS is also running (was working standalone)</li>
+<li>IS not detecting ATR's REINIT flag during scan</li>
+</ol>
+<p><strong>Key files needed:</strong></p>
+<ul>
+<li>Ind_ATR MJM.mq5 (current working version)</li>
+<li>TextGVar MJM.mqh</li>
+<li>IS source file (Indicator Scanner)</li>
+</ul>
+<p><strong>Naming conventions:</strong></p>
+<ul>
+<li>TextGVar pattern: MJM_[window]<em>[ShortName]</em>[varName]</li>
+<li>REINIT flag: MJM_[window]_[ShortName]_REINIT</li>
+<li>g_TextGVar_DeletePrefix: pattern up to &quot;(&quot; for catching orphaned REINITs across parameter changes</li>
+</ul>
+<p>Start with IS source to see how it scans for REINIT flags.</p>
+<hr />
+</div></div>
+<nav class="pager"><a href="606-2026-01-19-si-file-modifications-for-chart-window-integration.html">&larr; SI file modifications for chart window integration</a><a href="../index.html">All chats</a><a href="608-2026-01-20-mql5-textgvar-cleanup-and-reinit-flag-detection.html">MQL5 TextGVar cleanup and REINIT flag detection &rarr;</a></nav></div></body></html>

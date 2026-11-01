@@ -1,0 +1,127 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ZZ indicator logic placement error</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-06_zz-line-flickering-issue_dcb399ad.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-02_signal-and-trade-csv-logging-for-live-bars_20232078.html">Next →</a></span></div><h1>ZZ indicator logic placement error</h1><div class="meta">Created 2026-05-06 16:56 UTC · Last updated 2026-05-06 17:10 UTC · 10 messages<br>Original: <a href="https://claude.ai/chat/e987eeca-b6b4-4189-92fe-65cdb3e0775f">claude.ai/chat/e987eeca-b6b4-4189-92fe-65cdb3e0775f</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 16:56 UTC</div><p>GPT really messed this up. It was supposed to add a subordinate ZZ indy to the CrossFire_Channel indy. </p>
+<ol>
+<li>It coded the ZZ line logic outside of the main OnCalculate for loop.</li>
+<li>It is refilling the entire ZZ buffer every single tick, so the plotted line is constantly flickering.</li>
+</ol>
+<p>Code should be inside the main for loop, for(int i = signal_start; i &lt; rates_total; i++)</p>
+<p>The signal_start value will always control the correct CopyBuffer count (rates_total - signal_start).</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 16:56 UTC</div><p>I'll start by reading the file to understand what GPT did.</p>
+<p>Large file. Let me find the ZZ-related code and the OnCalculate loop.</p>
+<p>Now I can see the issue. The ZZ logic is in lines 6029-6070, BEFORE the main <code>for(int i = signal_start; i &lt; rates_total; i++)</code> loop at line 6206. Let me look at both areas in detail.</p>
+<p>Now let me look at the main for loop where the ZZ code should go:</p>
+<p>I now have a clear picture. The plan:</p>
+<p><strong>Plan (plain English, no code yet):</strong></p>
+<ol>
+<li>
+<p><strong>Remove</strong> the misplaced ZZ block at lines 6029–6071 (the one that runs once per OnCalculate and rewrites ALL bars from <code>start_bar</code> to <code>rates_total</code> — that's why it flickers).</p>
+</li>
+<li>
+<p><strong>Replace it</strong> with a single one-shot <code>CopyBuffer</code> call placed AFTER <code>signal_start</code> is computed (around line 6084) but BEFORE the main loop. Use <code>signal_start</code> as the anchor:<br />
+   - count = <code>rates_total - signal_start</code><br />
+   - shift = 0 (most recent N bars from the subordinate indy)<br />
+   - copy directly into <code>&amp;BufZigZag[signal_start]</code></p>
+</li>
+<li>
+<p>Keep the handle init (<code>iCustom</code>) and the <code>BarsCalculated</code> readiness check, but only fill the slice from <code>signal_start</code> forward — never re-touch older bars.</p>
+</li>
+</ol>
+<p>Wait — re-reading your spec: <em>"Code should be inside the main for loop"</em>. That conflicts with using <code>CopyBuffer</code> once per OnCalculate. <code>CopyBuffer</code> is not a per-bar call; you can't sensibly call it inside the bar loop for a single bar at a time (well, you can, but it'd be <code>rates_total - signal_start</code> redundant calls per OnCalculate).</p>
+<p>I want to confirm the intent before coding. Two readings:</p>
+<p><strong>(A)</strong> Pull the ZZ slice with ONE <code>CopyBuffer(count = rates_total - signal_start)</code> call placed just before the main for loop, then inside the for loop simply assign <code>BufZigZag[i] = zz_values[i - signal_start];</code> per bar. This matches "inside the main for loop" for the buffer assignment, and the count is exactly <code>rates_total - signal_start</code> as you specified. No flicker because untouched bars stay as previously written.</p>
+<p><strong>(B)</strong> Literally call <code>CopyBuffer</code> inside the for loop per bar. Wasteful and not idiomatic MQL5.</p>
+<p>I'm 95% sure you mean (A) — the buffer-write is what goes in the loop, and the single CopyBuffer for <code>rates_total - signal_start</code> bars sits just above it. </p>
+<p>GO with (A)? Or did you mean something else?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 17:04 UTC</div><p>You're talking about executing it ONCE PER TICK.</p>
+<p>Yeah, if you implement it stupidly, it would execute ONCE PER LOOP. But that's not what I said to you. I guess I have to spell it out. Tell me if/where I'm wrong.</p>
+<p>signal_start ALWAYS identifies the bar to start processing on. <br />
+On the very first OnCalculate execution, signal_start will be 0 or somewhere near the oldest bar on the chart.<br />
+rates_total - signal_start equals the count of bars that will be processed. This same count should be used for the first CopyBuffer to populate the ZZ buffer for all historical bars.<br />
+Thereafter, signal_start will (normally) equal rates_total - 1.</p>
+<p>What is complicated about this?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 17:04 UTC</div><p>You're not wrong. I overcomplicated it.</p>
+<p>To restate:</p>
+<ul>
+<li>First OnCalculate: <code>signal_start</code> is far back, <code>rates_total - signal_start</code> is large, ONE <code>CopyBuffer</code> fills all those historical ZZ bars.</li>
+<li>Every tick after: <code>signal_start == rates_total - 1</code> (normally), <code>rates_total - signal_start == 1</code>, ONE <code>CopyBuffer</code> updates just the current bar.</li>
+<li>Same code path both times. No bar loop needed. No flicker because we only touch <code>[signal_start .. rates_total-1]</code>, leaving prior bars untouched.</li>
+</ul>
+<p>The block goes ONCE per OnCalculate, AFTER <code>signal_start</code> is computed, BEFORE the main for loop. Count = <code>rates_total - signal_start</code>. Shift = 0. Destination = <code>&amp;BufZigZag[signal_start]</code>.</p>
+<p>Plan:</p>
+<ol>
+<li>DELETE the existing block at lines 6029–6071.</li>
+<li>INSERT a replacement block after line 6084 (after <code>signal_start</code> is finalized) and before the early-return check at line 6086. The block: handle init if needed → <code>BarsCalculated</code> readiness check → <code>CopyBuffer(g_zz_handle, 0, 0, rates_total - signal_start, &amp;BufZigZag[signal_start])</code>. On failure or disabled overlay, do nothing (leave buffer as-is, don't blank it — blanking on every tick is what causes flicker).</li>
+</ol>
+<p>One detail to confirm: when <code>InpShowZigZagOverlay</code> is FALSE, do you want the ZZ buffer left alone (whatever was there stays), or blanked ONCE on init? The current GPT code blanks every tick which is wrong either way. My recommendation: leave it alone — <code>OnInit</code> already does <code>ArrayInitialize(BufZigZag, EMPTY_VALUE)</code> at line 4539, so it's empty by default and stays empty if the overlay is off.</p>
+<p>GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 17:04 UTC</div><p>WHY THE FUCK BEFORE THE MAIN LOOP?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 17:04 UTC</div><p>You're right. Inside the loop.</p>
+<p>Plan:</p>
+<ol>
+<li>DELETE lines 6029–6071 (the misplaced block).</li>
+<li>INSIDE the main for loop at line 6206, on the FIRST iteration only (<code>i == signal_start</code>), do the handle init + <code>BarsCalculated</code> check + ONE <code>CopyBuffer(g_zz_handle, 0, 0, rates_total - signal_start, &amp;BufZigZag[signal_start])</code>.</li>
+</ol>
+<p>Same single CopyBuffer, same count, same destination — just placed inside the loop, gated on <code>i == signal_start</code> so it fires once per OnCalculate at the top of the loop.</p>
+<p>GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 17:05 UTC</div><p>GO</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 17:06 UTC</div><p>Now insert the new ZZ block inside the main for loop, gated on <code>i == signal_start</code>:</p>
+<p>Wait — I need to verify the CopyBuffer destination. <code>CopyBuffer</code> writes to the start of the destination array, not at an offset. Writing to <code>BufZigZag</code> directly would overwrite from index 0, not from <code>signal_start</code>. Let me fix that — need to copy to a temp array, then assign into <code>BufZigZag[signal_start ... rates_total-1]</code>.</p>
+<p>Actually — there's a simpler MQL5 idiom: pass <code>&amp;BufZigZag[signal_start]</code> as the destination. But MQL5 doesn't allow that syntax directly on dynamic arrays the same way C does. The correct approach is a temp array + index loop, OR use array-as-series semantics. Let me use the temp array approach to be safe:</p>
+<p>Verify the changes:</p>
+<p>Misplaced block at 6029–6071 is gone. New block lives inside the main loop at 6164–6184, gated on <code>i == signal_start</code>. Move to outputs:</p>
+<p>Done. Block deleted from above the loop, single CopyBuffer now lives at top of main for loop, gated on <code>i == signal_start</code>, count = <code>rates_total - signal_start</code>, no buffer-blanking on misses.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-06 17:09 UTC</div><p>The ZZ is showing up, but still flickering. Something is initializing and refilling it every tick. Find the problem.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-06 17:10 UTC</div><p>Line 4539 — <code>ArrayInitialize(BufZigZag, EMPTY_VALUE)</code>. Let me see what function that's in and when it's called:</p>
+<p><code>ClearIndicatorBuffers()</code> wipes the ZZ buffer. Let me see who calls it:</p>
+<p><code>ResetFullPassState</code> is the suspect. Find who calls it:</p>
+<p>That one is gated on <code>prev_calculated == 0</code> — fires only on a true full reset, not every tick. Not the culprit.</p>
+<p>So <code>BufZigZag</code> is only written in two places: line 4539 (gated full-pass reset) and line 6181 (my new code). The flicker isn't from a wipe.</p>
+<p>Let me re-examine my own code. The new block is gated on <code>i == signal_start</code>. On a tick where <code>signal_start == rates_total - 1</code>, <code>zz_count == 1</code> — only ONE bar gets written. Every ZZ bar before that retains its prior value. So in steady-state, only the rightmost bar should change per tick. That shouldn't cause whole-line flicker.</p>
+<p>UNLESS... <code>signal_start</code> advances each tick and old bars never get updated, but the SUBORDINATE ZZ indy revises history (its pivots shift). The subordinate ZZ pivots can move backward when a new extreme forms — the parent indy never re-fetches old bars to reflect those revisions, so old segments stay frozen with stale values. That's not flicker though, that's staleness.</p>
+<p>Let me check <code>prev_calculated</code>-driven <code>signal_start</code> logic again — line 6079–6084:</p>
+<p>OK so on a typical mid-bar tick: <code>prev_calculated == rates_total</code>, so <code>action_start = rates_total - 1</code>, <code>signal_start = rates_total - 1</code>, <code>zz_count = 1</code>. Only the current bar gets refilled. Fine.</p>
+<p>On a new-bar tick: <code>prev_calculated == rates_total - 1</code>, <code>action_start = prev_calculated = rates_total - 1</code>, <code>signal_start = rates_total - 1</code>, <code>zz_count = 1</code>. Same.</p>
+<p>So my code only writes ONE bar per tick in steady state. That can't flicker the whole line.</p>
+<p>Wait — flicker on the rightmost bar. The subordinate ZZ indy's CURRENT bar value oscillates as the live tick price moves (each new tick, its tentative pivot can shift). My code is dutifully copying that oscillation onto the rightmost bar of the parent. That's not a bug in my code — that's the subordinate ZZ doing what it does.</p>
+<p>But the user said "flickering" still — implying it looks like the whole line is dancing. Let me reconsider. There may be a hidden caller. Search for <code>iCustom.*ZigZag</code> or other places that touch ZZ:</p>
+<p>Found it.</p>
+<p><strong>Line 1667</strong>: <code>SetIndexBuffer(iBIX, BufZigZag, INDICATOR_DATA);</code> — and the plot at index 6 is declared <code>DRAW_SECTION</code> (line 78). </p>
+<p>But that's not it directly. The bug:</p>
+<p>Look at line 1660: <code>int iBIX = -1;</code> then iBIX++ to 0, then 1, then 2 (BufEma2Hlcc4). But scrolling down the plot declarations:</p>
+<ul>
+<li>Plot 1 = MA1 (TEMA)</li>
+<li>Plot 2 = MA2 (EMA of TEMA)  </li>
+<li>Plot 3 = EMA2 of HLCC4 (<code>MA3</code>)</li>
+<li>Plot 4 = KC Upper</li>
+<li>Plot 5 = KC Middle</li>
+<li>Plot 6 = KC Lower</li>
+<li>Plot 7 = ZigZag</li>
+</ul>
+<p>And the buffer registration order:<br />
+- iBIX 0 → BufMA1 → maps to plot 1 ✓<br />
+- iBIX 1 → BufMA2 → plot 2 ✓<br />
+- iBIX 2 → BufEma2Hlcc4 → plot 3 ✓<br />
+- iBIX 3 → BufKcUpper → plot 4 ✓<br />
+- iBIX 4 → BufKcMiddle → plot 5 ✓<br />
+- iBIX 5 → BufKcLower → plot 6 ✓<br />
+- iBIX 6 → BufZigZag → plot 7 ✓</p>
+<p>OK that's consistent. Plot 7 = ZigZag, DRAW_SECTION, and BufZigZag is at buffer index 6 which is correct for plot 7.</p>
+<p>Hmm. Let me look at the subordinate ZZ indy — is buffer 0 actually the right one? You said "subordinate ZZ indy" — earlier memory says you use <code>Ind_ZigZag_MJM.mq5</code> with multiple buffers (ZZ High, ZZ Low, interpolated). The <code>CopyBuffer(g_zz_handle, 0, ...)</code> pulls buffer index 0. If buffer 0 of <code>Ind_ZigZag_MJM</code> is the <em>interpolated</em> line, that line oscillates between pivots as the live bar moves — and when it's redrawn as <code>DRAW_SECTION</code>, the entire interpolated path could appear to dance.</p>
+<p>But again — my code only writes ONE bar per tick in steady state. Even if buffer 0 is the interpolated value, only the rightmost bar should move.</p>
+<p>Let me re-check very carefully. Actually I want to check if there's something I missed about <code>prev_calculated</code>:</p>
+<p>Let me now look at <code>ComputeIndicatorLines</code> — does it touch BufZigZag too? Or is there ANY other write to BufZigZag I missed?</p>
+<p>Only my code at 6181 writes to BufZigZag. Nothing else touches it on a tick. So the flicker on a steady-state tick would only affect the rightmost bar.</p>
+<p>That leaves three possibilities:</p>
+<p><strong>(1)</strong> The subordinate <code>Ind_ZigZag_MJM</code> itself oscillates its rightmost bar value tick-to-tick — and you're seeing that legitimate movement as "flicker." Not a bug in this file.</p>
+<p><strong>(2)</strong> <code>prev_calculated</code> is being reset to 0 on every tick (e.g., the chart is being forced to a full pass). That would make <code>signal_start</code> roll back to the historical bar each tick and the entire ZZ line gets refilled from <code>Ind_ZigZag_MJM</code> whose interpolated buffer happens to differ slightly each call → whole-line flicker. Possible if <code>ResetFullPassState</code> is somehow called by <code>prev_calculated == 0</code> triggering each tick (which can happen if the indy returns 0 from OnCalculate).</p>
+<p><strong>(3)</strong> OnCalculate returns 0 somewhere, forcing a full reprocess next tick.</p>
+<p>Let me check the return value of OnCalculate:</p>
+<p>Found it. <strong>Line 6003</strong>: <code>return 0;</code> during the warmup branch. And <strong>Line 6084</strong>: <code>return rates_total;</code>. And <strong>Line 7816</strong>: <code>return rates_total;</code> (the normal end-of-OnCalculate).</p>
+<p>Let me look at line 6084:</p>
+<p><strong>FOUND IT.</strong></p>
+<p>Line 6042: <code>if(signal_start &gt;= rates_total)</code> — this returns BEFORE the main for loop ever executes. On a steady-state mid-bar tick when <code>prev_calculated == rates_total</code>, line 6038: <code>action_start = (rates_total &gt; prev_calculated) ? prev_calculated : rates_total - 1</code> → since <code>rates_total == prev_calculated</code>, NOT greater, so <code>action_start = rates_total - 1</code>. Then <code>signal_start = MathMax(g_chart_signal_start, rates_total - 1) = rates_total - 1</code>. That's NOT &gt;= rates_total, so it does NOT return. OK, so the for loop fires with one iteration. Good.</p>
+<p>But wait — on a tick that DOES NOT advance the</p></div><div class="nav"><span><a href="2026-05-06_zz-line-flickering-issue_dcb399ad.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-02_signal-and-trade-csv-logging-for-live-bars_20232078.html">Next →</a></span></div></div></body></html>

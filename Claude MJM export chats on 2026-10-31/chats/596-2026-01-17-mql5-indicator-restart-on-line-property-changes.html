@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 indicator restart on line property changes</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="595-2026-01-17-custom-mql5-technical-indicators-library.html">&larr; Custom MQL5 technical indicators library</a><a href="../index.html">All chats</a><a href="597-2026-01-18-understanding-atr-and-its-values.html">Understanding ATR and its values &rarr;</a></nav>
+<header class="top">
+<h1>MQL5 indicator restart on line property changes</h1>
+<div class="meta">Created 2026-01-17 12:39 UTC &middot; Last updated 2026-01-17 12:56 UTC &middot; 20 messages<br>Original: <a href="https://claude.ai/chat/63169df2-bdf4-4913-ab69-8a58a1d74749">claude.ai/chat/63169df2-bdf4-4913-ab69-8a58a1d74749</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:39 UTC</span></div><div class="body">In MQL5, when a user changes line properties for an indicator, does it restart the indicator from scratch, i.e., is OnInit run again?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:39 UTC</span></div><div class="body"><p>Saturday, January 18, 2026, 12:14 AM CST</p>
+<p>No. Changing indicator line properties (color, style, width) through the chart interface does not trigger OnInit or restart the indicator. The indicator continues running with its existing state and calculated buffers intact.</p>
+<p>Property changes made via the Properties dialog are handled internally by the terminal without reinitializing the indicator.</p>
+<p>What <em>does</em> trigger OnInit:</p>
+<ul>
+<li>Changing input parameters</li>
+<li>Timeframe change</li>
+<li>Symbol change</li>
+<li>Recompiling the indicator</li>
+<li>Manual refresh/reattach</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:41 UTC</span></div><div class="body">If an indicator internally uses PlotSet... to change line properties, will those immediately affect what the user sees?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:41 UTC</span></div><div class="body"><p>Yes. Changes via PlotIndexSetInteger(), PlotIndexSetDouble(), or PlotIndexSetString() take effect immediately on the next chart redraw. No indicator restart or reinitialization occurs.</p>
+<p>The chart typically redraws on the next tick, or you can force immediate redraw with ChartRedraw().</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:42 UTC</span></div><div class="body">haha then you could theoretically loop a line through a series of colors</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:42 UTC</span></div><div class="body"><p>Yes. Timer-driven color cycling is entirely feasible:</p>
+<pre><code class="language-mql5">int OnInit()
+{
+   EventSetMillisecondTimer(100);
+   return INIT_SUCCEEDED;
+}
+
+void OnTimer()
+{
+   static int hue = 0;
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, HSVtoRGB(hue, 255, 255));
+   hue = (hue + 5) % 360;
+   ChartRedraw();
+}
+</code></pre>
+<p>People have built pulsing signals, gradient transitions, and alert-driven color flashes this way.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:43 UTC</span></div><div class="body">could you make just a section of a line pulse?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:43 UTC</span></div><div class="body"><p>Yes. Use DRAW_COLOR_LINE with a color index buffer.</p>
+<pre><code class="language-mql5">// Buffer 0: price data
+// Buffer 1: color index per bar
+
+SetIndexBuffer(0, DataBuffer, INDICATOR_DATA);
+SetIndexBuffer(1, ColorBuffer, INDICATOR_COLOR_INDEX);
+
+PlotIndexSetInteger(0, PLOT_DRAW_TYPE, DRAW_COLOR_LINE);
+PlotIndexSetInteger(0, PLOT_COLOR_INDEXES, 3);
+PlotIndexSetInteger(0, PLOT_LINE_COLOR, 0, clrGray);      // index 0: static
+PlotIndexSetInteger(0, PLOT_LINE_COLOR, 1, clrRed);       // index 1: pulse color A
+PlotIndexSetInteger(0, PLOT_LINE_COLOR, 2, clrYellow);    // index 2: pulse color B
+</code></pre>
+<p>Then in OnTimer() or OnCalculate(), cycle the pulse color indices:</p>
+<pre><code class="language-mql5">void OnTimer()
+{
+   static bool toggle = false;
+   color pulseColor = toggle ? clrRed : clrYellow;
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, 1, pulseColor);
+   toggle = !toggle;
+   ChartRedraw();
+}
+</code></pre>
+<p>Bars you want pulsing get <code>ColorBuffer[i] = 1</code>. Static bars get <code>ColorBuffer[i] = 0</code>.</p>
+<p>You control exactly which segment pulses by setting the color index buffer values.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:45 UTC</span></div><div class="body">can an indicator in a subwindow plot a line on the main chart window or another subwindow?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:45 UTC</span></div><div class="body"><p>No, not with indicator buffers. Buffers are bound to the indicator's assigned window.</p>
+<p>Yes, with graphical objects. ObjectCreate() accepts a subwindow index parameter:</p>
+<pre><code class="language-mql5">ObjectCreate(0, &quot;MyLine&quot;, OBJ_TREND, 0, time1, price1, time2, price2);  // 0 = main chart
+ObjectCreate(0, &quot;MyLine2&quot;, OBJ_TREND, 2, time1, price1, time2, price2); // 2 = subwindow 2
+</code></pre>
+<p>So a subwindow indicator can draw lines, labels, arrows, etc. on the main chart or any other subwindow—but not plot buffer-based lines there.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:46 UTC</span></div><div class="body">could an OBJ_TREND mimic a moving average, for example?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:46 UTC</span></div><div class="body"><p>Technically yes, but painfully. You'd need one OBJ_TREND per bar-to-bar segment:</p>
+<pre><code class="language-mql5">for(int i = startBar; i &lt; endBar; i++)
+{
+   string name = &quot;MA_&quot; + IntegerToString(i);
+   ObjectCreate(0, name, OBJ_TREND, 0, time[i], ma[i], time[i+1], ma[i+1]);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrBlue);
+   ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
+   ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
+}
+</code></pre>
+<p>Problems:</p>
+<ul>
+<li>Hundreds/thousands of objects for visible history</li>
+<li>Must manage creation, updates, and cleanup manually</li>
+<li>Performance degrades with object count</li>
+<li>No native anti-aliasing or line style consistency</li>
+</ul>
+<p>Practical use cases where this approach makes sense:</p>
+<ul>
+<li>Drawing a short highlight segment (few bars) on main chart from a subwindow indicator</li>
+<li>Projection lines or forecast segments</li>
+<li>Sparse markers</li>
+</ul>
+<p>For anything resembling a full MA, the proper solution is a separate indicator on the main chart, or an EA that creates an indicator handle with iCustom() or iMA() on the target window.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:47 UTC</span></div><div class="body">Can EAs draw lines?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:47 UTC</span></div><div class="body"><p>Yes. EAs have full access to ObjectCreate() and all graphical object functions. Same capabilities as indicators for object-based drawing.</p>
+<p>What EAs cannot do: create indicator buffers. There's no PLOT_DRAW_* or SetIndexBuffer() mechanism for EAs.</p>
+<p>So an EA can:</p>
+<ul>
+<li>Draw OBJ_TREND, OBJ_HLINE, OBJ_VLINE, OBJ_RECTANGLE, etc.</li>
+<li>Draw on main chart or any subwindow</li>
+<li>Create/manage indicator handles via iCustom(), iMA(), etc. (those indicators draw their own buffers)</li>
+</ul>
+<p>Common EA pattern for visual output:</p>
+<ul>
+<li>Use objects for trade levels, zones, annotations</li>
+<li>Spawn a companion indicator via iCustom() for buffer-based plots</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:47 UTC</span></div><div class="body">No, I meant a plot</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:47 UTC</span></div><div class="body"><p>No. EAs cannot create plots. No access to indicator buffers, SetIndexBuffer(), or PLOT_DRAW_* types.</p>
+<p>Buffer-based plotting is exclusive to indicators.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:55 UTC</span></div><div class="body">you coded this function. Requirement was to locate text objects at the far left of the chart offset by bars to the right (more recent) of the oldest bar. Does your code meet that requirement?
+
+//+------------------------------------------------------------------+
+//| Create text object variable                                      |
+//+------------------------------------------------------------------+
+bool TextGVar_Create(const string prefix,
+                     const string shortName,
+                     const string varName,
+                     const string value,
+                     const int xBars = 0,
+                     const int yOffset = 50)
+{
+   string name = TextGVar_BuildName(prefix, shortName, varName);
+   
+   if(ObjectFind(0, name) &gt;= 0)
+      ObjectDelete(0, name);
+   
+   int totalBars = Bars(Symbol(), Period());
+   int barIndex = totalBars - 1 - xBars;
+   if(barIndex &lt; 0) barIndex = 0;
+   datetime timeCoord = iTime(Symbol(), Period(), barIndex);
+   
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, 0))
+      return false;
+   
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDarkGray);
+   ObjectSetString(0, name, OBJPROP_FONT, &quot;Consolas&quot;);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, yOffset);
+   
+   return true;
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:55 UTC</span></div><div class="body"><p>No. Two issues:</p>
+<p><strong>1. Horizontal logic is correct:</strong></p>
+<pre><code class="language-mql5">int barIndex = totalBars - 1 - xBars;
+</code></pre>
+<p><code>totalBars - 1</code> = oldest bar index. Subtracting <code>xBars</code> moves toward more recent bars (rightward). This meets the requirement.</p>
+<p><strong>2. Vertical positioning is broken:</strong></p>
+<p><code>OBJPROP_YDISTANCE</code> does not apply to <code>OBJ_TEXT</code>. That property is for <code>OBJ_LABEL</code> (pixel-based positioning).</p>
+<p><code>OBJ_TEXT</code> uses price coordinates. The code sets price to <code>0</code>:</p>
+<pre><code class="language-mql5">ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, 0)
+</code></pre>
+<p>This places text at price level 0—off-screen for virtually all instruments. The <code>yOffset</code> parameter has no effect.</p>
+<p><strong>Fix options:</strong></p>
+<p>A. Switch to <code>OBJ_LABEL</code> if you want pixel-based Y offset (but then X becomes pixel-based too, breaking the bar-offset logic).</p>
+<p>B. Keep <code>OBJ_TEXT</code> and pass an actual price coordinate for Y positioning:</p>
+<pre><code class="language-mql5">double yPrice = ChartGetDouble(0, CHART_PRICE_MAX) - (yOffset * Point() * 100);
+ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, yPrice);
+</code></pre>
+<p>Which behavior did you intend?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-17 12:56 UTC</span></div><div class="body">Use the high price of the oldest bar and place text object 20 pips higher.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-17 12:56 UTC</span></div><div class="body"><pre><code class="language-mql5">bool TextGVar_Create(const string prefix,
+                     const string shortName,
+                     const string varName,
+                     const string value,
+                     const int xBars = 0)
+{
+   string name = TextGVar_BuildName(prefix, shortName, varName);
+   
+   if(ObjectFind(0, name) &gt;= 0)
+      ObjectDelete(0, name);
+   
+   int totalBars = Bars(Symbol(), Period());
+   int oldestBarIndex = totalBars - 1;
+   int barIndex = oldestBarIndex - xBars;
+   if(barIndex &lt; 0) barIndex = 0;
+   
+   datetime timeCoord = iTime(Symbol(), Period(), barIndex);
+   double pipSize = (Digits() == 5 || Digits() == 3) ? Point() * 10 : Point();
+   double yPrice = iHigh(Symbol(), Period(), oldestBarIndex) + (20 * pipSize);
+   
+   if(!ObjectCreate(0, name, OBJ_TEXT, 0, timeCoord, yPrice))
+      return false;
+   
+   ObjectSetString(0, name, OBJPROP_TEXT, value);
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrDarkGray);
+   ObjectSetString(0, name, OBJPROP_FONT, &quot;Consolas&quot;);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   
+   return true;
+}
+</code></pre>
+<p>Changes:</p>
+<ul>
+<li>Removed unused <code>yOffset</code> parameter</li>
+<li>Y coordinate = high of oldest bar + 20 pips</li>
+<li>Added pip size calculation for 4/5 digit brokers</li>
+</ul>
+</div></div>
+<nav class="pager"><a href="595-2026-01-17-custom-mql5-technical-indicators-library.html">&larr; Custom MQL5 technical indicators library</a><a href="../index.html">All chats</a><a href="597-2026-01-18-understanding-atr-and-its-values.html">Understanding ATR and its values &rarr;</a></nav></div></body></html>

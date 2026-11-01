@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Live tick-by-tick indicator state drift bug</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="700-2026-04-20-indicator-historical-tick-data-compile-error.html">&larr; Indicator historical tick data compile error</a><a href="../index.html">All chats</a><a href="702-2026-04-23-mql5-expert-advisor-change-plan.html">MQL5 Expert Advisor change plan &rarr;</a></nav>
+<header class="top">
+<h1>Live tick-by-tick indicator state drift bug</h1>
+<div class="meta">Created 2026-04-21 15:59 UTC &middot; Last updated 2026-04-21 16:07 UTC &middot; 2 messages<br>Original: <a href="https://claude.ai/chat/857af45e-5cad-4488-9c45-aaf6b92963f0">claude.ai/chat/857af45e-5cad-4488-9c45-aaf6b92963f0</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-04-21 15:59 UTC</span></div><div class="body">So here&#x27;s the problem I&#x27;m trying to solve. The short fired (1st circled pair of trades) at 19:00 was actually a good call. Loss-prevention logic fired the long on the next bar, and that was reasonable, too. In the moment, it seemed like a good idea. But then it&#x27;s like the indicator went comatose. If it was sharp enough to guard against going the wrong way as it had done twice already, it should have flipped back to short for what was left of that down move. Ditto the other 2 circled pairs.
+ 
+This situation doesn&#x27;t happen in historical whole-bar processing, only in real-time tick-by-tick processsing.
+ 
+Here is the code and a file of tick-by-tick data. Use prices derived as the mid of the bid/ask in the CSV as the current price in the current bar of close[] in OnCalculate(). STEP THROUGH THE ACTUAL DATA AND THE ACTUAL CODE and figure out why it got stuck. See if you agree with GPT on this.
+ 
+Here is GPT-5.4&#x27;s assessment:
+ 
+The problem is in the indicator’s live recalculation path.
+ 
+In Triple_Trigger_MJM.mq5 (line 735), live mode starts each call at prev_calculated - 1, but in lines 827-829 (line 827) it does not reset or rewind g_chart_state, g_currentTrade, or g_exitState to the state that existed before that bar. It reprocesses the current/previous bar with already-mutated state. That is a live-only state drift bug.
+ 
+CSV mode does the opposite: it resets state and replays clean every pass at lines 818-823 (line 818). So live mode and replay mode are not equivalent.
+ 
+There is also a second live-mode gate: Chart_TryCock and Chart_ResetCycle are blocked on the current bar by i &lt; logical_n - 1 at lines 1094-1107 (line 1094). So the forming bar cannot arm the next reversal. Combined with the state drift above, that is why the indicator can stay stuck through moves that should have produced the next reversal.<p class="note">[File attached: 1776787139658_image.png &mdash; contents not included in export]</p><p class="note">[File attached: Triple_Trigger_MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: XAU-USD_Tick_2026-04-20_09h-11h_Local.csv &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-04-21 16:07 UTC</span></div><div class="body"><p>Now I have enough. Let me read one more section to confirm the flip_check timing precisely.</p>
+<p>Tuesday, April 21, 2026, 10:12 AM CST</p>
+<p>I stepped through the code carefully. Here is my assessment, broken into GPT's two claims and what GPT missed.</p>
+<hr />
+<h2>GPT Claim 1 — &quot;State drift from reprocessing prev_calculated - 1&quot;</h2>
+<p><strong>Partially confirmed, but the mechanism described is wrong, and the actual live-only bug is different.</strong></p>
+<p>GPT says reprocessing bar <code>prev_calculated - 1</code> on each tick accumulates drifted state because state isn't rewound. True in structure: line 735 sets <code>start_bar = prev_calculated - 1</code> with no reset. But in practice, on steady-state ticks of the same forming bar, <code>prev_calculated == rates_total</code>, so <code>start_bar = rates_total - 1</code> = the forming bar itself. Only one bar is processed. No re-processing of old bars. The drift GPT describes is substantially idempotent.</p>
+<p><strong>The actual live-only bug is simpler and more serious:</strong> <code>flip_check_pending</code> (line 1231) evaluates <code>logical_close</code>, which in live mode is a <strong>tick price</strong> — not the final bar close. With <code>InpSignalBlackout = 0</code> and <code>flip_check_bar = signal_bar</code>, the condition <code>i &gt;= flip_check_bar</code> is satisfied immediately on the next tick of the SAME bar where the short fired. So: the short fires at bar A, <code>flip_check_pending = true</code>, <code>flip_check_bar = A</code>. On the very next tick of bar A (price may have moved up transiently), the flip fires with <code>force_committed = true</code>, producing the spurious long.</p>
+<p>In historical whole-bar mode, bar A's flip_check evaluates <code>close[A]</code> = the <strong>final close</strong>. If the bar ultimately closed below the threshold (market moved down), no flip. In live mode, any intra-bar tick above the threshold fires it. That is the complete explanation for why this is live-only.</p>
+<hr />
+<h2>GPT Claim 2 — &quot;<code>Chart_TryCock</code> and <code>Chart_ResetCycle</code> blocked by <code>i &lt; logical_n - 1</code>&quot;</h2>
+<p><strong>Confirmed exactly.</strong> Lines 1094, 1102, and 1386 all gate on <code>i &lt; logical_n - 1</code>. The forming bar (<code>i == rates_total - 1</code>) cannot cock, reset cycle, or clear a qualified cross. This is real.</p>
+<p>However, GPT presents this as a cause of being &quot;stuck.&quot; It is a <strong>delay</strong>, not a permanent block. After the (spurious) long fires at bar A with <code>cross_bar = A</code>:</p>
+<ul>
+<li><code>Chart_TryCock</code> requires <code>cand &gt; cross_bar = A</code>. Valid candidate <code>cand = A+1</code> becomes available only when processing bar <code>A+2</code> as a closed bar, which first occurs on bar <code>A+3</code>'s opening tick.</li>
+<li>The earliest a short-cock can fire is bar <code>A+3</code>'s first tick, using <code>close[A+2] &lt; open[A+1]</code>.</li>
+<li>The earliest a reversal signal can then fire is during bar <code>A+3</code>'s formation if <code>close[A+3] &lt; ma2[A+3] - eff_sens</code>.</li>
+</ul>
+<p>In historical mode the same 3-bar minimum gap exists (using final closes). The live-specific compounding is that the 3-bar dead zone starts from the spuriously-triggered long, not from where it would have started in historical mode. By bar <code>A+3</code>, the bulk of the down move may be spent.</p>
+<hr />
+<h2>What GPT missed — the post-signal <code>Chart_ResetCycle</code> overwrite</h2>
+<p>Lines 1378–1384 set <code>i_dir = signal</code> (e.g., 1 for the forced long). Lines 1386–1396 then check <code>qualified_cross</code> and, if true and <code>i &lt; logical_n - 1</code>, call <code>Chart_ResetCycle</code> which <strong>overwrites <code>i_dir</code> with <code>curr_t2e</code></strong>. If <code>curr_t2e = -1</code> (MA1 crossed below MA2 at bar A/B), <code>i_dir</code> becomes −1 despite the long signal.</p>
+<p>With <code>i_dir = -1</code>, <code>Chart_TryCock</code> looks for <code>close[bar] &gt; open[cand]</code> to cock <strong>long</strong>. Market is going down: close &lt; open, no long cock. Indicator is now permanently looking for a long re-entry into a downtrend. Same-direction guard (line 1251) blocks that long even if it cocked. Result: completely stuck. This happens in both modes when it occurs, but the live-mode flip creates the context that exposes it.</p>
+<hr />
+<h2>Summary</h2>
+<p>GPT is <strong>right</strong> that there are two distinct bugs and <strong>right</strong> that <code>i &lt; logical_n - 1</code> blocks the forming bar. GPT's description of Claim 1 mechanism is imprecise — the real issue is tick-price vs. final-close evaluation of <code>flip_check</code>, not generic &quot;state drift from reprocessing.&quot; The overwrite at lines 1386–1396 after a signal is a third bug GPT didn't identify.</p>
+<p>The three-part failure chain: (1) flip fires on a transient tick price that would fail on bar close → spurious long; (2) 3-bar minimum dead zone before any reversal can cock; (3) if a qualified cross contradicts the signal direction at lines 1386–1396, the cocking permanently targets the wrong direction.</p>
+</div></div>
+<nav class="pager"><a href="700-2026-04-20-indicator-historical-tick-data-compile-error.html">&larr; Indicator historical tick data compile error</a><a href="../index.html">All chats</a><a href="702-2026-04-23-mql5-expert-advisor-change-plan.html">MQL5 Expert Advisor change plan &rarr;</a></nav></div></body></html>

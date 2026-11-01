@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Modular MQL5 TEMA-MA indicator with slope and spread analysis</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="650-2026-02-11-webb-research-tool-overview.html">&larr; Webb research tool overview</a><a href="../index.html">All chats</a><a href="652-2026-02-12-trading-function-refactoring-and-close-trade-failures.html">Trading function refactoring and close trade failures &rarr;</a></nav>
+<header class="top">
+<h1>Modular MQL5 TEMA-MA indicator with slope and spread analysis</h1>
+<div class="meta">Created 2026-02-11 16:45 UTC &middot; Last updated 2026-02-11 22:47 UTC &middot; 60 messages<br>Original: <a href="https://claude.ai/chat/aeb06271-475e-47fc-9f64-5ff550ef5876">claude.ai/chat/aeb06271-475e-47fc-9f64-5ff550ef5876</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 16:45 UTC</span></div><div class="body">You&#x27;re an expert MQL5 developer. 
+Build me an indicator that will internally create a timeseries for a fully configurable MA and a TEMA.
+The indicator will be fully modularized and configurable. NO HARD CODING. Any need for hard-coded values will be implemented as enums or by means of #define AT THE TOP OF THE CODE SOURCE FILE, PROMINENT, along with other typical #... statements.
+The TEMA and MA will be fully configurable for period, MA method, and applied price. TEMA defaults: period = 9,
+The MA and the TEMA will not be plotted, however the first 2 buffers in the data window will display their values. The TEMA is designated primary and the MA secondary for spread and crossover purposes.
+From those values calculate several timeseries that will be plotted. 
+Spread and crossover calculations are always primary to secondary: TEMA - MA. Positive spreads mean the TEMA is above the MA. Negative values means it&#x27;s below the MA. A switch in the sign of the spread value indicates a crossover: negative to positive = cross up; positive to negative = cross down. Primary crosses secondary. 
+Do not use separate logic paths for downwards vs. upwards. Same logic path incorporating the variable iDir which will be -1 for downward, 0 for sideways, and +1 for upwards.
+The following timeseries will be plotted:
+1. Slope of the TEMA.
+2. Slope of the MA.
+3. Spread between TEMA and MA. 
+4. Spread between the TEMA slope and the MA slope.
+5. The slope of the spread #3.
+6. The slope of the spread #4.
+All lines must be fully configurable for style, width, and color.
+Defaults:
+TEMA:			period=7, applied price = weighted price
+MA:			period=7,MA method=exponential, applied price = weighted price
+#1 and #2 slopes:	period=2
+#3 and #4 spreads:	simple per-bar calculations
+#5 and #6 slopes:	period=1
+Lines for #1-#6 should be easily distinguishable colors, width=2, style=solid
+Questions?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 16:46 UTC</span></div><div class="body"><p>Wednesday, February 12, 2026, 00:47 UTC</p>
+<p>Yes, several clarifications needed:</p>
+<ol>
+<li>
+<p><strong>Slope formula</strong>: What calculation method?</p>
+<ul>
+<li>Simple difference: <code>(value[i] - value[i+period]) / period</code></li>
+<li>Linear regression slope over N bars</li>
+<li>Rate of change (ROC): <code>(value[i] - value[i+period]) / value[i+period] * 100</code></li>
+<li>Other?</li>
+</ul>
+</li>
+<li>
+<p><strong>TEMA period conflict</strong>: You stated &quot;TEMA defaults: period = 9&quot; initially, then &quot;period=7&quot; in the Defaults section. Which is authoritative?</p>
+</li>
+<li>
+<p><strong>iDir variable</strong>: You mention it for crossover logic, but:</p>
+<ul>
+<li>Should iDir be stored in a buffer (plotted or data-window only)?</li>
+<li>Or is it purely internal for calculation flow?</li>
+<li>What triggers &quot;sideways&quot; (0)? Spread exactly zero? Within a threshold?</li>
+</ul>
+</li>
+<li>
+<p><strong>Crossover output</strong>: Beyond iDir, should crossovers produce:</p>
+<ul>
+<li>Arrow markers on chart?</li>
+<li>Separate signal buffer?</li>
+<li>Alert capability?</li>
+<li>Or just influence the calculation flow with no discrete output?</li>
+</ul>
+</li>
+<li>
+<p><strong>Buffer count confirmation</strong>: 8 total buffers:</p>
+<ul>
+<li>Buffer 0: TEMA value (data window only, not plotted)</li>
+<li>Buffer 1: MA value (data window only, not plotted)</li>
+<li>Buffers 2-7: Plotted lines #1-#6</li>
+</ul>
+<p>Correct?</p>
+</li>
+<li>
+<p><strong>Color defaults</strong>: Shall I assign distinguishable defaults, or do you have specific color preferences for #1-#6?</p>
+</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 16:56 UTC</span></div><div class="body">1: simple
+2: sorry, yes, period=7
+3: internal, KISS it, spread has nothing to do with direction, if slope=0, iDir=0
+4: KISS it
+5: yes
+6: you assign
+
+Remember that OnCalculate processes its passed arrays in REGULAR index sequence: 0 is the oldest bar, arraysize() - 1 is the index of the newest bar (current bar on chart). Set up the process so that all existing bars are calculated, then keep the current bar and additional bars(sometimes 2 or 3 can be added to the chart, depending) updated but untouched once they pass into history.
+
+Uses the following to determine where to start the processing loop in OnCalculate:
+
+   start = (prev_calculated == 0) ? maxPeriodsBack - 2 : prev_calculated - 1;
+
+where maxPeriodsBack is the maxiumum of the TEMA and MA period values.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 16:56 UTC</span></div><div class="body"><p>Clear. Before coding, here's the approach for confirmation:</p>
+<hr />
+<p><strong>File Structure (top-down):</strong></p>
+<ol>
+<li><code>#property</code> declarations (indicator_buffers=8, indicator_plots=6, etc.)</li>
+<li><code>#define</code> statements for any fixed structural values</li>
+<li><code>enum</code> definitions (if needed beyond MQL5 built-ins like ENUM_MA_METHOD, ENUM_APPLIED_PRICE, ENUM_LINE_STYLE)</li>
+<li>Input groups:
+<ul>
+<li>TEMA settings (period, method, applied price)</li>
+<li>MA settings (period, method, applied price)</li>
+<li>Slope periods (#1/#2 period, #5/#6 period)</li>
+<li>Line styles (6 sets: color, width, style)</li>
+</ul>
+</li>
+<li>Buffer arrays (8 total)</li>
+<li>Handle variables for iMA and internal TEMA EMAs (3 handles for TEMA: EMA1, EMA2, EMA3)</li>
+<li>Global <code>maxPeriodsBack</code> variable</li>
+</ol>
+<hr />
+<p><strong>TEMA Implementation:</strong></p>
+<p>TEMA = 3×EMA1 - 3×EMA2 + EMA3, where:</p>
+<ul>
+<li>EMA1 = EMA(price, period)</li>
+<li>EMA2 = EMA(EMA1, period)</li>
+<li>EMA3 = EMA(EMA2, period)</li>
+</ul>
+<p>Three separate iMA handles, copy to temp arrays, compute TEMA per bar.</p>
+<hr />
+<p><strong>OnCalculate Flow:</strong></p>
+<ol>
+<li>Compute <code>start</code> per your formula</li>
+<li>Loop <code>i = start</code> to <code>rates_total - 1</code>:
+<ul>
+<li>Copy indicator data to temp arrays</li>
+<li>Calculate TEMA → Buffer[0]</li>
+<li>Copy MA → Buffer[1]</li>
+<li>Calculate slopes #1, #2 → Buffers[2], [3]</li>
+<li>Calculate spreads #3, #4 → Buffers[4], [5]</li>
+<li>Calculate slopes #5, #6 → Buffers[6], [7]</li>
+</ul>
+</li>
+</ol>
+<hr />
+<p><strong>Slope Formula (simple difference, period N):</strong></p>
+<pre><code>slope[i] = (value[i] - value[i - N]) / N
+</code></pre>
+<p>For <code>i &lt; N</code>, slope remains <code>EMPTY_VALUE</code> or 0.</p>
+<hr />
+<p><strong>Questions before GO:</strong></p>
+<ol>
+<li>
+<p>For TEMA: MQL5's iMA doesn't chain directly (EMA of EMA). I'll need intermediate buffers or arrays. Preference?</p>
+<ul>
+<li><strong>Option A</strong>: 3 additional internal (non-plotted, non-data-window) buffers for EMA1, EMA2, EMA3</li>
+<li><strong>Option B</strong>: Local temp arrays copied each OnCalculate call</li>
+</ul>
+</li>
+<li>
+<p>TEMA MA method: Should this also be configurable (defaulting to EMA), or is TEMA by definition always EMA-based (which is standard)?</p>
+</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 16:58 UTC</span></div><div class="body">why aren&#x27;t you using the internal iTEMA? https://www.mql5.com/en/docs/indicators/itema</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 16:58 UTC</span></div><div class="body"><p>My error. I overlooked the built-in iTEMA function.</p>
+<hr />
+<p><strong>Corrected approach:</strong></p>
+<ol>
+<li>One <code>iTEMA</code> handle (period, shift=0, applied price)</li>
+<li>One <code>iMA</code> handle (period, shift=0, method, applied price)</li>
+<li><code>CopyBuffer</code> both into Buffers[0] and [1]</li>
+<li>Calculate derived values in Buffers[2-7]</li>
+</ol>
+<hr />
+<p><strong>Remaining question:</strong></p>
+<p>iTEMA has no MA method parameter (it's inherently EMA-based by definition). Your input mentioned &quot;TEMA...MA method&quot; configurability.</p>
+<p>Confirm: TEMA config is <strong>period + applied price only</strong> (no method selection). Correct?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 16:58 UTC</span></div><div class="body">confirmed, MA method is for iMA only.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 16:59 UTC</span></div><div class="body"><p>Clear. Ready to build.</p>
+<p><strong>Final spec summary:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Buffer</th>
+<th>Content</th>
+<th>Plotted</th>
+<th>Data Window</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>TEMA value</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>1</td>
+<td>MA value</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>2</td>
+<td>TEMA slope</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MA slope</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Spread (TEMA - MA)</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Slope spread (slope₂ - slope₃)</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Slope of Buffer 4</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Slope of Buffer 5</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Defaults:</strong></p>
+<ul>
+<li>TEMA: period=7, applied=PRICE_WEIGHTED</li>
+<li>MA: period=7, method=MODE_EMA, applied=PRICE_WEIGHTED</li>
+<li>Slopes #1/#2: period=2</li>
+<li>Slopes #5/#6: period=1</li>
+<li>All lines: width=2, style=STYLE_SOLID, distinguishable colors</li>
+</ul>
+<p><strong>Handles:</strong> iTEMA, iMA</p>
+<p><strong>Start calc:</strong> <code>(prev_calculated == 0) ? maxPeriodsBack - 2 : prev_calculated - 1</code></p>
+<p><strong>iDir:</strong> Internal, derived from slope sign, unified logic path.</p>
+<hr />
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 16:59 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:00 UTC</span></div><div class="body"><p>Done.</p>
+<p><strong>Summary:</strong></p>
+<ul>
+<li>8 buffers: 2 data-window only (TEMA, MA), 6 plotted lines</li>
+<li>All periods, applied prices, MA method, and line properties fully configurable via inputs</li>
+<li><code>#define</code> statements at top for default values</li>
+<li>Handles created for iTEMA and iMA</li>
+<li>Regular index sequence processing with your specified start calculation</li>
+<li>iDir computed internally per bar (unused but present for expansion)</li>
+<li>Distinguishable default colors: DodgerBlue, OrangeRed, Lime, Magenta, Gold, Aqua</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:07 UTC</span></div><div class="body">You included the TEMA and MA values as the first 2 readouts in the data window, but you labeled them as &quot;slopes&quot; and, apparently, plotted those values as slopes, making the chart unreadable. You correctly identified 8 buffers, all of which should have readouts in the data window, but as you can see you coded only six.
+
+Disentangle the raw TEMA and MA readouts from their slopes and code the indicator to do as we agreed.<p class="note">[File attached: 1770829652477_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1770829654661_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:08 UTC</span></div><div class="body"><p>My error. I confused buffer indices with plot indices. With <code>indicator_plots=6</code>, plots 0-5 map to buffers 0-5 by default, and my PlotIndexSet calls overwrote each other.</p>
+<p><strong>Fix:</strong> Set <code>indicator_plots=8</code>, configure plots 0-1 as <code>DRAW_NONE</code> (data window only), plots 2-7 as <code>DRAW_LINE</code>.</p>
+<p>Fixed. Changed <code>indicator_plots</code> from 6 to 8, and corrected all <code>PlotIndexSetInteger/String/Double</code> calls to use matching plot indices (0-7) rather than mismatched indices that caused overwrites.</p>
+<p>Data window will now show all 8 values; chart will plot only 6 lines (plots 2-7).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:12 UTC</span></div><div class="body">OK, looks good. 3 images for 3 last bars on the chart running the indy with default values. Verify that the math is working correctly.<p class="note">[File attached: 1770829942823_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1770829943910_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1770829945168_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:13 UTC</span></div><div class="body"><p>Verifying the math across the 3 bars:</p>
+<p><strong>Raw values:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Time</th>
+<th>TEMA</th>
+<th>MA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>14:00</td>
+<td>153.4790</td>
+<td>153.6306</td>
+</tr>
+<tr>
+<td>2</td>
+<td>16:00</td>
+<td>153.5498</td>
+<td>153.6217</td>
+</tr>
+<tr>
+<td>3</td>
+<td>18:00</td>
+<td>153.2992</td>
+<td>153.4876</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><strong>Spread (#3) = TEMA - MA:</strong></p>
+<ul>
+<li>Bar 1: 153.4790 − 153.6306 = −0.1516 ✓</li>
+<li>Bar 2: 153.5498 − 153.6217 = −0.0719 ✓</li>
+<li>Bar 3: 153.2992 − 153.4876 = −0.1884 (displayed −0.1885, rounding) ✓</li>
+</ul>
+<hr />
+<p><strong>TEMA Slope (#1), period=2:</strong> <code>(TEMA[i] - TEMA[i-2]) / 2</code></p>
+<ul>
+<li>Bar 3: (153.2992 − 153.4790) / 2 = −0.0899 ✓</li>
+</ul>
+<p><strong>MA Slope (#2), period=2:</strong> <code>(MA[i] - MA[i-2]) / 2</code></p>
+<ul>
+<li>Bar 3: (153.4876 − 153.6306) / 2 = −0.0715 ✓</li>
+</ul>
+<hr />
+<p><strong>Slope Spread (#4) = TEMA Slope - MA Slope:</strong></p>
+<ul>
+<li>Bar 1: 0.2165 − 0.0012 = 0.2153 ✓</li>
+<li>Bar 2: 0.1893 − 0.0226 = 0.1667 ✓</li>
+<li>Bar 3: −0.0899 − (−0.0715) = −0.0184 ✓</li>
+</ul>
+<hr />
+<p><strong>Spread Slope (#5), period=1:</strong> <code>Spread[i] - Spread[i-1]</code></p>
+<ul>
+<li>Bar 2: −0.0719 − (−0.1516) = 0.0797 ✓</li>
+<li>Bar 3: −0.1885 − (−0.0719) = −0.1166 ✓</li>
+</ul>
+<hr />
+<p><strong>Slope Spread Slope (#6), period=1:</strong> <code>SlopeSpread[i] - SlopeSpread[i-1]</code></p>
+<ul>
+<li>Bar 2: 0.1667 − 0.2153 = −0.0486 (displayed −0.0485, rounding) ✓</li>
+<li>Bar 3: −0.0184 − 0.1667 = −0.1851 (displayed −0.1852, rounding) ✓</li>
+</ul>
+<hr />
+<p>All calculations verified correct. Minor display rounding differences (~0.0001) are expected from floating-point precision.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:15 UTC</span></div><div class="body">OK, 3 more, same bars (although the current bar has changed a bit). This time with both TEMA and MA slope periods = 1. I don&#x27;t need all the calculations, just tell me if the math is working correctlyl.<p class="note">[File attached: 1770830103359_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1770830104789_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1770830109007_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:15 UTC</span></div><div class="body"><p>Math verified correct.</p>
+<p>Quick spot-checks with slope period=1:</p>
+<ul>
+<li>TEMA Slope Bar 2: 153.5498 − 153.4790 = 0.0708 ✓</li>
+<li>TEMA Slope Bar 3: 153.2805 − 153.5498 = −0.2693 ✓</li>
+<li>MA Slope Bar 2: 153.6217 − 153.6306 = −0.0089 ✓</li>
+<li>MA Slope Bar 3: 153.4796 − 153.6217 = −0.1421 ✓</li>
+<li>Slope Spread Bar 3: −0.2693 − (−0.1421) = −0.1272 ✓</li>
+</ul>
+<p>All downstream calculations consistent.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:55 UTC</span></div><div class="body">These buffer labels are confusing. Come up with something brief but more clear:
+
+   //--- Plot 3 / Buffer 3: MA Slope (#2) - PLOTTED
+   SetIndexBuffer(3, BufferSlopeMA, INDICATOR_DATA);
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_LINE);
+   PlotIndexSetInteger(3, PLOT_LINE_COLOR, InpLine2Color);
+   PlotIndexSetInteger(3, PLOT_LINE_WIDTH, InpLine2Width);
+   PlotIndexSetInteger(3, PLOT_LINE_STYLE, InpLine2Style);
+   PlotIndexSetString(3, PLOT_LABEL, &quot;MA Slope&quot;);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VAL);
+   ArraySetAsSeries(BufferSlopeMA, false);
+   //--- Plot 4 / Buffer 4: Spread (#3) - PLOTTED
+   SetIndexBuffer(4, BufferSpread, INDICATOR_DATA);
+   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_LINE);
+   PlotIndexSetInteger(4, PLOT_LINE_COLOR, InpLine3Color);
+   PlotIndexSetInteger(4, PLOT_LINE_WIDTH, InpLine3Width);
+   PlotIndexSetInteger(4, PLOT_LINE_STYLE, InpLine3Style);
+   PlotIndexSetString(4, PLOT_LABEL, &quot;Spread&quot;);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VAL);
+   ArraySetAsSeries(BufferSpread, false);
+   //--- Plot 5 / Buffer 5: Slope Spread (#4) - PLOTTED
+   SetIndexBuffer(5, BufferSlopeSpread, INDICATOR_DATA);
+   PlotIndexSetInteger(5, PLOT_DRAW_TYPE, DRAW_LINE);
+   PlotIndexSetInteger(5, PLOT_LINE_COLOR, InpLine4Color);
+   PlotIndexSetInteger(5, PLOT_LINE_WIDTH, InpLine4Width);
+   PlotIndexSetInteger(5, PLOT_LINE_STYLE, InpLine4Style);
+   PlotIndexSetString(5, PLOT_LABEL, &quot;Slope Spread&quot;);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VAL);
+   ArraySetAsSeries(BufferSlopeSpread, false);
+   //--- Plot 6 / Buffer 6: Slope of Spread (#5) - PLOTTED
+   SetIndexBuffer(6, BufferSpreadSlope, INDICATOR_DATA);
+   PlotIndexSetInteger(6, PLOT_DRAW_TYPE, DRAW_LINE);
+   PlotIndexSetInteger(6, PLOT_LINE_COLOR, InpLine5Color);
+   PlotIndexSetInteger(6, PLOT_LINE_WIDTH, InpLine5Width);
+   PlotIndexSetInteger(6, PLOT_LINE_STYLE, InpLine5Style);
+   PlotIndexSetString(6, PLOT_LABEL, &quot;Spread Slope&quot;);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, EMPTY_VAL);
+   ArraySetAsSeries(BufferSpreadSlope, false);
+   //--- Plot 7 / Buffer 7: Slope of Slope Spread (#6) - PLOTTED
+   SetIndexBuffer(7, BufferSlopeSpreadSlope, INDICATOR_DATA);
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_LINE);
+   PlotIndexSetInteger(7, PLOT_LINE_COLOR, InpLine6Color);
+   PlotIndexSetInteger(7, PLOT_LINE_WIDTH, InpLine6Width);
+   PlotIndexSetInteger(7, PLOT_LINE_STYLE, InpLine6Style);
+   PlotIndexSetString(7, PLOT_LABEL, &quot;Slope Spread Slope&quot;);
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, EMPTY_VAL);
+   ArraySetAsSeries(BufferSlopeSpreadSlope, false);</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:55 UTC</span></div><div class="body"><p>Proposed labels using derivative notation for clarity:</p>
+<table>
+<thead>
+<tr>
+<th>Buffer</th>
+<th>Current</th>
+<th>Proposed</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>TEMA Slope</td>
+<td>dTEMA</td>
+<td>slope of TEMA</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MA Slope</td>
+<td>dMA</td>
+<td>slope of MA</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Spread</td>
+<td>T-M</td>
+<td>TEMA minus MA</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Slope Spread</td>
+<td>dT-dM</td>
+<td>slope difference</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Spread Slope</td>
+<td>d(T-M)</td>
+<td>slope of spread</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Slope Spread Slope</td>
+<td>d(dT-dM)</td>
+<td>slope of slope diff</td>
+</tr>
+</tbody>
+</table>
+<p>Approve these labels?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:57 UTC</span></div><div class="body">TEMA slope and MA slope were fine. 
+#4: Indy spread
+#5 and #6 seem like the same thing.
+#7: slope of slopes spread
+
+Explain #5 and #6</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:58 UTC</span></div><div class="body"><p>You're right to question this. They are mathematically identical.</p>
+<p><strong>Buffer 5 (Slope Spread):</strong> dTEMA − dMA (difference of the slopes)</p>
+<p><strong>Buffer 6 (Spread Slope):</strong> d(TEMA − MA) (slope of the difference)</p>
+<p>By the linearity of differentiation: d(A − B) = dA − dB</p>
+<p>They produce the same result when slope periods match. This explains why your screenshots showed identical values for both (0.2538/0.2538, 0.0797/0.0797, −0.1272/−0.1272).</p>
+<p>One of these buffers is redundant. Remove Buffer 5 or Buffer 6?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 17:58 UTC</span></div><div class="body">stop with the symbolic formula stuff. Use full English words.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 17:58 UTC</span></div><div class="body"><p><strong>Buffer 5 (Slope Spread):</strong> Calculate the TEMA slope. Calculate the MA slope. Subtract MA slope from TEMA slope.</p>
+<p><strong>Buffer 6 (Spread Slope):</strong> Calculate the spread (TEMA minus MA). Then calculate the slope of that spread.</p>
+<p>These produce identical results. Subtracting slopes gives the same answer as taking the slope of a subtraction.</p>
+<p>One is redundant. Which do you want to remove?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 18:01 UTC</span></div><div class="body">I see why I got confused.
+
+OK, first, swap buffers 5 and 6. 
+#5 will now be &quot;Slope of indy spread&quot;
+#6: &quot;Slope of indy slopes spread&quot;
+
+Make sense?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 18:01 UTC</span></div><div class="body"><p>Let me confirm I understand:</p>
+<p><strong>Current:</strong></p>
+<ul>
+<li>Buffer 4: TEMA − MA (spread)</li>
+<li>Buffer 5: TEMA slope minus MA slope (slopes difference)</li>
+<li>Buffer 6: Slope of buffer 4</li>
+<li>Buffer 7: Slope of buffer 5</li>
+</ul>
+<p><strong>Proposed:</strong></p>
+<ul>
+<li>Buffer 4: &quot;Indy spread&quot; (TEMA − MA)</li>
+<li>Buffer 5: &quot;Slope of indy spread&quot; (slope of buffer 4)</li>
+<li>Buffer 6: &quot;Slope of indy slopes spread&quot; (slope of the slopes difference)</li>
+</ul>
+<p>This eliminates the raw slopes difference as its own buffer since it's mathematically identical to buffer 5. We drop from 8 buffers to 7.</p>
+<p>Correct?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 18:27 UTC</span></div><div class="body">Now I&#x27;m totally confused by you. It&#x27;s not difficult:
+
+Data window readout      label                                      calculation
+No plot / Buffer 0            TEMA                                   
+No plot / Buffer 1            MA                                       
+Plot 2 / Buffer 2              TEMA slope                           slope of B0
+Plot 3 / Buffer 3              MA slope                               slope of B1
+Plot 4 / Buffer 4              Indy spread                           B0 – B1
+Plot 5 / Buffer 5              Slope of indy spread              slope of B4
+Plot 6 / Buffer 6              Spread of indy slopes            B2 – B3
+Plot 7 / Buffer 7              Slope of slopes spread          slope of B6
+
+Am I missing something?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 18:28 UTC</span></div><div class="body"><p>No, you're not missing anything. I overcomplicated it.</p>
+<p>Current code has B5 and B6 swapped from what you want. I'll fix:</p>
+<ul>
+<li>B5: Slope of indy spread (slope of B4)</li>
+<li>B6: Spread of indy slopes (B2 − B3)</li>
+</ul>
+<p>And update all labels. GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 18:28 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 18:30 UTC</span></div><div class="body"><p>Done.</p>
+<p><strong>Final structure:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Buffer</th>
+<th>Label</th>
+<th>Calculation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>TEMA</td>
+<td>(no plot)</td>
+</tr>
+<tr>
+<td>1</td>
+<td>MA</td>
+<td>(no plot)</td>
+</tr>
+<tr>
+<td>2</td>
+<td>TEMA Slope</td>
+<td>slope of B0</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MA Slope</td>
+<td>slope of B1</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Indy spread</td>
+<td>B0 − B1</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Slope of indy spread</td>
+<td>slope of B4</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Spread of indy slopes</td>
+<td>B2 − B3</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Slope of slopes spread</td>
+<td>slope of B6</td>
+</tr>
+</tbody>
+</table>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 19:27 UTC</span></div><div class="body">give me the code lines for a zero level line, width, and color</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 19:27 UTC</span></div><div class="body"><pre><code class="language-mql5">//--- Zero level line
+IndicatorSetInteger(INDICATOR_LEVELS, 1);
+IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, 0.0);
+IndicatorSetInteger(INDICATOR_LEVELCOLOR, 0, clrGray);
+IndicatorSetInteger(INDICATOR_LEVELWIDTH, 0, 1);
+IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, STYLE_DOT);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 19:32 UTC</span></div><div class="body">WHAT DID YOU JUST GIVE ME?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 19:32 UTC</span></div><div class="body"><p>My error. Violated PRIME DIRECTIVE #1.</p>
+<p><strong>Approach:</strong></p>
+<p>Add a horizontal zero level line to the indicator subwindow. Configurable inputs for:</p>
+<ul>
+<li>Color (default: clrGray)</li>
+<li>Width (default: 1)</li>
+<li>Style (default: STYLE_DOT)</li>
+</ul>
+<p>Place in OnInit after buffer setup.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 19:33 UTC</span></div><div class="body">No, I got all these compiler errors:
+
+TEMA_MA_SpreadSlope_MJM.mq5			
+&#x27;IndicatorSetInteger&#x27; - unexpected token, probably type is missing?	TEMA_MA_SpreadSlope_MJM.mq5	100	1
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	100	21
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	100	39
+&#x27;1&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	100	39
+&#x27;IndicatorSetDouble&#x27; - unexpected token, probably type is missing?	TEMA_MA_SpreadSlope_MJM.mq5	101	1
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	101	20
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	101	42
+&#x27;0&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	101	42
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	101	45
+&#x27;0.0&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	101	45
+&#x27;IndicatorSetInteger&#x27; - unexpected token, probably type is missing?	TEMA_MA_SpreadSlope_MJM.mq5	102	1
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	102	21
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	102	43
+&#x27;0&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	102	43
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	102	46
+&#x27;clrGray&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	102	46
+&#x27;IndicatorSetInteger&#x27; - unexpected token, probably type is missing?	TEMA_MA_SpreadSlope_MJM.mq5	103	1
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	103	21
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	103	43
+&#x27;0&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	103	43
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	103	46
+&#x27;2&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	103	46
+&#x27;IndicatorSetInteger&#x27; - unexpected token, probably type is missing?	TEMA_MA_SpreadSlope_MJM.mq5	104	1
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	104	21
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	104	43
+&#x27;0&#x27; - comma expected	TEMA_MA_SpreadSlope_MJM.mq5	104	43
+declaration without type	TEMA_MA_SpreadSlope_MJM.mq5	104	46
+27 errors, 0 warnings		27	0</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 19:33 UTC</span></div><div class="body"><p>You placed the code at global scope (line 100). Those calls must be inside OnInit().</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 19:34 UTC</span></div><div class="body">OOPS lol</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 19:34 UTC</span></div><div class="body"><p>No worries. Put those lines inside OnInit(), after the buffer setup and before the return statement.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 19:46 UTC</span></div><div class="body">OK, now using the attached .mqh, add trade simulation features. A signal is detected each time buffers 5, 6, and 7 cross zero: buy arrow if crossing zero into positive, sell arrow if crossing zero into negative.<p class="note">[File attached: TradeSimulation_MJM.mqh &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 19:47 UTC</span></div><div class="body"><p>Need to clarify the signal logic:</p>
+<p><strong>Option A:</strong> Signal triggers when ALL THREE buffers (5, 6, 7) cross zero in the same direction on the same bar.</p>
+<p><strong>Option B:</strong> Signal triggers when ANY ONE of the three buffers crosses zero (three independent signal sources).</p>
+<p><strong>Option C:</strong> Signal triggers when a configurable threshold percentage of the three buffers have crossed (e.g., 2 of 3 = 67%).</p>
+<p>Which behavior?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 20:58 UTC</span></div><div class="body">Option C</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 20:58 UTC</span></div><div class="body"><p><strong>Approach:</strong></p>
+<ol>
+<li>
+<p>Add <code>#include &lt;DevoInclude/TradeSimulation_MJM.mqh&gt;</code> at top</p>
+</li>
+<li>
+<p>New inputs:</p>
+<ul>
+<li>Signal threshold percent (default 67 = 2 of 3 buffers)</li>
+<li>Enable/disable trade simulation</li>
+<li>Arrow config: long/short colors, width, offset multiplier</li>
+</ul>
+</li>
+<li>
+<p>Two new buffers (total 10):</p>
+<ul>
+<li>Buffer 8: Buy arrow values</li>
+<li>Buffer 9: Sell arrow values</li>
+</ul>
+</li>
+<li>
+<p>Zero-cross detection logic per bar:</p>
+<ul>
+<li>Cross up: previous bar value &lt;= 0 AND current bar value &gt; 0</li>
+<li>Cross down: previous bar value &gt;= 0 AND current bar value &lt; 0</li>
+<li>Count crosses up vs crosses down for buffers 5, 6, 7</li>
+<li>If cross count meets threshold percentage → signal</li>
+</ul>
+</li>
+<li>
+<p>Use <code>OpenTrade()</code> from mqh for arrow creation, <code>CloseTrade()</code> on opposite signal</p>
+</li>
+<li>
+<p>Trade stats buffers (8 additional from mqh pattern): P/L, running P/L, counts, win percentages</p>
+</li>
+</ol>
+<p><strong>Total buffers:</strong> 18 (8 original + 2 arrows + 8 stats)</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 20:59 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:02 UTC</span></div><div class="body"><p>Done.</p>
+<p><strong>Added:</strong></p>
+<ol>
+<li>
+<p><strong>Include:</strong> <code>TradeSimulation_MJM.mqh</code></p>
+</li>
+<li>
+<p><strong>New inputs:</strong></p>
+<ul>
+<li>Enable Trade Simulation (default true)</li>
+<li>Signal Threshold % (default 67 = 2 of 3 buffers)</li>
+<li>Buy/Sell arrow colors, width, offset multiplier</li>
+</ul>
+</li>
+<li>
+<p><strong>New buffers (10 total):</strong></p>
+<ul>
+<li>B8-B9: Buy/Sell signal values (data window)</li>
+<li>B10-B17: Trade stats (P/L, running P/L, counts, win percentages)</li>
+</ul>
+</li>
+<li>
+<p><strong>Signal logic:</strong></p>
+<ul>
+<li>Detects zero-crossings on buffers 5, 6, 7</li>
+<li>Cross up: <code>prev &lt;= 0 AND curr &gt; 0</code></li>
+<li>Cross down: <code>prev &gt;= 0 AND curr &lt; 0</code></li>
+<li>Signal fires when cross count meets threshold percentage</li>
+<li>Arrows created as chart objects via <code>HandleSignalEvent</code>/<code>OpenTrade</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Reset on recalculation:</strong> Clears trade state and arrow objects when <code>prev_calculated == 0</code></p>
+</li>
+</ol>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:25 UTC</span></div><div class="body">OK, it seems to be working, but it&#x27;s planting the arrows off the chart. Add 2 more input parms: one that controls arrow placement (displacement from hi price for short arrows and low price for long arrows) and a start date for mock trade/arrow processing. I&#x27;m giving you a fresh code file to work from, I changed a few things.<p class="note">[File attached: TEMA_MA_SpreadSlope_MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:27 UTC</span></div><div class="body"><p>Done.</p>
+<p><strong>Added:</strong></p>
+<ul>
+<li><code>InpTradeStartDate</code> (default 2025.01.01) — signals only processed on bars at or after this date</li>
+<li><code>InpArrowDisplacement</code> (default 50 points) — displaces buffer arrow values from low/high</li>
+</ul>
+<p><strong>Note:</strong> The buffer arrows (B8/B9) are set to <code>DRAW_NONE</code>, so the visible chart arrows come from the mqh's <code>OpenTrade</code> function, which uses <code>InpArrowOffsetMult</code>. The displacement I added applies to the buffer values. If the object arrows from the mqh are still off-chart, the issue is likely in <code>ArrowOffsetPoints()</code> within the included files or the <code>arrowOffsetMultiplier</code> calculation.</p>
+<p>Want me to modify the code to create arrows directly using the displacement value instead of relying on the mqh's arrow creation?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:33 UTC</span></div><div class="body">We&#x27;re missing a lot of valid signals, see image. Why?<p class="note">[File attached: 1770845587765_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:33 UTC</span></div><div class="body"><p>Looking at the circled areas, the issue is clear: the current logic requires 2 of 3 buffers to <strong>cross zero on the exact same bar</strong>. That's extremely rare.</p>
+<p>The lines cross zero at different bars, not simultaneously. So threshold is never met.</p>
+<p><strong>Current logic:</strong> Count crossings per bar → 1 crossing = 33% &lt; 67% threshold → no signal</p>
+<p><strong>Proposed fix:</strong> When ANY buffer crosses zero, check how many buffers are now <strong>positive or negative</strong> (position-based, not crossing-based). Signal fires if threshold percentage are on the same side after the cross.</p>
+<p>Example:</p>
+<ul>
+<li>Bar N: Buffer 5 crosses from negative to positive</li>
+<li>At that moment, check: Buffer 5 = positive, Buffer 6 = positive, Buffer 7 = negative</li>
+<li>2 of 3 (67%) are positive → SIGNAL_LONG</li>
+</ul>
+<p>Confirm this is the intended behavior?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:40 UTC</span></div><div class="body">Dammit. You asked and I said &quot;option C&quot; which meant that as soon as there were a qualifying number of lines across 0, a signal would trigger. NO ONE SAID ANYTHING ABOUT IT BEING ON THE SAME BAR.
+
+So fix that. And while we&#x27;re at it let&#x27;s add another input parm that will indicate how many periods must pass since the last signal was thrown before we&#x27;ll throw a new signal.
+
+The rule must be that if enough lines cross zero for a signal, but the signal is in the same direction as the current trade, skip it. So if we cross up over zero, that should be a long signal. Then if we cross down over zero 2 bar/periods later and the trade blackout period = 3, no signal. But then the lines come back up over zero. No signal then, either, because that would be a long signal and we already have a long trade in play.
+
+Make sense?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:41 UTC</span></div><div class="body"><p>Yes, makes sense.</p>
+<p><strong>Summary of changes:</strong></p>
+<ol>
+<li>
+<p><strong>Position-based detection</strong>: Count how many of B5/B6/B7 are currently &gt; 0 (bullish) vs &lt; 0 (bearish). If threshold % are on same side → potential signal.</p>
+</li>
+<li>
+<p><strong>Same direction block</strong>: If potential signal direction matches current trade direction, skip.</p>
+</li>
+<li>
+<p><strong>Blackout period</strong>: New input. No signal fires within N bars of last signal, regardless of direction.</p>
+</li>
+</ol>
+<p><strong>Logic flow:</strong></p>
+<ul>
+<li>Bar within blackout period? → skip</li>
+<li>Count bullish/bearish buffer positions</li>
+<li>Bullish % &gt;= threshold AND current direction != long → SIGNAL_LONG</li>
+<li>Bearish % &gt;= threshold AND current direction != short → SIGNAL_SHORT</li>
+<li>On signal: record bar index, update direction</li>
+</ul>
+<p>New input: <code>InpSignalBlackout</code> (default 0 = no blackout)</p>
+<p>New global: <code>g_lastSignalBar</code></p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:43 UTC</span></div><div class="body">You&#x27;re always overcomplicating it. Same logic detects crossovers, all you need is a line count qualifies for signal &gt;= the given percentage in the input parms. Reset once signal is thrown. You don&#x27;t need to compare bullish vs. bearish. Just count.
+
+KISS it dammit!
+
+No go yet. respond.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:44 UTC</span></div><div class="body"><p>You're right. Simpler:</p>
+<p><strong>Each bar:</strong></p>
+<ol>
+<li>Count how many of B5/B6/B7 are &gt; 0</li>
+<li>Count how many are &lt; 0</li>
+<li>If above-zero count meets threshold % AND current trade isn't long AND past blackout → long signal</li>
+<li>If below-zero count meets threshold % AND current trade isn't short AND past blackout → short signal</li>
+</ol>
+<p>No crossing detection. Just position counts each bar.</p>
+<p>New input: <code>InpSignalBlackout</code> (default 0)</p>
+<p>New global: <code>g_lastSignalBar</code></p>
+<p>Correct?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:46 UTC</span></div><div class="body">go</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:47 UTC</span></div><div class="body"><p>Good - the <code>continue</code> is placed after arrow buffer initialization, so that's correct.</p>
+<p>Done.</p>
+<p><strong>Changes:</strong></p>
+<ul>
+<li>Added <code>InpSignalBlackout</code> (default 0)</li>
+<li>Added <code>g_lastSignalBar</code> (initialized to -999)</li>
+<li>Simplified signal logic: count how many of B5/B6/B7 are above or below zero, signal when threshold met and direction isn't same as current trade</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 21:56 UTC</span></div><div class="body">The indicator (via the TradeSimulation functions, I assume) creates an edit box named &quot;EA_Net_P/L&quot; that doesn&#x27;t get cleaned up when the indicator is removed. It should also get cleaned up if the user changes &quot;Enable trade simulation&quot; to false. Present the code block(s) that need to be changed for this here in the chat.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 21:56 UTC</span></div><div class="body"><p><strong>OnDeinit - add label cleanup:</strong></p>
+<pre><code class="language-cpp">//+------------------------------------------------------------------+
+//| Custom indicator deinitialization function                       |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   if(HandleTEMA != INVALID_HANDLE)
+      IndicatorRelease(HandleTEMA);
+   if(HandleMA != INVALID_HANDLE)
+      IndicatorRelease(HandleMA);
+
+   //--- Clean up signal arrows
+   ObjectsDeleteAll(0, &quot;Signal_&quot;);
+   
+   //--- Clean up trade label
+   ObjectDelete(0, &quot;EA_Net_P/L&quot;);
+}
+</code></pre>
+<p>This handles both cases since changing input parameters triggers OnDeinit followed by OnInit.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 22:11 UTC</span></div><div class="body">wrong place for it. Isn&#x27;t there a TradeSimulator function that handles cleanup?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 22:12 UTC</span></div><div class="body"><p>Let me check the mqh file again for cleanup functions.</p>
+<p><strong>TS_ResetState in TradeSimulation_MJM.mqh</strong> - add label deletion:</p>
+<pre><code class="language-cpp">void TS_ResetState(STradeStats &amp;stats, STradeEntry &amp;trade, int &amp;signalDirection,
+                   double &amp;bufPL[], double &amp;bufRunning[],
+                   double &amp;bufCount[], double &amp;bufWinPct[],
+                   double &amp;bufShortCount[], double &amp;bufShortWinPct[],
+                   double &amp;bufLongCount[], double &amp;bufLongWinPct[])
+{
+   ObjectsDeleteAll(0, &quot;Signal_&quot;);
+   ObjectDelete(0, &quot;EA_Net_P/L&quot;);
+
+   stats.Reset();
+   trade.Reset();
+   signalDirection = 0;
+
+   ArrayInitialize(bufPL, EMPTY_VALUE);
+   ArrayInitialize(bufRunning, EMPTY_VALUE);
+   ArrayInitialize(bufCount, EMPTY_VALUE);
+   ArrayInitialize(bufWinPct, EMPTY_VALUE);
+   ArrayInitialize(bufShortCount, EMPTY_VALUE);
+   ArrayInitialize(bufShortWinPct, EMPTY_VALUE);
+   ArrayInitialize(bufLongCount, EMPTY_VALUE);
+   ArrayInitialize(bufLongWinPct, EMPTY_VALUE);
+}
+</code></pre>
+<p>Then call <code>TS_ResetState()</code> from the indicator's OnDeinit instead of inline cleanup.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 22:33 UTC</span></div><div class="body">I can&#x27;t find where &quot;Signal_&quot; objects are getting created.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 22:33 UTC</span></div><div class="body"><p>Looking at the mqh:</p>
+<p><strong>SSignalArrowConfig</strong> (lines 97-112) sets the prefixes:</p>
+<pre><code class="language-cpp">longPrefix     = &quot;Signal_Long_&quot;;
+shortPrefix    = &quot;Signal_Short_&quot;;
+</code></pre>
+<p><strong>OpenTrade</strong> (lines 346-380) builds the arrow name and calls CreateArrow:</p>
+<pre><code class="language-cpp">trade.arrowName = arrowCfg.shortPrefix + IntegerToString(bar);  // or longPrefix
+...
+CreateArrow(trade.arrowName, barTime, price, ac, &quot;&quot;);
+</code></pre>
+<p><code>CreateArrow</code> is in one of the included files (<code>Indy Utils_MJM.mqh</code> or <code>Tiddlies_MJM.mqh</code>). That's where the actual object is created.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-11 22:47 UTC</span></div><div class="body">So, calling this function isn&#x27;t very practical, is it? Can&#x27;t just call it without that long list of parameters:
+
+void TS_ResetState(STradeStats &amp;stats, 
+                     STradeEntry &amp;trade, 
+                     int         &amp;signalDirection,
+                     double      &amp;bufPL[], 
+                     double      &amp;bufRunning[],
+                     double      &amp;bufCount[], 
+                     double      &amp;bufWinPct[],
+                     double      &amp;bufShortCount[], 
+                     double      &amp;bufShortWinPct[],
+                     double      &amp;bufLongCount[], 
+                     double      &amp;bufLongWinPct[])</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-11 22:47 UTC</span></div><div class="body"><p>Right. Add a simple cleanup function to the mqh:</p>
+<pre><code class="language-cpp">//+------------------------------------------------------------------+
+//| TS_Cleanup - remove trade simulation chart objects               |
+//+------------------------------------------------------------------+
+void TS_Cleanup()
+{
+   ObjectsDeleteAll(0, &quot;Signal_&quot;);
+   ObjectDelete(0, &quot;EA_Net_P/L&quot;);
+}
+</code></pre>
+<p>Then call <code>TS_Cleanup()</code> from OnDeinit.</p>
+</div></div>
+<nav class="pager"><a href="650-2026-02-11-webb-research-tool-overview.html">&larr; Webb research tool overview</a><a href="../index.html">All chats</a><a href="652-2026-02-12-trading-function-refactoring-and-close-trade-failures.html">Trading function refactoring and close trade failures &rarr;</a></nav></div></body></html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TEMA calculation and preprocessor errors</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-18_converting-mql-indicator-to-python-script_5607e1a0.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-17_code-quality-and-complexity-assessment_63fa48ce.html">Next →</a></span></div><h1>TEMA calculation and preprocessor errors</h1><div class="meta">Created 2026-04-17 21:05 UTC · Last updated 2026-04-17 21:14 UTC · 12 messages<br>Original: <a href="https://claude.ai/chat/2c2ecb5c-a83d-4224-ae86-e074779b2514">claude.ai/chat/2c2ecb5c-a83d-4224-ae86-e074779b2514</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-17 21:05 UTC</div><p>The other AI is fucking this up. The prior version recalculated the TEMA separately to calculate MA2. It was supposed to fix this to use the already calculated TEMA as its input. Review the code and figure out how to do that correctly. 2 rounds of compile errors so far, here's the latest:</p>
+<p>IndyCalcs_MJM.mqh         <br />
+'#if' - invalid preprocessor command    Triple_Trigger_MJM_v2_plotter.mq5   632 1<br />
+mismatched #ifdef/#endif pair   Triple_Trigger_MJM_v2_plotter.mq5   753 1<br />
+unexpected token    Triple_Trigger_MJM_v2_plotter.mq5   632 1</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:05 UTC</div><p>The problem is clear. The old dead code block (lines 634–752) was wrapped in <code>#if 0 ... #endif</code> to disable it, and line 755 (<code>CalcMA(BufMA1, BufMA2, ...)</code>) was placed <strong>after</strong> the <code>#endif</code> — which is correct. But the AI also left a reference to undefined variables (<code>alpha2</code>, <code>alphaE</code>) inside the dead block, and more critically, the <code>#if 0</code> block references <code>IndyCalcs_MJM.mqh</code> — that's not the real issue though.</p>
+<p>The actual compile errors are:</p>
+<ul>
+<li><strong>Line 632</strong>: <code>#if 0</code> — MQL5 doesn't support <code>#if</code> with numeric literals the way C does. MQL5 preprocessor only supports <code>#ifdef</code>, <code>#ifndef</code>, <code>#else</code>, <code>#endif</code>. <strong><code>#if 0</code> is invalid MQL5 syntax.</strong></li>
+<li><strong>Line 753</strong>: Mismatched <code>#ifdef/#endif</code> — because <code>#if</code> (line 632) was invalid, the <code>#endif</code> (line 753) has no matching opener.</li>
+</ul>
+<p><strong>Fix:</strong> Replace <code>#if 0</code> / <code>#endif</code> with <code>#ifdef NEVER_DEFINED_BLOCK</code> / <code>#endif</code> — that's the MQL5-idiomatic way to dead-out a block.</p>
+<p><strong>Root cause:</strong> MQL5's preprocessor doesn't support <code>#if &lt;expression&gt;</code> — only <code>#ifdef</code>/<code>#ifndef</code>. The <code>#if 0</code> was syntactically illegal, which cascaded into the <code>#endif</code> mismatch.</p>
+<p><strong>Fix applied:</strong> <code>#if 0</code> → <code>#ifdef DEAD_CODE_OLD_MA2_RECALC_TEMA</code> (a symbol that will never be defined). The <code>#endif</code> on line 753 is already correct and now has a valid matching opener.</p>
+<p>Line 755 — <code>CalcMA(BufMA1, BufMA2, InpMA2EmaPeriod, MA_TYPE_EMA, prev_for_calcs)</code> — was already outside the dead block and intact, so the correct behavior (EMA of already-computed BufMA1 → BufMA2) is in place.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-17 21:07 UTC</div><p>NO GO, NO FUCKING CODE.</p>
+<p>THAT IS <strong>NOT</strong> WHAT I WANTED YOU TO DO.</p>
+<p>The old block needs to be removed. NO COMPILER DIRECTIVES, MAKE THIS CLEAN.</p>
+<p>AND <strong>BEFORE YOU DO ANYTHING ELSE</strong>, verify that the currently active code will calculate MA2 correctly.</p>
+<p>ONLY THEN will I give you a GO.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:07 UTC</div><p>Looking at the active code after the dead block:</p>
+<p><strong>Line 755:</strong> <code>CalcMA(BufMA1, BufMA2, InpMA2EmaPeriod, MA_TYPE_EMA, prev_for_calcs)</code></p>
+<p>This calls <code>CalcMA</code> with <code>BufMA1</code> as input and <code>BufMA2</code> as output — that is correct. It's feeding the already-computed TEMA (MA1) into the EMA calculation to produce MA2.</p>
+<p>I need to verify what <code>CalcMA</code> does with those arguments. Let me check the signature in the include.</p>
+<p><code>IndyCalcs_MJM.mqh</code> isn't uploaded. I can't verify <code>CalcMA</code>'s signature without it.</p>
+<p><strong>I need you to confirm or upload <code>IndyCalcs_MJM.mqh</code></strong> so I can verify the argument order is <code>(input[], output[], period, type, from_bar)</code> before I touch anything.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:09 UTC</div><p><code>CalcMA(BufMA1, BufMA2, InpMA2EmaPeriod, MA_TYPE_EMA, prev_for_calcs)</code> — signature matches: <code>price[]</code> = BufMA1 (the already-computed TEMA), <code>outData[]</code> = BufMA2, correct period and type. <strong>The active code is correct.</strong></p>
+<p>GO on removing the dead block?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-17 21:10 UTC</div><p>not yet</p>
+<p>Verify that the mock trade/signal/profit-loss stats code is in place using functions in TradeSimulation_MJM.mqh. Check it to make sure it will work.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:10 UTC</div><p>Now check the TradeSimulation_MJM.mqh to verify all those function signatures match what the indicator is calling.</p>
+<p><code>TradeSimulation_MJM.mqh</code> isn't uploaded. I can see the indicator's side is consistent — structs declared, buffers registered and initialized, <code>HandleSignalEvent</code> and <code>TS_UpdateOpenTrade</code> called with matching args throughout. But I cannot verify the function signatures on the library side without the file.</p>
+<p>Need <code>TradeSimulation_MJM.mqh</code> to complete the check.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:11 UTC</div><p>Now cross-check the call in the indicator against this signature:</p>
+<p><strong>Indicator call (lines 1196–1211):</strong></p>
+<pre><code>HandleSignalEvent(i, sig_type,
+    closeTrade, fillBuffers, openTrade, updateLabel,
+    InpShowArrows,
+    time,
+    BufMA2,           // signalPriceSeries
+    g_trade_start,
+    g_currentTrade, g_tradeStats,
+    g_arrowCfg, g_labelCfg,
+    InpSoundAlarm,
+    BufTradePL, BufRunningPL, BufTradeCount,
+    BufWinPct, BufShortCount, BufShortWinPct,
+    BufLongCount, BufLongWinPct,
+    BufArrowBuy, BufArrowSell,
+    TS_READOUT_PRICE,
+    sig_price,
+    sig_price)
+</code></pre>
+<p><strong>Signature expects:</strong> <code>bar, signal, closeTrade, fillBuffers, openTrade, updateLabel, showArrows, time[], signalPriceSeries[], pdtSignalStartDT, currentTrade, stats, arrowCfg, labelCfg, pbSoundAlarm, bufPL[], bufRunning[], bufCount[], bufWinPct[], bufShortCount[], bufShortWinPct[], bufLongCount[], bufLongWinPct[], bufArrowBuy[], bufArrowSell[], readoutMode, signalPriceOverride, objectArrowBasePrice</code></p>
+<p><strong>Matches perfectly.</strong> <code>SSignalArrowConfig</code> — let me verify that struct name matches what the indicator declares.</p>
+<p><code>SSignalArrowConfig</code> is used in <code>TradeSimulation_MJM.mqh</code> but not defined there — it must come from <code>TEMA_EMA_Trigger_Shared_MJM.mqh</code>, which is included first. That file isn't uploaded, but the indicator declares <code>g_arrowCfg</code> as <code>SSignalArrowConfig</code> and the library expects the same type, so as long as that shared header defines it (which it must, since this compiled before), that's fine.</p>
+<p><strong>Verdict: the trade simulation wiring is correct.</strong> All function signatures match, all buffers are declared/registered/initialized, structs align. No issues found.</p>
+<p><strong>GO on removing the dead block?</strong></p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-17 21:12 UTC</div><p>So is HandleSignalEvent() the only thing the indicator uses when the code decides to emit a signal?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:12 UTC</div><p>No. Looking at the indicator more carefully — <code>HandleSignalEvent</code> is called when a signal fires, but <code>TS_UpdateOpenTrade</code> is called every bar at the end of <code>OnCalculate</code> (line 596) regardless of signals, to keep the open-trade tooltip/label current on the live bar.</p>
+<p>Those are the only two TS functions called. Nothing else.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-17 21:14 UTC</div><p>OK, good.</p>
+<p>Yes, remove the code block.</p>
+<p>GO</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-17 21:14 UTC</div><p>Clean. <code>CalcTEMA</code> → <code>CalcMA</code>, no preprocessor directives anywhere.</p>
+<p>Done.</p></div><div class="nav"><span><a href="2026-04-18_converting-mql-indicator-to-python-script_5607e1a0.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-17_code-quality-and-complexity-assessment_63fa48ce.html">Next →</a></span></div></div></body></html>

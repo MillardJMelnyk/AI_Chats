@@ -1,0 +1,82 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Indicator calculations halting after trade signals</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-12_metatrader-5-strategy-tester-freezing-on-ea-selection_3caf833a.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_fixing-hard-coded-directional-references_35759ead.html">Next →</a></span></div><h1>Indicator calculations halting after trade signals</h1><div class="meta">Created 2026-05-11 20:59 UTC · Last updated 2026-05-11 21:45 UTC · 11 messages<br>Original: <a href="https://claude.ai/chat/8e9d2d5d-ea0f-4dd7-b4a9-d406290e69cc">claude.ai/chat/8e9d2d5d-ea0f-4dd7-b4a9-d406290e69cc</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 20:59 UTC</div><p>Attached is an indy. It's supposed to calculate if the price moves far enough outside the channel to warrant a reversal. If "outside spread" &gt; "outside trigger min", then the condition is true. But the code is structured so that "outside spread" stops being calculated after a signal/trade is fired. </p>
+<p>Here's GPT's assessment:</p>
+<p>Confirmed.<br />
+At 23:50:27, the EA acted on a sell buffer value for the 23:50 candle.<br />
+The indicator bug is this: after a signal fires on a candle, later ticks on that same candle hit the “already traded this candle” skip before outside spread is recalculated. But each tick first resets outside spread to 0.000, so the later ticks leave it at zero.<br />
+Using the data-window values shown:</p>
+<ul>
+<li>Lower boundary: 4735.125</li>
+<li>Candle low: 4733.75</li>
+<li>Actual outside spread: 4735.125 - 4733.75 = 1.375<br />
+So the displayed 0.000 is wrong. The fix is to keep outside-spread calculation outside the same-bar trade skip, so diagnostics keep updating even after that candle already fired a signal.</li>
+</ul>
+<p>I need you to audit ALL the logic and make sure that other calculations proceed whether or not a trade was fired. One short and one long per bar max are allowed, but all bars need all calculations kept current, regardless.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 21:00 UTC</div><p>Audit complete. Here's what I found:</p>
+<p><strong>The confirmed bug (lines 437–438):</strong> <code>if(!adverseMoveReverse &amp;&amp; g_lastExecBar == i) continue;</code> — after any signal fires on bar <code>i</code>, subsequent ticks skip everything below: direction flip, sideways detection, outside spread, triggerMaId, OOB check, opposite-boundary crossing, reentry logic, mid-cross logic, and the triggerMaId buffer write. Meanwhile lines 380–381 reset <code>g_bufOutsideSpread[i]</code> and <code>g_bufTriggerMaId[i]</code> to defaults on every tick entry, so they go stale.</p>
+<p><strong>Second bug (same mechanism):</strong> <code>g_lastExecBar</code> is a single int — it blocks ALL directions after the first signal on a bar, not just the direction that already fired. You said one long + one short per bar are allowed, but the current gate prevents that.</p>
+<p><strong>Fix plan:</strong></p>
+<ol>
+<li>Remove the <code>g_lastExecBar</code> early-continue entirely so all calculations always run.</li>
+<li>Replace <code>g_lastExecBar</code> with <code>g_lastExecBarLong</code> / <code>g_lastExecBarShort</code> for per-direction per-bar gating.</li>
+<li>Move the gate to after signal determination, so it only blocks signal <em>execution</em>, not calculations.</li>
+<li>Adverse moves still bypass the per-bar gate (preserving existing semantic).</li>
+</ol>
+<p>GO to implement?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 21:24 UTC</div><p>Here's the latest code. The indy is supposed to plant a vertical line on the bar active when the indy was added to the chart. Although deleting the line in OnDeinit() is coded, a line object named "TT_IndyLiveStartMark" remains on the chart when the indy is removed, so I have to remove the object manually.</p>
+<p>Where is the bug?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 21:26 UTC</div><p>The <code>OnDeinit</code> code looks correct on its face — <code>ObjectDelete(0, LIVE_START_MARK)</code> on line 309 uses the same constant as creation. Without seeing <code>TS_Cleanup()</code>, the most likely explanation is that <code>TS_Cleanup()</code> throws a runtime error, so execution never reaches line 309.</p>
+<p>But before I speculate further — is <code>TradeSimulation_MJM.mqh</code> available for me to check?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 21:41 UTC</div><p>No errors in the logs. It's got nothing to do with that .mqh file.</p>
+<p>I tried adding debug statements to verify the object name being used. Everything checked out. Here is the OnDeinit() function:</p>
+<p>void OnDeinit(const int reason)<br />
+{<br />
+   TS_Cleanup();<br />
+   ObjectDelete(0, "EA_Net_P/L");<br />
+   int iObjFnd = ObjectFind(0, LIVE_START_MARK);<br />
+Print("ChartID&lt;",ChartID(),"&gt;: ["+<strong>FILE</strong>+"] ["+<strong>FUNCTION</strong>+"] LINE "+(string)<strong>LINE</strong>,<br />
+      " <strong>BEFORE DELETE</strong> OF LIVE_START_MARK&lt;",LIVE_START_MARK,<br />
+      "&gt; iObjFnd&lt;",iObjFnd,<br />
+      "&gt;");<br />
+   ObjectDelete(0, LIVE_START_MARK);</p>
+<p>}</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 21:42 UTC</div><p>the line remained.</p>
+<p>So I added one more Print() statement:</p>
+<p>void OnDeinit(const int reason)<br />
+{<br />
+   TS_Cleanup();<br />
+   ObjectDelete(0, "EA_Net_P/L");<br />
+   int iObjFnd = ObjectFind(0, LIVE_START_MARK);<br />
+Print("ChartID&lt;",ChartID(),"&gt;: ["+<strong>FILE</strong>+"] ["+<strong>FUNCTION</strong>+"] LINE "+(string)<strong>LINE</strong>,<br />
+      " <strong>BEFORE DELETE</strong> OF LIVE_START_MARK&lt;",LIVE_START_MARK,<br />
+      "&gt; iObjFnd&lt;",iObjFnd,<br />
+      "&gt;");<br />
+   ObjectDelete(0, LIVE_START_MARK);<br />
+   iObjFnd = ObjectFind(0, LIVE_START_MARK);<br />
+Print("ChartID&lt;",ChartID(),"&gt;: ["+<strong>FILE</strong>+"] ["+<strong>FUNCTION</strong>+"] LINE "+(string)<strong>LINE</strong>,<br />
+      " <strong>AFTER  DELETE</strong> OF LIVE_START_MARK&lt;",LIVE_START_MARK,<br />
+      "&gt; iObjFnd&lt;",iObjFnd,<br />
+      "&gt;");<br />
+}</p>
+<p>The line was deleted.</p>
+<p>2026.05.11 15:39:30.698 Triple_MA_MJM (XAUUSD,M1)   ChartID&lt;133608959982095599&gt;: [Triple_MA_MJM.mq5] [CreateLiveStartMarker] LINE 234 <strong>BEFORE DELETE</strong> OF LIVE_START_MARK&lt;TT_IndyLiveStartMark&gt; barTime&lt;2026.05.11 23:58:00&gt; iObjFnd&lt;-1&gt;<br />
+2026.05.11 15:39:30.698 Triple_MA_MJM (XAUUSD,M1)   ChartID&lt;133608959982095599&gt;: [Triple_MA_MJM.mq5] [CreateLiveStartMarker] LINE 244 <strong>CREATED</strong> LIVE_START_MARK&lt;TT_IndyLiveStartMark&gt; barTime&lt;2026.05.11 23:58:00&gt;<br />
+2026.05.11 15:39:38.342 Triple_MA_MJM (XAUUSD,M1)   ChartID&lt;133608959982095599&gt;: [Triple_MA_MJM.mq5] [OnDeinit] LINE 322 <strong>BEFORE DELETE</strong> OF LIVE_START_MARK&lt;TT_IndyLiveStartMark&gt; iObjFnd&lt;0&gt;<br />
+2026.05.11 15:39:38.342 Triple_MA_MJM (XAUUSD,M1)   ChartID&lt;133608959982095599&gt;: [Triple_MA_MJM.mq5] [OnDeinit] LINE 330 <strong>AFTER  DELETE</strong> OF LIVE_START_MARK&lt;TT_IndyLiveStartMark&gt; iObjFnd&lt;-1&gt;</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 21:42 UTC</div><p>The second <code>Print()</code> is flushing MT5's asynchronous object-operation queue. <code>ObjectDelete</code> is async — it queues the deletion but doesn't execute it before the indicator unloads. The extra <code>Print()</code> forces enough internal processing for the queued delete to commit.</p>
+<p>Fix: replace the diagnostic prints with <code>ChartRedraw(0)</code> after the delete.</p>
+<pre><code class="language-cpp">ObjectDelete(0, LIVE_START_MARK);
+ChartRedraw(0);
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 21:43 UTC</div><p>That's bizarre. I've never seen that happen. OnDeinit runs because I DELETED the entire indicator from the chart.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 21:44 UTC</div><p>Right — that's exactly why it's a problem. MT5 batches chart-object operations into an async queue. Normally the queue drains on the next chart event cycle. But when you remove the indicator, the context is torn down immediately after <code>OnDeinit</code> returns — the queued <code>ObjectDelete</code> gets discarded along with the indicator's execution context before it ever executes.</p>
+<p>The second <code>Print()</code> call isn't special — any MQL5 API call that touches the chart subsystem forces the pending queue to flush synchronously before it returns. Without it, <code>OnDeinit</code> returns, the indicator context is destroyed, and the queued delete dies with it.</p>
+<p>It's an MT5 quirk, not something you'd reason your way to.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-11 21:44 UTC</div><p>I've written scores of indys that remove objects in OnDeinit(). Never happened before.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-11 21:45 UTC</div><p>Fair point. The difference is probably this line in <code>CreateLiveStartMarker</code>:</p>
+<pre><code class="language-cpp">ObjectSetInteger(0, LIVE_START_MARK, OBJPROP_HIDDEN, false);
+</code></pre>
+<p>Your other indicators most likely leave <code>OBJPROP_HIDDEN</code> at its default (<code>true</code>). MT5 auto-deletes hidden indicator-owned objects when the indicator is removed — so your explicit <code>ObjectDelete</code> was never the thing actually doing the work. Here, with <code>HIDDEN=false</code>, MT5 treats it as a user-visible object and skips the auto-cleanup, leaving the explicit <code>ObjectDelete</code> as the only path — and that's the one that doesn't commit in time.</p></div><div class="nav"><span><a href="2026-05-12_metatrader-5-strategy-tester-freezing-on-ea-selection_3caf833a.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_fixing-hard-coded-directional-references_35759ead.html">Next →</a></span></div></div></body></html>

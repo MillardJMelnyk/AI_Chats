@@ -1,0 +1,2685 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MQL5 TextGVar cleanup and REINIT flag detection</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="607-2026-01-19-fixing-textgvar-cleanup-issues-in-sonnet-4-5.html">&larr; Fixing TextGVar cleanup issues in Sonnet 4.5</a><a href="../index.html">All chats</a><a href="609-2026-01-20-converting-exercises-to-document-format.html">Converting exercises to document format &rarr;</a></nav>
+<header class="top">
+<h1>MQL5 TextGVar cleanup and REINIT flag detection</h1>
+<div class="meta">Created 2026-01-20 12:22 UTC &middot; Last updated 2026-01-20 15:15 UTC &middot; 112 messages<br>Original: <a href="https://claude.ai/chat/6062a6aa-1b72-45e2-94e8-3388118cde1f">claude.ai/chat/6062a6aa-1b72-45e2-94e8-3388118cde1f</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 12:22 UTC</span></div><div class="body">Continuing MQL5 TextGVar cleanup work.
+Context:
+SIs (Source Indicators) use TextGVar objects for IPC
+IS (IndicatorSlopes) scans for REINIT flags from SIs after parameter changes
+Implemented fixes to ATR SI: global window number (g_MyWindow), TEXTGVAR_PREFIX/TEXTGVAR_REINIT defines, g_IndyName, g_TextGVar_Pattern, g_TextGVar_DeletePrefix
+Current issues:
+ATR cleanup failing when IS is also running (was working standalone)
+IS not detecting ATR&#x27;s REINIT flag during scan
+Key files needed:
+Ind_ATR MJM.mq5 (current working version)
+TextGVar MJM.mqh
+IS source file (IndicatorSlopes)
+Naming conventions:
+TextGVar pattern: MJM_[window]_[ShortName]_[varName] (underscores handled by TextGVar
+REINIT flag: MJM_[window]_[ShortName]_REINIT
+g_TextGVar_DeletePrefix: pattern up to &quot;(&quot; for catching orphaned REINITs across parameter changes</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 12:22 UTC</span></div><div class="body"><p>Tuesday, January 21, 2025, 12:47 AM CST</p>
+<p>No files in uploads. Need the three files:</p>
+<ul>
+<li>Ind_ATR MJM.mq5</li>
+<li>TextGVar MJM.mqh</li>
+<li>IS source file</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 12:25 UTC</span></div><div class="body">Here they are.
+
+Examine the code, find the bugs -- or if you can&#x27;t see them, put in judicious debug print statements that will help identify them.
+
+No coding until my GO. Report your findings and we&#x27;ll discuss them.<p class="note">[File attached: Ind_ATR MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: IndicatorSlopes MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: TextGVar MJM.mqh &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 12:26 UTC</span></div><div class="body"><hr />
+<h2>Findings</h2>
+<h3>Bug 1: REINIT Variable Name Mismatch (Confirmed)</h3>
+<p><strong>Location:</strong> IS <code>CheckReinitSignals()</code> line 512</p>
+<p><strong>Problem:</strong></p>
+<ul>
+<li>ATR creates: <code>TextGVar_Create(..., TEXTGVAR_REINIT, ...)</code> where <code>TEXTGVAR_REINIT = &quot;REINIT&quot;</code></li>
+<li>IS reads: <code>ReadTextGVar(window, shortName, &quot;_REINIT&quot;, &quot;&quot;)</code></li>
+</ul>
+<p>The <code>TextGVar_BuildName</code> function joins with underscores:</p>
+<pre><code>prefix + &quot;_&quot; + window + &quot;_&quot; + shortName + &quot;_&quot; + varName
+</code></pre>
+<p>So:</p>
+<ul>
+<li>ATR creates object named: <code>MJM_1_ATR(14)_REINIT</code></li>
+<li>IS searches for object named: <code>MJM_1_ATR(14)__REINIT</code> (double underscore)</li>
+</ul>
+<p><strong>Fix:</strong> Change IS line 512 from <code>&quot;_REINIT&quot;</code> to <code>&quot;REINIT&quot;</code></p>
+<hr />
+<h3>Bug 2: IS Delete Also Uses Wrong Name</h3>
+<p><strong>Location:</strong> IS <code>CheckReinitSignals()</code> line 520</p>
+<p>Same issue:</p>
+<pre><code class="language-mql5">TextGVar_Delete(TEXTGVAR_PREFIX, window, shortName, &quot;_REINIT&quot;);
+</code></pre>
+<p>Should be <code>&quot;REINIT&quot;</code> not <code>&quot;_REINIT&quot;</code>.</p>
+<hr />
+<h3>Bug 3: IS Doesn't Scan for New Indicators After REINIT</h3>
+<p><strong>Potential Issue:</strong> When ATR changes parameters from 14→20:</p>
+<ol>
+<li>ATR.OnDeinit creates <code>MJM_1_ATR(14)_REINIT</code></li>
+<li>ATR.OnInit creates new TextGVars as <code>MJM_1_ATR(20)_*</code></li>
+<li>IS is still tracking &quot;ATR(14)&quot; in <code>g_lines[]</code></li>
+<li>IS looks for REINIT at <code>MJM_1_ATR(14)_REINIT</code> — this works if REINIT exists</li>
+<li>But after rescanning, IS might not find &quot;ATR(14)&quot; anymore (it's now &quot;ATR(20)&quot;)</li>
+</ol>
+<p>This is probably working correctly since you trigger rescan on REINIT detection, but worth verifying the timing.</p>
+<hr />
+<h3>Regarding &quot;ATR cleanup failing when IS is running&quot;</h3>
+<p>I don't see an obvious bug in ATR's cleanup code. The cleanup logic looks correct:</p>
+<pre><code class="language-mql5">// Line 75-80: Delete stale REINITs
+if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+   ObjectDelete(0, objName);
+
+// Line 82: Delete all TextGVars for this indicator
+TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+</code></pre>
+<p>Possible causes to investigate:</p>
+<ol>
+<li><strong>Window number mismatch</strong>: Is <code>g_MyWindow</code> getting the correct value in OnInit? (Subwindow indices can shift when indicators are added/removed)</li>
+<li><strong>Timing</strong>: IS holds indicator handles. Could there be a reference-counting issue?</li>
+<li><strong>Object visibility</strong>: Are objects created in window 0 (main chart) per the <code>OBJ_TEXT</code> creation?</li>
+</ol>
+<hr />
+<h3>Recommended Debug Statements</h3>
+<p><strong>In ATR OnDeinit (after line 73):</strong></p>
+<pre><code class="language-mql5">Print(&quot;ATR.OnDeinit: reason=&quot;, reason, &quot; g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+Print(&quot;ATR.OnDeinit: g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+Print(&quot;ATR.OnDeinit: Looking for REINIT objects...&quot;);
+for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+{
+   string objName = ObjectName(0, obj);
+   if(StringFind(objName, &quot;MJM&quot;) == 0)
+      Print(&quot;  Found MJM object: &quot;, objName);
+}
+</code></pre>
+<p><strong>In IS CheckReinitSignals (after line 511):</strong></p>
+<pre><code class="language-mql5">string expectedName = TextGVar_BuildName(TEXTGVAR_PREFIX, window, shortName, &quot;REINIT&quot;);
+Print(&quot;IS.CheckReinitSignals: Looking for REINIT object: &quot;, expectedName);
+Print(&quot;IS.CheckReinitSignals: ObjectFind result: &quot;, ObjectFind(0, expectedName));
+</code></pre>
+<hr />
+<h3>Summary</h3>
+<table>
+<thead>
+<tr>
+<th>Bug</th>
+<th>Location</th>
+<th>Issue</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>IS line 512</td>
+<td><code>&quot;_REINIT&quot;</code> should be <code>&quot;REINIT&quot;</code></td>
+<td>Change varName</td>
+</tr>
+<tr>
+<td>2</td>
+<td>IS line 520</td>
+<td><code>&quot;_REINIT&quot;</code> should be <code>&quot;REINIT&quot;</code></td>
+<td>Change varName</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Cleanup</td>
+<td>Unknown — need debug output</td>
+<td>Add Print statements</td>
+</tr>
+</tbody>
+</table>
+<p>The REINIT detection failure is definitively caused by bugs 1 and 2. The cleanup issue needs debug output to diagnose.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 12:52 UTC</span></div><div class="body">I fixed that one. We&#x27;re Still getting the same puzzling behavior. When ATR runs on the chart alone it handles It&#x27;s TextGVar objects perfectly. Then after I is placed on the chart, it stops cleaning up properly.
+
+First, a series of images in sequence showing that on its own ATR manages its TextGVars fine. First, the objects list before adding ATR to the chart, then snapshots after adding (period=14), and after several parameter changes.<p class="note">[File attached: 1768913473195_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913474904_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913476506_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913483401_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913484915_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913486367_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913487773_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913492593_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768913493720_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 12:53 UTC</span></div><div class="body"><p>The sequence confirms ATR works correctly in isolation:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Action</th>
+<th>Objects State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Before ATR</td>
+<td>1 object (ChartID)</td>
+</tr>
+<tr>
+<td>2-3</td>
+<td>Add ATR(14)</td>
+<td>9 objects - all ATR(14) TextGVars</td>
+</tr>
+<tr>
+<td>4-5</td>
+<td>Change to ATR(5)</td>
+<td>10 objects - ATR(14)_REINIT + ATR(5) TextGVars</td>
+</tr>
+<tr>
+<td>6-7</td>
+<td>Change to ATR(22)</td>
+<td>10 objects - ATR(5)_REINIT + ATR(22) TextGVars (ATR(14)_REINIT cleaned)</td>
+</tr>
+<tr>
+<td>8-9</td>
+<td>Change to ATR(14)</td>
+<td>10 objects - ATR(22)_REINIT + ATR(14) TextGVars (ATR(5)_REINIT cleaned)</td>
+</tr>
+</tbody>
+</table>
+<p>Cleanup is working correctly: each parameter change cleans the stale REINIT from the previous change, deletes current TextGVars, then creates new REINIT.</p>
+<p>Ready for the failure case images with IS running.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 12:59 UTC</span></div><div class="body">OK, now to IS.
+
+First, isn&#x27;t this function overly complicated. Are all those traps really necessary and important?
+
+bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int window = g_lines[i].indicatorWindow;
+      
+      //--- Check if we&#x27;ve already processed this shortName
+      bool alreadyChecked = false;
+      for(int j = 0; j &lt; checkedCount; j++)
+      {
+         if(checkedNames[j] == shortName)
+         {
+            alreadyChecked = true;
+            break;
+         }
+      }
+      
+      if(alreadyChecked)
+         continue;
+      
+      ArrayResize(checkedNames, checkedCount + 1);
+      checkedNames[checkedCount] = shortName;
+      checkedCount++;
+      
+      //--- Check for REINIT signal
+      string reinitSignal = ReadTextGVar(window, shortName, TEXTGVAR_REINIT, &quot;&quot;);
+      
+      if(reinitSignal == &quot;&quot;)
+         continue;
+      
+      Print(&quot;REINIT detected for &quot;, shortName, &quot;, triggering rescan&quot;);
+      
+      //--- Delete the REINIT flag
+      TextGVar_Delete(TEXTGVAR_PREFIX, window, shortName, TEXTGVAR_REINIT);
+      
+      return true;
+   }
+   
+   return false;
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 12:59 UTC</span></div><div class="body"><p>The dedup logic is necessary <em>if</em> you iterate <code>g_lines[]</code> — a multi-buffer indicator like MACD would have 3 entries with the same shortName, and you'd check/delete the same REINIT three times.</p>
+<p>But the whole approach is overcomplicated. Simpler and more robust:</p>
+<pre><code class="language-mql5">bool CheckReinitSignals()
+{
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, TEXTGVAR_PREFIX + &quot;_&quot;) == 0 &amp;&amp; 
+         StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+      {
+         Print(&quot;REINIT detected: &quot;, objName);
+         ObjectDelete(0, objName);
+         return true;
+      }
+   }
+   return false;
+}
+</code></pre>
+<p>Advantages:</p>
+<ol>
+<li>Catches <em>any</em> REINIT flag, not just for indicators IS is already tracking</li>
+<li>No dedup bookkeeping needed</li>
+<li>Works even if g_lines[] is stale or empty</li>
+<li>Directly matches the object naming convention</li>
+</ol>
+<p>The current version has a design flaw: it only looks for REINITs belonging to indicators in <code>g_lines[]</code>. If IS hasn't scanned yet, or if the scan failed, it won't find anything.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:06 UTC</span></div><div class="body">dedup logic?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:06 UTC</span></div><div class="body"><p>Deduplication — the <code>checkedNames[]</code> array and inner loop that prevents checking the same shortName twice.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:07 UTC</span></div><div class="body">I see, g_lines is the only thing we can iterate.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:08 UTC</span></div><div class="body"><p>Not true. <code>ObjectsTotal(0)</code> gives you all chart objects. The simplified version iterates objects directly, looking for any object matching the REINIT naming pattern. No need to know what indicators exist — just find any <code>MJM_*_REINIT</code> object and trigger rescan.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:09 UTC</span></div><div class="body">So, read objects once, for each REINIT, redo the timeseries for that indicator?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:09 UTC</span></div><div class="body"><p>Simpler than that. Find any REINIT → delete it → return true → caller does full rescan.</p>
+<p>Multiple REINITs (rare edge case) get caught on subsequent timer ticks. One rescan per tick is fine.</p>
+<p>The key insight: you don't need to know <em>which</em> indicator changed. Just detect &quot;something changed&quot; and rebuild everything. The full rescan is already happening — the object-scan approach just makes detection more reliable.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:11 UTC</span></div><div class="body">where is the timer set?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:12 UTC</span></div><div class="body"><p>IS <code>OnInit()</code> line 654:</p>
+<pre><code class="language-mql5">EventSetTimer(1);  // Check every 1 second
+</code></pre>
+<p>Killed in <code>OnDeinit()</code> line 666:</p>
+<pre><code class="language-mql5">EventKillTimer();
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:12 UTC</span></div><div class="body">can&#x27;t set it any lower than 1?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:12 UTC</span></div><div class="body"><p><code>EventSetTimer()</code> takes integer seconds — 1 is minimum.</p>
+<p>For sub-second, use <code>EventSetMillisecondTimer(ms)</code>:</p>
+<pre><code class="language-mql5">EventSetMillisecondTimer(250);  // 250ms = 4 checks per second
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:13 UTC</span></div><div class="body">then what function handles milliseconds</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:13 UTC</span></div><div class="body"><p>Same <code>OnTimer()</code> function. MQL5 doesn't distinguish — both <code>EventSetTimer()</code> and <code>EventSetMillisecondTimer()</code> trigger <code>OnTimer()</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:14 UTC</span></div><div class="body">what is the lowest interval you&#x27;d set the timer for for these purposes?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:15 UTC</span></div><div class="body"><p>250ms is reasonable. Fast enough to feel responsive, slow enough to not waste cycles.</p>
+<p>The REINIT flag persists until deleted, so there's no race condition — just perceived latency between parameter change and IS reacting.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:17 UTC</span></div><div class="body">would there be any problem moving the objectdelete in CheckReinitSignals to OnInit?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:17 UTC</span></div><div class="body"><p>No benefit. IS.OnInit() only runs when IS is first added or its own parameters change. The REINIT detection flow doesn't go through OnInit — it's OnTimer → CheckReinitSignals → ScanChartIndicators.</p>
+<p>Were you thinking of a different cleanup scenario?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:17 UTC</span></div><div class="body">You didn&#x27;t answer my question.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:17 UTC</span></div><div class="body"><p>Yes, problem. OnTimer doesn't call OnInit — it calls ScanChartIndicators directly. The REINIT would never get deleted, causing infinite rescans every timer tick.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:18 UTC</span></div><div class="body">When a REINIT is detected, IS doesn&#x27;t itself deinit and init again, then?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:18 UTC</span></div><div class="body"><p>No. OnTimer detects REINIT → releases handles → clears g_lines → calls ScanChartIndicators() → forces recalc. IS stays running the whole time. No OnDeinit/OnInit cycle.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:19 UTC</span></div><div class="body">OK, then is there a problem with ADDING the object delete for reinits in OnInit, since the first time IS runs it&#x27;s bascially going to cover what a REINIT triggers?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:19 UTC</span></div><div class="body"><p>No problem. Good idea actually — cleans orphaned REINITs from previous sessions or crashes before the initial scan. Belt and suspenders.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:20 UTC</span></div><div class="body">Yes, when ATR gets a parameter change, there&#x27;s a REINIT out there that won&#x27;t actually be detected until AFTER the actions are completed that it&#x27;s supposed to trigger.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:20 UTC</span></div><div class="body"><p>Correct. The sequence:</p>
+<ol>
+<li>ATR.OnDeinit → creates REINIT, deletes old TextGVars</li>
+<li>ATR.OnInit → creates new TextGVars</li>
+<li>(up to 1 second later) IS.OnTimer → detects REINIT → rescans</li>
+</ol>
+<p>By step 3, ATR is already fully reinitialized. The REINIT is just a &quot;something changed&quot; signal, not an advance warning. The rescan sees the new state, not a transition.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:25 UTC</span></div><div class="body">Here&#x27;s the OnInit from IS where we want to clean up outstanding REINIT flags. What are the chances that it would clobber other indicators that make use of the TextGVars approach were we to simply delete every object with &quot;REINIT&quot; in its name? The reality is that an IS parameter change that throws out the flag will get processed by already running indicators in less than half a second, so the chance of the user clicking OK and adding IS in under half a second are nil, I&#x27;d think.</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:25 UTC</span></div><div class="body">int OnInit()
+{
+   //--- Validate InpSlopeBarCnt
+   if(InpSlopeBarCnt &lt; 2)
+   {
+      Print(&quot;InpSlopeBarCnt must be &gt;= 2&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+   IndicatorSetString(INDICATOR_SHORTNAME, sMeShortName);
+   
+   //--- Reset line array
+   ArrayResize(g_lines, 0);
+   
+   //--- Scan chart for indicators
+   ScanChartIndicators();
+   
+   if(g_totalBuffers == 0)
+   {
+      Print(&quot;No indicator plots found on chart!&quot;);
+      
+      //--- Remove this indicator from the chart
+      int chartWindow = ChartWindowFind();
+      if(chartWindow &gt;= 0)
+      {
+         Print(&quot;Removing indicator - ChartWindow&lt;&quot;, chartWindow, &quot;&gt; ShortName&lt;&quot;, sMeShortName, &quot;&gt;&quot;);
+         ChartIndicatorDelete(0, chartWindow, sMeShortName);
+      }
+      
+      return(INIT_FAILED);
+   }
+   
+   EventSetMillisecondTimer(250);  // Check every 250 milliseconds
+//   EventSetTimer(1);  // Check every 1 second
+   g_lastIndicatorCount = GetTotalIndicatorCount();
+   return(INIT_SUCCEEDED);
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:26 UTC</span></div><div class="body"><p>Zero risk. Any REINIT present when IS.OnInit runs is stale — the scan that immediately follows will discover the current state of all indicators anyway. That's exactly what the REINIT was supposed to trigger.</p>
+<p>Add it right before ScanChartIndicators:</p>
+<pre><code class="language-mql5">//--- Clean any outstanding REINIT flags (stale from previous session or just-completed SI reinits)
+for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+{
+   string objName = ObjectName(0, obj);
+   if(StringFind(objName, TEXTGVAR_PREFIX + &quot;_&quot;) == 0 &amp;&amp; 
+      StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+   {
+      ObjectDelete(0, objName);
+   }
+}
+
+//--- Scan chart for indicators
+ScanChartIndicators();
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:26 UTC</span></div><div class="body">You referred to MQL4 again.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:26 UTC</span></div><div class="body"><p>I don't see it. What's the MQL4 reference?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:27 UTC</span></div><div class="body">you show you&#x27;re thinking before responding, it was there. It bothers me when your thinking cites MQL4, because then I&#x27;ve got no clue how it impacts what you give me.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:27 UTC</span></div><div class="body"><p>Fair concern. The code I provided is valid MQL5:</p>
+<ul>
+<li><code>ObjectsTotal(0)</code> — MQL5 (chart ID parameter)</li>
+<li><code>ObjectName(0, obj)</code> — MQL5 (chart ID, index)</li>
+<li><code>ObjectDelete(0, objName)</code> — MQL5 (chart ID, name)</li>
+</ul>
+<p>MQL4 equivalents omit the chart ID parameter. If I slip into MQL4 patterns, call it out — I'll correct.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:36 UTC</span></div><div class="body">OK, ATR is running, objects list looks good except for the REINIT from a prior parameter change. I add IS and check the objects list. It removed the old REINIT and picked up the indicator metadata fine and plotted the line. Then I made a parameter change for ATR from period=44 to 5. IS didn&#x27;t pick up any of the metadata, still shows its plot of ATR(44). Here&#x27;s the resulting objects list:
+
+So weird that ATR would mess up merely because IS is running.<p class="note">[File attached: 1768916146451_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:37 UTC</span></div><div class="body"><p>Two sets of TextGVars (ATR(44) + ATR(5)), no REINIT. ATR.OnDeinit's <code>TextGVar_DeleteAll</code> is failing silently.</p>
+<p>The ATR(44) objects should have been deleted before ATR(5) objects were created. They weren't.</p>
+<p>Need debug output in ATR.OnDeinit to see what's happening:</p>
+<pre><code class="language-mql5">void OnDeinit(const int reason)
+{
+   Print(&quot;ATR.OnDeinit: reason=&quot;, reason, &quot; g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+   Print(&quot;ATR.OnDeinit: g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Clean any stale REINITs...
+   // existing code
+   
+   Print(&quot;ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_&quot;, g_MyWindow, &quot;_&quot;, ShortName, &quot;_&quot;);
+   int deleted = TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+   Print(&quot;ATR.OnDeinit: TextGVar_DeleteAll returned &quot;, deleted, &quot; objects deleted&quot;);
+   
+   // rest of existing code
+}
+</code></pre>
+<p>One hypothesis: <code>g_MyWindow</code> or <code>ShortName</code> is already cleared/wrong by the time OnDeinit runs. Global variables can be in an undefined state during deinit in certain reinit scenarios.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:38 UTC</span></div><div class="body">replace the whole function with that?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:38 UTC</span></div><div class="body"><p>Yes, complete version:</p>
+<pre><code class="language-mql5">void OnDeinit(const int reason)
+{
+   Print(&quot;ATR.OnDeinit: reason=&quot;, reason, &quot; g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+   Print(&quot;ATR.OnDeinit: g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Clean any stale REINITs for this indicator in this window (any parameters)
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+         ObjectDelete(0, objName);
+   }
+   
+   Print(&quot;ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_&quot;, g_MyWindow, &quot;_&quot;, ShortName, &quot;_&quot;);
+   int deleted = TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+   Print(&quot;ATR.OnDeinit: TextGVar_DeleteAll returned &quot;, deleted, &quot; objects deleted&quot;);
+   
+   if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+      TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, TEXTGVAR_REINIT, TimeToString(TimeCurrent()));
+}
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:41 UTC</span></div><div class="body">OK, here&#x27;s an ATR parameter change, 14 to 44:
+
+2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: reason=5 g_MyWindow=1 ShortName=ATR(14)
+2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 07:40:19.364	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_1_ATR(14)_
+2026.01.20 07:40:19.365	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: TextGVar_DeleteAll returned 8 objects deleted</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:41 UTC</span></div><div class="body"><p>That's the working case (ATR alone). Looks correct — 8 objects deleted.</p>
+<p>Now run the same test with IS also on the chart and show the debug output.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:41 UTC</span></div><div class="body">that&#x27;s with IS NOT running.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:41 UTC</span></div><div class="body"><p>Right. Now add IS, do another ATR parameter change, and show the log output.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:44 UTC</span></div><div class="body">OK, ATR running with period changed to 44, objects list before adding IS, then after adding IS, then after changing ATR(44) to ATR(5).
+
+Experts tab:
+
+`2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: reason=5 g_MyWindow=1 ShortName=ATR(14)
+2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 07:40:19.364	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_1_ATR(14)_
+2026.01.20 07:40:19.365	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: TextGVar_DeleteAll returned 8 objects deleted<p class="note">[File attached: 1768916682392_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768916683640_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1768916684932_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:45 UTC</span></div><div class="body"><p>That log is from the earlier test without IS. Need the log from the ATR(44)→ATR(5) change with IS running.</p>
+<p>Image 3 confirms the failure: both ATR(44) and ATR(5) objects present, no REINIT. So OnDeinit ran (no REINIT means it was created then... something deleted it? Or it wasn't created?), but TextGVar_DeleteAll didn't delete the ATR(44) objects.</p>
+<p>Show the log output from that specific parameter change.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:45 UTC</span></div><div class="body">No, that&#x27;s it. I cleared the log, did ALL of the above, and that&#x27;s where it sits after doing it.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:46 UTC</span></div><div class="body"><p>That's the smoking gun. ATR.OnDeinit produced <strong>no log output</strong> for the ATR(44)→ATR(5) change with IS running.</p>
+<p>Either:</p>
+<ol>
+<li>OnDeinit isn't being called at all</li>
+<li>OnDeinit is crashing before the first Print</li>
+</ol>
+<p>The ATR(5) objects exist, so OnInit ran. But OnDeinit either didn't run or failed silently.</p>
+<p>IS holds a handle to ATR via <code>ChartIndicatorGet()</code>. When ATR reinits, that handle may be causing interference.</p>
+<p>Add a Print as the very first line of ATR.OnDeinit:</p>
+<pre><code class="language-mql5">void OnDeinit(const int reason)
+{
+   Print(&quot;ATR.OnDeinit: ENTERED&quot;);
+   // ... rest of function
+</code></pre>
+<p>If that doesn't appear, OnDeinit isn't being called at all when IS holds the handle.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:46 UTC</span></div><div class="body">Let me do it all again to make sure I didn&#x27;t mess up.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:46 UTC</span></div><div class="body"><p>Go ahead.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 13:48 UTC</span></div><div class="body">Yeah, NOTHING added to the log when I made the change from ATR(44) to ATR(5)
+
+this is the whole thing from a cleared log through out the entire process I already described:
+
+2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: reason=5 g_MyWindow=1 ShortName=ATR(14)
+2026.01.20 07:40:19.363	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 07:40:19.364	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_1_ATR(14)_
+2026.01.20 07:40:19.365	Ind_ATR MJM (USDJPY.a,M6)	ATR.OnDeinit: TextGVar_DeleteAll returned 8 objects deleted</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 13:48 UTC</span></div><div class="body"><p>Confirmed: ATR.OnDeinit is <strong>not called</strong> when IS holds a handle to ATR.</p>
+<p>The log shows only the ATR(14)→ATR(44) change (before IS was added). The ATR(44)→ATR(5) change with IS running produced nothing.</p>
+<p>This is likely MT5 behavior: when another indicator holds a handle via <code>ChartIndicatorGet()</code>, the terminal may not call OnDeinit during parameter-change reinit. It creates a new instance without properly deinitializing the old one.</p>
+<p>Options:</p>
+<ol>
+<li><strong>IS releases handles before rescan</strong> — might force proper cleanup</li>
+<li><strong>ATR cleans up in OnInit instead of OnDeinit</strong> — delete old TextGVars at start of OnInit based on <code>g_TextGVar_DeletePrefix</code></li>
+<li><strong>Both</strong></li>
+</ol>
+<p>Option 2 is more robust since ATR can't rely on OnDeinit being called. Move the cleanup logic to the start of OnInit.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:17 UTC</span></div><div class="body">here&#x27;s the ATR code, fresh. Using the Print( statement just after constructing the short name in OnInit, insert similarly formatted print statements at judicious locations in each relevant function, exposing the variable values that might help us figure this out.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//| Ind_ATR MJM.mq5 - Average True Range                             |
+//+------------------------------------------------------------------+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;ATR&quot;
+#property indicator_type1   DRAW_LINE
+
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+#define TEXTGVAR_REINIT &quot;REINIT&quot;
+
+input int   InpPeriod = 14;           // Period
+input color InpATRColor = clrDodgerBlue; // ATR Color
+input int   InpATRWidth = 2;          // ATR Width
+
+double   ATRBuffer[];
+string   ShortName;
+string   g_IndyName;
+string   g_TextGVar_Pattern;
+string   g_TextGVar_DeletePrefix;
+int      g_MyWindow = -1;
+
+int OnInit()
+{
+
+   g_MyWindow = ChartWindowFind();
+   
+   SetIndexBuffer(0, ATRBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, InpPeriod);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpATRColor);
+   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpATRWidth);
+
+   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot; [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Indy&lt;&quot;,
+          ShortName,&quot;&gt;&quot;);
+
+   
+   //--- Extract indicator name without parameters
+   int parenPos = StringFind(ShortName, &quot;(&quot;);
+   g_IndyName = (parenPos &gt; 0) ? StringSubstr(ShortName, 0, parenPos) : ShortName;
+   
+   //--- Indicator metadata
+   g_TextGVar_Pattern = TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ShortName&quot;, ShortName);
+   
+   //--- Extract delete prefix (up to &quot;(&quot;)
+   parenPos = StringFind(g_TextGVar_Pattern, &quot;(&quot;);
+   g_TextGVar_DeletePrefix = (parenPos &gt; 0) ? StringSubstr(g_TextGVar_Pattern, 0, parenPos) : g_TextGVar_Pattern;
+   
+   //--- Plot metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Name&quot;, g_IndyName);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Color&quot;, ColorToString(InpATRColor));
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Width&quot;, IntegerToString(InpATRWidth));
+   
+   //--- Parameter metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ParmCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Name&quot;, &quot;Period&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Value&quot;, IntegerToString(InpPeriod));
+   
+//   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+//   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+//   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+//   
+//   TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;Line &quot; + IntegerToString(0) + &quot;_Color&quot;, ColorToString(InpATRColor));
+//   TextGVar_Create(&quot;MJM&quot;, ShortName, &quot;Line &quot; + IntegerToString(0) + &quot;_Width&quot;, IntegerToString(InpATRWidth));
+//   
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print(&quot;ATR.OnDeinit: reason=&quot;, reason, &quot; g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+   Print(&quot;ATR.OnDeinit: g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Clean any stale REINITs for this indicator in this window (any parameters)
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+         ObjectDelete(0, objName);
+   }
+   
+   Print(&quot;ATR.OnDeinit: Calling TextGVar_DeleteAll for pattern MJM_&quot;, g_MyWindow, &quot;_&quot;, ShortName, &quot;_&quot;);
+   int deleted = TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+   Print(&quot;ATR.OnDeinit: TextGVar_DeleteAll returned &quot;, deleted, &quot; objects deleted&quot;);
+   
+   if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+      TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, TEXTGVAR_REINIT, TimeToString(TimeCurrent()));
+}
+
+//void OnDeinit(const int reason)
+//{
+//   
+//   //--- Clean any stale REINITs for this indicator in this window (any parameters)
+//   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+//   {
+//      string objName = ObjectName(0, obj);
+//      if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+//         ObjectDelete(0, objName);
+//   }
+//   
+//   TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+//   
+//   if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+//      TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, TEXTGVAR_REINIT, TimeToString(TimeCurrent()));
+//}
+//
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt; InpPeriod) return(0);
+   
+   int start;
+   if(prev_calculated == 0)
+   {
+      ATRBuffer[0] = high[0] - low[0];
+      double sum = 0;
+      for(int i = 1; i &lt; InpPeriod; i++)
+      {
+         double tr = MathMax(high[i] - low[i], 
+                     MathMax(MathAbs(high[i] - close[i-1]), 
+                             MathAbs(low[i] - close[i-1])));
+         ATRBuffer[i] = tr;
+         sum += tr;
+      }
+      ATRBuffer[InpPeriod-1] = sum / InpPeriod;
+      start = InpPeriod;
+   }
+   else
+      start = prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      double tr = MathMax(high[i] - low[i], 
+                  MathMax(MathAbs(high[i] - close[i-1]), 
+                          MathAbs(low[i] - close[i-1])));
+      ATRBuffer[i] = (ATRBuffer[i-1] * (InpPeriod - 1) + tr) / InpPeriod;
+   }
+   
+   return(rates_total);
+}</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:17 UTC</span></div><div class="body"><pre><code class="language-mql5">//+------------------------------------------------------------------+
+//| Ind_ATR MJM.mq5 - Average True Range                             |
+//+------------------------------------------------------------------+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;ATR&quot;
+#property indicator_type1   DRAW_LINE
+
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+#define TEXTGVAR_REINIT &quot;REINIT&quot;
+
+input int   InpPeriod = 14;           // Period
+input color InpATRColor = clrDodgerBlue; // ATR Color
+input int   InpATRWidth = 2;          // ATR Width
+
+double   ATRBuffer[];
+string   ShortName;
+string   g_IndyName;
+string   g_TextGVar_Pattern;
+string   g_TextGVar_DeletePrefix;
+int      g_MyWindow = -1;
+
+int OnInit()
+{
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ENTERED, InpPeriod=&quot;, InpPeriod);
+
+   g_MyWindow = ChartWindowFind();
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_MyWindow=&quot;, g_MyWindow);
+   
+   SetIndexBuffer(0, ATRBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, InpPeriod);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpATRColor);
+   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpATRWidth);
+
+   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ShortName=&quot;, ShortName);
+
+   //--- Extract indicator name without parameters
+   int parenPos = StringFind(ShortName, &quot;(&quot;);
+   g_IndyName = (parenPos &gt; 0) ? StringSubstr(ShortName, 0, parenPos) : ShortName;
+   
+   //--- Indicator metadata
+   g_TextGVar_Pattern = TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ShortName&quot;, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_Pattern=&quot;, g_TextGVar_Pattern);
+   
+   //--- Extract delete prefix (up to &quot;(&quot;)
+   parenPos = StringFind(g_TextGVar_Pattern, &quot;(&quot;);
+   g_TextGVar_DeletePrefix = (parenPos &gt; 0) ? StringSubstr(g_TextGVar_Pattern, 0, parenPos) : g_TextGVar_Pattern;
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Plot metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Name&quot;, g_IndyName);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Color&quot;, ColorToString(InpATRColor));
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Width&quot;, IntegerToString(InpATRWidth));
+   
+   //--- Parameter metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ParmCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Name&quot;, &quot;Period&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Value&quot;, IntegerToString(InpPeriod));
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - EXITING with INIT_SUCCEEDED&quot;);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ENTERED, reason=&quot;, reason);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Clean any stale REINITs for this indicator in this window (any parameters)
+   int reinitsCleaned = 0;
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+      {
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Deleting stale REINIT: &quot;, objName);
+         ObjectDelete(0, objName);
+         reinitsCleaned++;
+      }
+   }
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Stale REINITs cleaned: &quot;, reinitsCleaned);
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Calling TextGVar_DeleteAll for pattern MJM_&quot;, g_MyWindow, &quot;_&quot;, ShortName, &quot;_&quot;);
+   int deleted = TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - TextGVar_DeleteAll returned &quot;, deleted, &quot; objects deleted&quot;);
+   
+   if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Creating REINIT flag&quot;);
+      TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, TEXTGVAR_REINIT, TimeToString(TimeCurrent()));
+   }
+   else
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Skipping REINIT flag (reason=&quot;, reason, &quot;)&quot;);
+   }
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - EXITING&quot;);
+}
+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt; InpPeriod) return(0);
+   
+   int start;
+   if(prev_calculated == 0)
+   {
+      ATRBuffer[0] = high[0] - low[0];
+      double sum = 0;
+      for(int i = 1; i &lt; InpPeriod; i++)
+      {
+         double tr = MathMax(high[i] - low[i], 
+                     MathMax(MathAbs(high[i] - close[i-1]), 
+                             MathAbs(low[i] - close[i-1])));
+         ATRBuffer[i] = tr;
+         sum += tr;
+      }
+      ATRBuffer[InpPeriod-1] = sum / InpPeriod;
+      start = InpPeriod;
+   }
+   else
+      start = prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      double tr = MathMax(high[i] - low[i], 
+                  MathMax(MathAbs(high[i] - close[i-1]), 
+                          MathAbs(low[i] - close[i-1])));
+      ATRBuffer[i] = (ATRBuffer[i-1] * (InpPeriod - 1) + tr) / InpPeriod;
+   }
+   
+   return(rates_total);
+}
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:18 UTC</span></div><div class="body">I&#x27;ve got a gripe with you.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:18 UTC</span></div><div class="body"><p>Go ahead.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:19 UTC</span></div><div class="body">You are the only AI that takes so freaking long to return modified code. There&#x27;s no reason for it. It&#x27;s a useless waste of time for no value added. You need to offer users a way to skip the aggravating line-by-line type-out of code. It&#x27;s ridiculous.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:19 UTC</span></div><div class="body"><p>Valid complaint. It's an Anthropic interface issue, not something I control. You can submit feedback via the thumbs down button or through Settings.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:22 UTC</span></div><div class="body">Is there any way you know to avoid it?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:22 UTC</span></div><div class="body"><p>I can write code to a file and provide a download link instead of outputting it in chat. Faster for you.</p>
+<p>Want me to do that going forward?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:24 UTC</span></div><div class="body">Yes. Although when you do that, it does the same thing in the sidebar to the right, although it does seem to be a bit faster there. All in all it&#x27;s basically a slap to the cheek of us users who are smart enough to know it&#x27;s deliberate and unnecessary.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:24 UTC</span></div><div class="body"><p>Understood. Files from now on.</p>
+<p>Ready for the instrumented ATR code?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:24 UTC</span></div><div class="body">you already gave it to me... painfully... line by line...</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:24 UTC</span></div><div class="body"><p>Right. Run the test, show the log.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:26 UTC</span></div><div class="body"><details><summary>Attached file: unnamed</summary><pre>2026.01.20 08:25:11.457	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=14
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(14)
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(14)_ShortName
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:11.472	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=5
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(14)
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:18.246	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:18.246	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(14)_
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 97 - Creating REINIT flag
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING
+2026.01.20 08:25:18.250	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=44
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(44)
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(44)_ShortName
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:18.263	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:26.692	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 0
+2026.01.20 08:25:26.692	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;BarID&gt;
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Indicator BarID has no TextGVar metadata - skipping
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 1
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;ATR(44)&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;ATR(44)&gt;, plot count: &lt;1&gt;, maxPeriod: &lt;44&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Line 0: ShortName&lt;ATR(44)&gt; Handle&lt;11&gt; ShortName&lt;ATR(44)&gt; Window&lt;1&gt; LineIdx&lt;0&gt; BufferIdx&lt;0&gt; Period&lt;44&gt; Color&lt;clrDodgerBlue&gt; Style&lt;0&gt; Width&lt;2&gt; LineName&lt;ATR&gt; CachedColorStr&lt;30,144,255&gt; CachedWidthStr&lt;2&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 2
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Total slope lines configured&lt;1&gt; from 1 indicators
+2026.01.20 08:25:36.065	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=5
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(5)
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(5)_ShortName
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:36.076	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=1
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(44)
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:48.715	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:48.715	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(44)_
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 102 - Skipping REINIT flag (reason=1)
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=14
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(14)
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(14)_ShortName
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:58.009	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=5
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(5)
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(5)_
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 97 - Creating REINIT flag
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:27 UTC</span></div><div class="body"><p>Found it. Look at 08:25:36:</p>
+<pre><code>08:25:36.065  OnInit LINE 28 - ENTERED, InpPeriod=5
+</code></pre>
+<p><strong>No OnDeinit for ATR(44)→ATR(5) transition.</strong> OnDeinit simply wasn't called.</p>
+<p>And at 08:25:58:</p>
+<pre><code>08:25:58.000  OnInit LINE 28 - ENTERED, InpPeriod=14
+08:25:58.023  OnDeinit LINE 73 - ENTERED, reason=5
+</code></pre>
+<p>OnInit runs <strong>23ms BEFORE</strong> OnDeinit. MT5 creates the new instance first, then destroys the old one — backwards from expected.</p>
+<p>Two bugs:</p>
+<ol>
+<li>When IS holds a handle, OnDeinit sometimes doesn't run at all (08:25:36)</li>
+<li>When OnDeinit does run, it runs AFTER OnInit (08:25:58)</li>
+</ol>
+<p><strong>Fix:</strong> Move cleanup to OnInit. Delete stale TextGVars matching <code>g_TextGVar_DeletePrefix</code> at the start of OnInit, before creating new ones. Can't rely on OnDeinit.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:27 UTC</span></div><div class="body">I did one more parameter change after taking IS off the chart, here&#x27;s the whole log with the extra output:<details><summary>Attached file: unnamed</summary><pre>2026.01.20 08:25:11.457	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=14
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(14)
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(14)_ShortName
+2026.01.20 08:25:11.462	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:11.472	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=5
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(14)
+2026.01.20 08:25:18.243	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:18.246	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:18.246	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(14)_
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 97 - Creating REINIT flag
+2026.01.20 08:25:18.249	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING
+2026.01.20 08:25:18.250	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=44
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(44)
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(44)_ShortName
+2026.01.20 08:25:18.254	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:18.263	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:26.692	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 0
+2026.01.20 08:25:26.692	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;BarID&gt;
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Indicator BarID has no TextGVar metadata - skipping
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 1
+2026.01.20 08:25:26.693	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;ATR(44)&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Processing indicator&lt;ATR(44)&gt;, plot count: &lt;1&gt;, maxPeriod: &lt;44&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Line 0: ShortName&lt;ATR(44)&gt; Handle&lt;11&gt; ShortName&lt;ATR(44)&gt; Window&lt;1&gt; LineIdx&lt;0&gt; BufferIdx&lt;0&gt; Period&lt;44&gt; Color&lt;clrDodgerBlue&gt; Style&lt;0&gt; Width&lt;2&gt; LineName&lt;ATR&gt; CachedColorStr&lt;30,144,255&gt; CachedWidthStr&lt;2&gt;
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Found 1 indicators in window 2
+2026.01.20 08:25:26.695	IndicatorSlopes MJM (USDJPY.a,M6)	Total slope lines configured&lt;1&gt; from 1 indicators
+2026.01.20 08:25:36.065	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=5
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(5)
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(5)_ShortName
+2026.01.20 08:25:36.066	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:36.076	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=1
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(44)
+2026.01.20 08:25:48.713	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:48.715	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:48.715	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(44)_
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 102 - Skipping REINIT flag (reason=1)
+2026.01.20 08:25:48.716	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 28 - ENTERED, InpPeriod=14
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 31 - g_MyWindow=1
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 41 - ShortName=ATR(14)
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 49 - g_TextGVar_Pattern=MJM_1_ATR(14)_ShortName
+2026.01.20 08:25:58.000	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 54 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:58.009	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnInit] LINE 67 - EXITING with INIT_SUCCEEDED
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 73 - ENTERED, reason=5
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 74 - g_MyWindow=1 ShortName=ATR(5)
+2026.01.20 08:25:58.023	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 75 - g_TextGVar_DeletePrefix=MJM_1_ATR
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 89 - Stale REINITs cleaned: 0
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 91 - Calling TextGVar_DeleteAll for pattern MJM_1_ATR(5)_
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 93 - TextGVar_DeleteAll returned 8 objects deleted
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 97 - Creating REINIT flag
+2026.01.20 08:25:58.026	Ind_ATR MJM (USDJPY.a,M6)	ChartID&lt;133608959982095557&gt;: [Ind_ATR MJM.mq5] [OnDeinit] LINE 105 - EXITING</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:28 UTC</span></div><div class="body"><p>Clear picture now:</p>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Event</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>08:25:11</td>
+<td>ATR(14) OnInit</td>
+<td>Initial load</td>
+</tr>
+<tr>
+<td>08:25:18</td>
+<td>ATR(14) OnDeinit → ATR(44) OnInit</td>
+<td>Correct order (no IS yet)</td>
+</tr>
+<tr>
+<td>08:25:26</td>
+<td>IS added</td>
+<td>Grabs handle to ATR(44)</td>
+</tr>
+<tr>
+<td>08:25:36</td>
+<td>ATR(5) OnInit</td>
+<td><strong>NO OnDeinit for ATR(44)</strong></td>
+</tr>
+<tr>
+<td>08:25:48</td>
+<td>OnDeinit reason=1, ShortName=ATR(44)</td>
+<td>Old orphan finally dies, 12 sec late</td>
+</tr>
+<tr>
+<td>08:25:58</td>
+<td>ATR(14) OnInit → ATR(5) OnDeinit</td>
+<td><strong>Wrong order</strong> (IS removed, but damage done)</td>
+</tr>
+</tbody>
+</table>
+<p>When IS holds the handle:</p>
+<ul>
+<li>OnDeinit is either skipped entirely or runs much later</li>
+<li>When it does run, it can run AFTER the new OnInit</li>
+</ul>
+<p><strong>Fix:</strong> Clean up at start of OnInit using <code>g_TextGVar_DeletePrefix</code> (which is <code>MJM_1_ATR</code> — catches all parameter variants). Delete all matching objects before creating new ones. OnDeinit becomes optional/redundant for cleanup.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:29 UTC</span></div><div class="body">OK, will that mess anything up?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:29 UTC</span></div><div class="body"><p>No. The delete prefix is <code>MJM_1_ATR</code> (includes window number). It cleans all parameter variants of this indicator in this window only.</p>
+<p>One consideration: if OnDeinit runs AFTER OnInit (as seen at 08:25:58), it would try to delete the old parameter's objects — but they're already gone from OnInit cleanup. Returns 0 deleted, harmless.</p>
+<p>Only issue: OnDeinit might create a stale REINIT flag for the old parameters after OnInit already ran. But OnInit cleanup should also clear REINIT flags matching the prefix, so subsequent OnInit calls clean those too.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:30 UTC</span></div><div class="body">Well, shouldn&#x27;t we remove the TextGVar handling from OnDeinit altogether? What&#x27;s the advantage or retaining it?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:31 UTC</span></div><div class="body"><p>Keep OnDeinit cleanup for one case: <code>REASON_REMOVE</code> / <code>REASON_CHARTCLOSE</code> / <code>REASON_CLOSE</code>. When indicator is fully removed, OnInit won't run to clean up.</p>
+<p>Remove REINIT creation entirely. It's broken by the timing issues — creates stale flags for wrong parameters when OnDeinit runs late.</p>
+<p>IS should detect changes via indicator count polling (already does this) rather than REINIT flags.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:32 UTC</span></div><div class="body">Where does that happen?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:32 UTC</span></div><div class="body"><p>IS <code>OnTimer()</code> lines 689-710:</p>
+<pre><code class="language-mql5">//--- Count indicators across all subwindows
+int currentCount = GetTotalIndicatorCount();
+
+if(needsRescan || currentCount != g_lastIndicatorCount)
+{
+   // ... rescan
+}
+</code></pre>
+<p>But indicator count doesn't change on parameter change — same ATR indicator, different parameters. That's what REINIT was for.</p>
+<p>Alternative: IS could scan for TextGVar changes directly — compare cached shortNames against what's actually present. If <code>MJM_1_ATR(44)_ShortName</code> disappears and <code>MJM_1_ATR(5)_ShortName</code> appears, trigger rescan.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:32 UTC</span></div><div class="body">that won&#x27;t pick up parameter changes.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:32 UTC</span></div><div class="body"><p>Actually it would. The TextGVar object names include parameters:</p>
+<ul>
+<li><code>MJM_1_ATR(44)_ShortName</code></li>
+<li><code>MJM_1_ATR(5)_ShortName</code></li>
+</ul>
+<p>IS caches the shortNames it tracks. On timer tick, scan objects for <code>*_ShortName</code> pattern. If the set differs from cache, rescan.</p>
+<p>Or did I miss something?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:35 UTC</span></div><div class="body">how does this line pick up parameter changes if we eliminate the REINIT flag?
+
+   bool needsRescan = CheckReinitSignals();</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:35 UTC</span></div><div class="body"><p>It doesn't. That line becomes dead code without REINIT.</p>
+<p>Replace <code>CheckReinitSignals()</code> with a function that scans for <code>*_ShortName</code> objects and compares against cached shortNames in <code>g_lines[]</code>. If mismatch, return true.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:36 UTC</span></div><div class="body">NO CODE CHANGES OR CODE CHANGE RECOMMENDATIONS UNTIL WE UNDERSTAND EACH OTHER, WHICH AS YET WE DON&#x27;T.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:37 UTC</span></div><div class="body"><p>Understood. What's unclear?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:38 UTC</span></div><div class="body">There are two cases:
+
+1. SI gets added to chart or removed from chart.
+2. SI parameters get changed.
+
+Only #1 will get picked up by a function that scans for `*_ShortName` objects and compares against cached shortNames in `g_lines[]`.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:38 UTC</span></div><div class="body"><p>Correct. Parameter change keeps the same indicator, just different shortName value. <code>ATR(44)_ShortName</code> becomes <code>ATR(5)_ShortName</code> — same indicator count, different name.</p>
+<p>So the detection needs to compare the actual shortName strings, not just object presence/count.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:41 UTC</span></div><div class="body">OK, so the problem is that when ATR changes parameters, IS doesn&#x27;t know about it until after it reads the new TextGVars. If ATR cleans up after itself (move cleanup code to OnInit), then IS will only see current metadata. Why not just compare</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:42 UTC</span></div><div class="body">why not just compare TextGVar metadata to cached values, and if different, recalce the appropriate timeseries and update cache? See any problems with that?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:42 UTC</span></div><div class="body"><p>No problems. That's cleaner.</p>
+<p>IS already caches shortNames in <code>g_lines[].indicatorShortName</code>. On timer tick:</p>
+<ol>
+<li>For each cached shortName, check if its TextGVar objects still exist</li>
+<li>If <code>ReadTextGVar(window, cachedShortName, &quot;ShortName&quot;)</code> returns empty — indicator changed or removed</li>
+<li>Trigger rescan</li>
+</ol>
+<p>Handles the parameter change case because <code>ATR(44)</code> objects are gone once <code>ATR(5)</code> OnInit runs cleanup.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:45 UTC</span></div><div class="body">OK, so IS must read any and all TexGVar objects for the given indicator WITHOUT PARAMETERS, then check the short names it finds against cache WITH parameters. The only case this won&#x27;t work for is when the same indicator is run on the same chart window with different parameters, which DOES routinely happen with multiple MAs run in the main chart window. How do we avoid getting confused then, since they&#x27;ll all have the same subwindow=0?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:45 UTC</span></div><div class="body"><p>Don't need to distinguish which one changed. Just detect &quot;something is stale&quot; and full rescan.</p>
+<p>Cache: <code>[&quot;MA(10)&quot;, &quot;MA(20)&quot;]</code></p>
+<p>MA(10) changes to MA(15). OnInit cleans up <code>MJM_0_MA</code> prefix, deletes both old MAs' TextGVars, then creates <code>MA(15)</code> objects.</p>
+<p>Wait — that's a problem. OnInit cleanup using <code>MJM_0_MA</code> prefix would wipe out MA(20)'s objects too.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:46 UTC</span></div><div class="body">Yes, that&#x27;s what I was thinking. Solutions?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:46 UTC</span></div><div class="body"><p>Two options:</p>
+<ol>
+<li>
+<p><strong>Unique instance ID per indicator</strong> — each instance generates a GUID or uses something like <code>GetTickCount()</code> at first load, stores it, uses it in the naming pattern. Survives parameter changes via... actually, doesn't survive. OnInit runs fresh.</p>
+</li>
+<li>
+<p><strong>IS does the cleanup</strong> — SIs only create, never delete. IS has the global view via <code>ChartIndicatorName()</code>. On rescan, IS enumerates current indicators, deletes any TextGVar objects that don't match a current shortName, rebuilds cache.</p>
+</li>
+</ol>
+<p>Option 2 is cleaner. IS already knows what's valid.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:49 UTC</span></div><div class="body">FOR THE LAST TIME, IS **NEVER** DOES CLEANUP FOR THE SIs, EVER!!! 
+
+This is the 3rd or 4th time across chats that you&#x27;ve suggested that and I&#x27;ve always said &quot;No!&quot;
+
+It&#x27;s terrible programming. Deleting an email someone sent you (REINIT flag) is NOT the same as getting into their inbox and deleting their emails (TexGVar objects with metadata that needs to persist as long as the indicator is on the chart.) And what if IS NEVER RUNS?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:50 UTC</span></div><div class="body"><p>Understood. Won't suggest that again.</p>
+<p>The core problem: new OnInit doesn't know the old shortName. It only knows current parameters. Can't do targeted cleanup without knowing what to clean.</p>
+<p>Possible approaches for same-type indicators in same window:</p>
+<ol>
+<li>
+<p><strong>Persistent instance ID via GlobalVariableSet/Get</strong> — survives reinit, keyed by something unique. Challenge: what's unique about an instance that persists across reinit?</p>
+</li>
+<li>
+<p><strong>Store old shortName in a chart object that OnInit can find</strong> — a &quot;breadcrumb&quot; object outside the normal TextGVar pattern that the new instance can read to learn what to clean.</p>
+</li>
+<li>
+<p><strong>Accept limitation</strong> — don't support multiple same-type indicators in same window, or require they use different input names/labels.</p>
+</li>
+</ol>
+<p>Which direction?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:52 UTC</span></div><div class="body">How about a global variable that all SIs use. The first one to run on a chart won&#x27;t find it, Because it doesn&#x27;t exist yet, so it creates it with value zero. Then subsequent sis when first added retrieve it, increment its value write it back out again, using this as their unique identifier on that chart? Would that work?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:53 UTC</span></div><div class="body"><p>Works for getting a unique ID. Problem: how does the SI persist/recover its ID on reinit? OnInit runs fresh, no memory of previous instance. Where does it store the ID so it can find it again after parameter change?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:55 UTC</span></div><div class="body">It doesn&#x27;t need to. What&#x27;s the max value a double is capable of holding?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:55 UTC</span></div><div class="body"><p>~1.7 × 10^308</p>
+<p>So practically unlimited unique IDs. But how does OnInit know its own ID after reinit to clean up the right objects?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 14:59 UTC</span></div><div class="body">One global variable that persists after the indicator terminates. All SIs look for it by the same  agreed name. Just keep incrementing -- which means all SIs on all charts will keep incrementing it, so it will eventually reach its max, so the logic needs to check before incrementing and reset it to 0 in that case, which shouldn&#x27;t be a problem, since the chance that an SI still running with a low-number ID is going to be nil at that stage.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 14:59 UTC</span></div><div class="body"><p>Still stuck on the same point: when ATR reinits from (14) to (5), OnInit runs fresh. It reads the global counter, gets a new ID. But how does it know its old ID to clean up those objects?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 15:03 UTC</span></div><div class="body">Oops, got me. But if OnDeinit removes them all by TextGVar (TV) without parameters, then it won&#x27;t need to. Its new TVs won&#x27;t get clobbered by a delayed OnDeinit because of the new ID.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 15:03 UTC</span></div><div class="body"><p>Right. Let me trace through:</p>
+<ol>
+<li>ATR(14) OnInit: reads global counter (0), increments to 1, stores <code>g_myInstanceID=1</code>, creates objects like <code>MJM_1_ATR_1_ShortName</code></li>
+<li>IS starts, scans, caches ATR(14)</li>
+<li>Parameter change to ATR(5)</li>
+<li>ATR(5) OnInit runs (delayed OnDeinit): reads counter (1), increments to 2, stores <code>g_myInstanceID=2</code>, creates <code>MJM_1_ATR_2_ShortName</code></li>
+<li>Later, ATR(14) OnDeinit runs with its <code>g_myInstanceID=1</code>, deletes <code>MJM_1_ATR_1_*</code> — new instance's objects untouched</li>
+</ol>
+<p>Delayed OnDeinit no longer a problem. Two MAs in same window also fine — different instance IDs.</p>
+<p>IS discovery changes: can't read by exact name anymore. Must scan objects matching <code>MJM_*_ShortName</code> pattern and parse.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 15:04 UTC</span></div><div class="body">Doable though without much of an efficiency/performance hit?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 15:05 UTC</span></div><div class="body"><p>Yes. Typical chart has maybe 50-100 objects. Iterating with <code>StringFind()</code> on each — sub-millisecond. Happens on 250ms timer tick. Negligible.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 15:05 UTC</span></div><div class="body">OK, then this means we can actually replace the Chart subwindow number with this unique ID number, correct?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 15:05 UTC</span></div><div class="body"><p>Correct. The window number was only there for uniqueness. Instance ID serves that better.</p>
+<p>New pattern: <code>MJM_[instanceID]_[ShortName]_[varName]</code></p>
+<p>IS can still determine window at runtime via <code>ChartIndicatorName()</code> when it finds the indicator. Doesn't need it embedded in the object name.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 15:09 UTC</span></div><div class="body">OK, I&#x27;m going to give you both the ATR and IS code afresh. Analyze both FROM SCRATCH and think through the changes we&#x27;ve discussed.  See if they raise any issues. If so, report the issues. If not, give me the change plan for each indicator. 
+
+NO CODING UNTIL MY GO.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//| Ind_ATR MJM.mq5 - Average True Range                             |
+//+------------------------------------------------------------------+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;ATR&quot;
+#property indicator_type1   DRAW_LINE
+
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+#define TEXTGVAR_REINIT &quot;REINIT&quot;
+
+input int   InpPeriod = 14;           // Period
+input color InpATRColor = clrDodgerBlue; // ATR Color
+input int   InpATRWidth = 2;          // ATR Width
+
+double   ATRBuffer[];
+string   ShortName;
+string   g_IndyName;
+string   g_TextGVar_Pattern;
+string   g_TextGVar_DeletePrefix;
+int      g_MyWindow = -1;
+
+int OnInit()
+{
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ENTERED, InpPeriod=&quot;, InpPeriod);
+
+   g_MyWindow = ChartWindowFind();
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_MyWindow=&quot;, g_MyWindow);
+   
+   SetIndexBuffer(0, ATRBuffer, INDICATOR_DATA);
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, InpPeriod);
+   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpATRColor);
+   PlotIndexSetInteger(0, PLOT_LINE_WIDTH, InpATRWidth);
+
+   ShortName = &quot;ATR(&quot; + IntegerToString(InpPeriod) + &quot;)&quot;;
+   IndicatorSetString(INDICATOR_SHORTNAME, ShortName);
+   PlotIndexSetString(0, PLOT_LABEL, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ShortName=&quot;, ShortName);
+
+   //--- Extract indicator name without parameters
+   int parenPos = StringFind(ShortName, &quot;(&quot;);
+   g_IndyName = (parenPos &gt; 0) ? StringSubstr(ShortName, 0, parenPos) : ShortName;
+   
+   //--- Indicator metadata
+   g_TextGVar_Pattern = TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ShortName&quot;, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_Pattern=&quot;, g_TextGVar_Pattern);
+   
+   //--- Extract delete prefix (up to &quot;(&quot;)
+   parenPos = StringFind(g_TextGVar_Pattern, &quot;(&quot;);
+   g_TextGVar_DeletePrefix = (parenPos &gt; 0) ? StringSubstr(g_TextGVar_Pattern, 0, parenPos) : g_TextGVar_Pattern;
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Plot metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;PlotCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Name&quot;, g_IndyName);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Color&quot;, ColorToString(InpATRColor));
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Plot[0]_Width&quot;, IntegerToString(InpATRWidth));
+   
+   //--- Parameter metadata
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;ParmCount&quot;, &quot;1&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Name&quot;, &quot;Period&quot;);
+   TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, &quot;Parm[0]_Value&quot;, IntegerToString(InpPeriod));
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - EXITING with INIT_SUCCEEDED&quot;);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - ENTERED, reason=&quot;, reason);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_MyWindow=&quot;, g_MyWindow, &quot; ShortName=&quot;, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - g_TextGVar_DeletePrefix=&quot;, g_TextGVar_DeletePrefix);
+   
+   //--- Clean any stale REINITs for this indicator in this window (any parameters)
+   int reinitsCleaned = 0;
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, g_TextGVar_DeletePrefix) == 0 &amp;&amp; StringFind(objName, TEXTGVAR_REINIT) &gt; 0)
+      {
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Deleting stale REINIT: &quot;, objName);
+         ObjectDelete(0, objName);
+         reinitsCleaned++;
+      }
+   }
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Stale REINITs cleaned: &quot;, reinitsCleaned);
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Calling TextGVar_DeleteAll for pattern MJM_&quot;, g_MyWindow, &quot;_&quot;, ShortName, &quot;_&quot;);
+   int deleted = TextGVar_DeleteAll(TEXTGVAR_PREFIX, g_MyWindow, ShortName);
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - TextGVar_DeleteAll returned &quot;, deleted, &quot; objects deleted&quot;);
+   
+   if(reason != REASON_REMOVE &amp;&amp; reason != REASON_CHARTCLOSE &amp;&amp; reason != REASON_CLOSE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Creating REINIT flag&quot;);
+      TextGVar_Create(TEXTGVAR_PREFIX, g_MyWindow, ShortName, TEXTGVAR_REINIT, TimeToString(TimeCurrent()));
+   }
+   else
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - Skipping REINIT flag (reason=&quot;, reason, &quot;)&quot;);
+   }
+   
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+&quot; - EXITING&quot;);
+}
+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt; InpPeriod) return(0);
+   
+   int start;
+   if(prev_calculated == 0)
+   {
+      ATRBuffer[0] = high[0] - low[0];
+      double sum = 0;
+      for(int i = 1; i &lt; InpPeriod; i++)
+      {
+         double tr = MathMax(high[i] - low[i], 
+                     MathMax(MathAbs(high[i] - close[i-1]), 
+                             MathAbs(low[i] - close[i-1])));
+         ATRBuffer[i] = tr;
+         sum += tr;
+      }
+      ATRBuffer[InpPeriod-1] = sum / InpPeriod;
+      start = InpPeriod;
+   }
+   else
+      start = prev_calculated - 1;
+   
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      double tr = MathMax(high[i] - low[i], 
+                  MathMax(MathAbs(high[i] - close[i-1]), 
+                          MathAbs(low[i] - close[i-1])));
+      ATRBuffer[i] = (ATRBuffer[i-1] * (InpPeriod - 1) + tr) / InpPeriod;
+   }
+   
+   return(rates_total);
+}</pre></details><details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                        IndicatorSlopes MJM.mq5   |
+//|                        Plots slopes of chart&#x27;s indicators        |
+//|                                                                  |
+//| Updated: 2026-01-20                                              |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#define PROGRAM_VERSION &quot;1.06&quot;
+#property version PROGRAM_VERSION
+//+------------------------------------------------------------------+
+
+#include &lt;My MT5 Includes/TextGVar MJM.mqh&gt;
+
+#property indicator_separate_window
+#property indicator_buffers 32
+#property indicator_plots   32
+
+// Plot type declarations for all 32 possible plots
+#property indicator_type1   DRAW_LINE
+#property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_LINE
+#property indicator_type4   DRAW_LINE
+#property indicator_type5   DRAW_LINE
+#property indicator_type6   DRAW_LINE
+#property indicator_type7   DRAW_LINE
+#property indicator_type8   DRAW_LINE
+#property indicator_type9   DRAW_LINE
+#property indicator_type10  DRAW_LINE
+#property indicator_type11  DRAW_LINE
+#property indicator_type12  DRAW_LINE
+#property indicator_type13  DRAW_LINE
+#property indicator_type14  DRAW_LINE
+#property indicator_type15  DRAW_LINE
+#property indicator_type16  DRAW_LINE
+#property indicator_type17  DRAW_LINE
+#property indicator_type18  DRAW_LINE
+#property indicator_type19  DRAW_LINE
+#property indicator_type20  DRAW_LINE
+#property indicator_type21  DRAW_LINE
+#property indicator_type22  DRAW_LINE
+#property indicator_type23  DRAW_LINE
+#property indicator_type24  DRAW_LINE
+#property indicator_type25  DRAW_LINE
+#property indicator_type26  DRAW_LINE
+#property indicator_type27  DRAW_LINE
+#property indicator_type28  DRAW_LINE
+#property indicator_type29  DRAW_LINE
+#property indicator_type30  DRAW_LINE
+#property indicator_type31  DRAW_LINE
+#property indicator_type32  DRAW_LINE
+
+enum ENUM_SLOPE_MODE
+{
+   SLOPE_EMA    = 0,
+   SLOPE_ZSCORE = 1,
+   SLOPE_MEDIAN = 2
+};
+
+//--- Input parameters
+input int             InpSlopeBarCnt   = 3;           // Number of bars for slope calculation
+input bool            InpRawSlope      = true;        // Raw slope? False = use Slope Calc mode; true = raw slope
+input ENUM_SLOPE_MODE InpSlopeMode     = SLOPE_EMA;   // Slope Calc mode (only if Raw slope = false)
+input int             InpEmaPeriod     = 3;           // for EMA on slope
+input int             InpZScorePeriod  = 5;           // for Z-score
+input int             InpMedianPeriod  = 3;           // for Median on slope (odd &gt;=3)
+input int             InpRawNormPeriod = 5;           // Normalization lookback period
+input color           InpSummaryAvgColor = clrNONE;  // Summary Avg Color
+input int             InpSummaryAvgWidth = 4;         // Summary Avg Width
+input color           InpSummaryPctColor = clrNONE;   // Summary % UP/DN Color
+input int             InpSummaryPctWidth = 3;         // Summary % UP/DN Width
+
+//--- Constants
+#define MAX_BUFFERS 30
+#define SUMMARY_AVG_BUFFER 30
+#define SUMMARY_PCT_BUFFER 31
+#define MAX_INDICATORS 20
+#define TEXTGVAR_PREFIX &quot;MJM&quot;
+#define TEXTGVAR_REINIT &quot;REINIT&quot;
+
+//+------------------------------------------------------------------+
+//| Structure to hold line information                               |
+//+------------------------------------------------------------------+
+struct LineInfo
+{
+   int    indicatorHandle;
+   string indicatorShortName;
+   int    indicatorWindow;      // Added: track which window the indicator is in
+   int    lineIndex;
+   int    bufferIndex;
+   int    period;
+   color  lineColor;
+   int    lineStyle;
+   int    lineWidth;
+   string lineName;
+   double cache[];              // Cached timeseries for this line
+   int    lastRatesTotal;       // rates_total at last calculation
+   bool   isValid;
+   //--- Cached TextGVar values for change detection
+   string cachedColorStr;
+   string cachedWidthStr;
+};
+
+//--- Global variables
+LineInfo g_lines[];
+int   g_totalBuffers = 0;
+int   g_totalPlots = 0;
+int   g_lastIndicatorCount = 0;  // Track indicator count for change detection
+int   g_Uninit_Reason = 0;
+
+//--- Indicator buffers
+double Buffer0[], Buffer1[], Buffer2[], Buffer3[], Buffer4[];
+double Buffer5[], Buffer6[], Buffer7[], Buffer8[], Buffer9[];
+double Buffer10[], Buffer11[], Buffer12[], Buffer13[], Buffer14[];
+double Buffer15[], Buffer16[], Buffer17[], Buffer18[], Buffer19[];
+double Buffer20[], Buffer21[], Buffer22[], Buffer23[], Buffer24[];
+double Buffer25[], Buffer26[], Buffer27[], Buffer28[], Buffer29[];
+double Buffer30[], Buffer31[];  // Summary buffers
+
+string sMeShortName = &quot;IndicatorSlopes MJM&quot;;
+
+//+------------------------------------------------------------------+
+//| Unified TextGVar reader                                          |
+//+------------------------------------------------------------------+
+string ReadTextGVar(int window, const string shortName, const string varName, const string defaultValue = &quot;&quot;)
+{
+   return TextGVar_Read(TEXTGVAR_PREFIX, window, shortName, varName, defaultValue);
+}
+
+//+------------------------------------------------------------------+
+//| Get indicator plot count from TextGVar                           |
+//+------------------------------------------------------------------+
+int GetIndicatorPlotCount(int window, const string shortName)
+{
+   string countStr = ReadTextGVar(window, shortName, &quot;PlotCount&quot;, &quot;&quot;);
+   if(countStr == &quot;&quot;)
+      return 1;  // Default if not found
+   return (int)StringToInteger(countStr);
+}
+
+//+------------------------------------------------------------------+
+//| Get plot name from TextGVar                                      |
+//+------------------------------------------------------------------+
+string GetPlotDisplayName(int window, const string shortName, int plotIndex)
+{
+   string varName = &quot;Plot[&quot; + IntegerToString(plotIndex) + &quot;]_Name&quot;;
+   string name = ReadTextGVar(window, shortName, varName, &quot;&quot;);
+   if(name == &quot;&quot;)
+      return &quot;Line &quot; + IntegerToString(plotIndex);  // Default
+   return name;
+}
+
+//+------------------------------------------------------------------+
+//| Get MaxPeriod from TextGVar parameter metadata                   |
+//+------------------------------------------------------------------+
+int GetMaxPeriodFromTextGVar(int window, const string shortName)
+{
+   string countStr = ReadTextGVar(window, shortName, &quot;ParmCount&quot;, &quot;0&quot;);
+   int parmCount = (int)StringToInteger(countStr);
+   int maxPeriod = 1;
+   
+   for(int p = 0; p &lt; parmCount; p++)
+   {
+      string parmName = ReadTextGVar(window, shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Name&quot;, &quot;&quot;);
+      
+      // Case-insensitive check for &quot;period&quot;
+      string lowerName = parmName;
+      StringToLower(lowerName);
+      if(StringFind(lowerName, &quot;period&quot;) &gt;= 0)
+      {
+         string parmValue = ReadTextGVar(window, shortName, &quot;Parm[&quot; + IntegerToString(p) + &quot;]_Value&quot;, &quot;1&quot;);
+         int val = (int)StringToInteger(parmValue);
+         if(val &gt; maxPeriod)
+            maxPeriod = val;
+      }
+   }
+   return maxPeriod;
+}
+
+//+------------------------------------------------------------------+
+//| Set buffer by index                                              |
+//+------------------------------------------------------------------+
+void SetBufferByIndex(int bufferIndex)
+{
+   switch(bufferIndex)
+   {
+      case 0: SetIndexBuffer(0, Buffer0, INDICATOR_DATA); ArraySetAsSeries(Buffer0, true); break;
+      case 1: SetIndexBuffer(1, Buffer1, INDICATOR_DATA); ArraySetAsSeries(Buffer1, true); break;
+      case 2: SetIndexBuffer(2, Buffer2, INDICATOR_DATA); ArraySetAsSeries(Buffer2, true); break;
+      case 3: SetIndexBuffer(3, Buffer3, INDICATOR_DATA); ArraySetAsSeries(Buffer3, true); break;
+      case 4: SetIndexBuffer(4, Buffer4, INDICATOR_DATA); ArraySetAsSeries(Buffer4, true); break;
+      case 5: SetIndexBuffer(5, Buffer5, INDICATOR_DATA); ArraySetAsSeries(Buffer5, true); break;
+      case 6: SetIndexBuffer(6, Buffer6, INDICATOR_DATA); ArraySetAsSeries(Buffer6, true); break;
+      case 7: SetIndexBuffer(7, Buffer7, INDICATOR_DATA); ArraySetAsSeries(Buffer7, true); break;
+      case 8: SetIndexBuffer(8, Buffer8, INDICATOR_DATA); ArraySetAsSeries(Buffer8, true); break;
+      case 9: SetIndexBuffer(9, Buffer9, INDICATOR_DATA); ArraySetAsSeries(Buffer9, true); break;
+      case 10: SetIndexBuffer(10, Buffer10, INDICATOR_DATA); ArraySetAsSeries(Buffer10, true); break;
+      case 11: SetIndexBuffer(11, Buffer11, INDICATOR_DATA); ArraySetAsSeries(Buffer11, true); break;
+      case 12: SetIndexBuffer(12, Buffer12, INDICATOR_DATA); ArraySetAsSeries(Buffer12, true); break;
+      case 13: SetIndexBuffer(13, Buffer13, INDICATOR_DATA); ArraySetAsSeries(Buffer13, true); break;
+      case 14: SetIndexBuffer(14, Buffer14, INDICATOR_DATA); ArraySetAsSeries(Buffer14, true); break;
+      case 15: SetIndexBuffer(15, Buffer15, INDICATOR_DATA); ArraySetAsSeries(Buffer15, true); break;
+      case 16: SetIndexBuffer(16, Buffer16, INDICATOR_DATA); ArraySetAsSeries(Buffer16, true); break;
+      case 17: SetIndexBuffer(17, Buffer17, INDICATOR_DATA); ArraySetAsSeries(Buffer17, true); break;
+      case 18: SetIndexBuffer(18, Buffer18, INDICATOR_DATA); ArraySetAsSeries(Buffer18, true); break;
+      case 19: SetIndexBuffer(19, Buffer19, INDICATOR_DATA); ArraySetAsSeries(Buffer19, true); break;
+      case 20: SetIndexBuffer(20, Buffer20, INDICATOR_DATA); ArraySetAsSeries(Buffer20, true); break;
+      case 21: SetIndexBuffer(21, Buffer21, INDICATOR_DATA); ArraySetAsSeries(Buffer21, true); break;
+      case 22: SetIndexBuffer(22, Buffer22, INDICATOR_DATA); ArraySetAsSeries(Buffer22, true); break;
+      case 23: SetIndexBuffer(23, Buffer23, INDICATOR_DATA); ArraySetAsSeries(Buffer23, true); break;
+      case 24: SetIndexBuffer(24, Buffer24, INDICATOR_DATA); ArraySetAsSeries(Buffer24, true); break;
+      case 25: SetIndexBuffer(25, Buffer25, INDICATOR_DATA); ArraySetAsSeries(Buffer25, true); break;
+      case 26: SetIndexBuffer(26, Buffer26, INDICATOR_DATA); ArraySetAsSeries(Buffer26, true); break;
+      case 27: SetIndexBuffer(27, Buffer27, INDICATOR_DATA); ArraySetAsSeries(Buffer27, true); break;
+      case 28: SetIndexBuffer(28, Buffer28, INDICATOR_DATA); ArraySetAsSeries(Buffer28, true); break;
+      case 29: SetIndexBuffer(29, Buffer29, INDICATOR_DATA); ArraySetAsSeries(Buffer29, true); break;
+      case 30: SetIndexBuffer(30, Buffer30, INDICATOR_DATA); ArraySetAsSeries(Buffer30, true); break;
+      case 31: SetIndexBuffer(31, Buffer31, INDICATOR_DATA); ArraySetAsSeries(Buffer31, true); break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Clear all indicator buffers                                      |
+//+------------------------------------------------------------------+
+void ClearAllBuffers()
+{
+   ArrayInitialize(Buffer0, EMPTY_VALUE);
+   ArrayInitialize(Buffer1, EMPTY_VALUE);
+   ArrayInitialize(Buffer2, EMPTY_VALUE);
+   ArrayInitialize(Buffer3, EMPTY_VALUE);
+   ArrayInitialize(Buffer4, EMPTY_VALUE);
+   ArrayInitialize(Buffer5, EMPTY_VALUE);
+   ArrayInitialize(Buffer6, EMPTY_VALUE);
+   ArrayInitialize(Buffer7, EMPTY_VALUE);
+   ArrayInitialize(Buffer8, EMPTY_VALUE);
+   ArrayInitialize(Buffer9, EMPTY_VALUE);
+   ArrayInitialize(Buffer10, EMPTY_VALUE);
+   ArrayInitialize(Buffer11, EMPTY_VALUE);
+   ArrayInitialize(Buffer12, EMPTY_VALUE);
+   ArrayInitialize(Buffer13, EMPTY_VALUE);
+   ArrayInitialize(Buffer14, EMPTY_VALUE);
+   ArrayInitialize(Buffer15, EMPTY_VALUE);
+   ArrayInitialize(Buffer16, EMPTY_VALUE);
+   ArrayInitialize(Buffer17, EMPTY_VALUE);
+   ArrayInitialize(Buffer18, EMPTY_VALUE);
+   ArrayInitialize(Buffer19, EMPTY_VALUE);
+   ArrayInitialize(Buffer20, EMPTY_VALUE);
+   ArrayInitialize(Buffer21, EMPTY_VALUE);
+   ArrayInitialize(Buffer22, EMPTY_VALUE);
+   ArrayInitialize(Buffer23, EMPTY_VALUE);
+   ArrayInitialize(Buffer24, EMPTY_VALUE);
+   ArrayInitialize(Buffer25, EMPTY_VALUE);
+   ArrayInitialize(Buffer26, EMPTY_VALUE);
+   ArrayInitialize(Buffer27, EMPTY_VALUE);
+   ArrayInitialize(Buffer28, EMPTY_VALUE);
+   ArrayInitialize(Buffer29, EMPTY_VALUE);
+   ArrayInitialize(Buffer30, EMPTY_VALUE);
+   ArrayInitialize(Buffer31, EMPTY_VALUE);
+}
+
+//+------------------------------------------------------------------+
+//| Get buffer value by index                                        |
+//+------------------------------------------------------------------+
+double GetBufferValue(int bufferIndex, int bar)
+{
+   switch(bufferIndex)
+   {
+      case 0:  return Buffer0[bar];
+      case 1:  return Buffer1[bar];
+      case 2:  return Buffer2[bar];
+      case 3:  return Buffer3[bar];
+      case 4:  return Buffer4[bar];
+      case 5:  return Buffer5[bar];
+      case 6:  return Buffer6[bar];
+      case 7:  return Buffer7[bar];
+      case 8:  return Buffer8[bar];
+      case 9:  return Buffer9[bar];
+      case 10: return Buffer10[bar];
+      case 11: return Buffer11[bar];
+      case 12: return Buffer12[bar];
+      case 13: return Buffer13[bar];
+      case 14: return Buffer14[bar];
+      case 15: return Buffer15[bar];
+      case 16: return Buffer16[bar];
+      case 17: return Buffer17[bar];
+      case 18: return Buffer18[bar];
+      case 19: return Buffer19[bar];
+      case 20: return Buffer20[bar];
+      case 21: return Buffer21[bar];
+      case 22: return Buffer22[bar];
+      case 23: return Buffer23[bar];
+      case 24: return Buffer24[bar];
+      case 25: return Buffer25[bar];
+      case 26: return Buffer26[bar];
+      case 27: return Buffer27[bar];
+      case 28: return Buffer28[bar];
+      case 29: return Buffer29[bar];
+      default: return EMPTY_VALUE;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Scan chart for indicators and configure slope lines             |
+//+------------------------------------------------------------------+
+void ScanChartIndicators()
+{
+   //--- Reset globals
+   g_totalBuffers = 0;
+   g_totalPlots = 0;
+   int indicatorCount = 0;
+   
+   //--- Clear all buffers to remove old plot data
+   ClearAllBuffers();
+   
+   //--- Hide all plots initially (they&#x27;ll be shown as we configure them)
+   for(int p = 0; p &lt; 32; p++)
+   {
+      PlotIndexSetInteger(p, PLOT_DRAW_TYPE, DRAW_NONE);
+      PlotIndexSetString(p, PLOT_LABEL, &quot;&quot;);
+   }
+   
+   //--- Check sub-windows
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      int subIndicators = ChartIndicatorsTotal(0, win);
+      Print(&quot;Found &quot;, subIndicators, &quot; indicators in window &quot;, win);
+      
+      for(int i = 0; i &lt; subIndicators; i++)
+      {
+         string shortName = ChartIndicatorName(0, win, i);
+         
+         if(shortName == &quot;&quot;)
+            continue;
+
+         //--- Skip processing ourselves
+         if(shortName == sMeShortName)
+            continue;
+      
+         //--- Check indicator limit
+         if(indicatorCount &gt;= MAX_INDICATORS)
+         {
+            Print(&quot;ERROR: Maximum indicator limit (&quot;, MAX_INDICATORS, &quot;) reached. Skipping indicator: &quot;, shortName);
+            continue;
+         }
+      
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;&quot;);
+         
+         int handle = ChartIndicatorGet(0, win, shortName);
+         
+         if(handle == INVALID_HANDLE)
+         {
+            Print(&quot;Bad handle &lt;&quot;, handle, &quot;&gt; for indicator&lt;&quot;, shortName, &quot;&gt;, skipping...&quot;);
+            continue;
+         }
+         
+         //--- Verify indicator provides TextGVar metadata
+         string verifiedShortName = ReadTextGVar(win, shortName, &quot;ShortName&quot;, &quot;&quot;);
+         if(verifiedShortName == &quot;&quot;)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no TextGVar metadata - skipping&quot;);
+            continue;
+         }
+
+         int plotCount = GetIndicatorPlotCount(win, shortName);
+         
+         //--- Skip indicators with no plots
+         if(plotCount &lt; 1)
+         {
+            Print(&quot;Indicator &quot;, shortName, &quot; has no plots - skipping&quot;);
+            continue;
+         }
+         
+         //--- Check if adding this indicator would exceed buffer limit
+         if(g_totalBuffers + plotCount &gt; MAX_BUFFERS)
+         {
+            Print(&quot;ERROR: Adding indicator &quot;, shortName, &quot; would exceed buffer limit (&quot;, MAX_BUFFERS, &quot;). Skipping...&quot;);
+            continue;
+         }
+         
+         //--- Get max period from TextGVar parameter metadata
+         int maxPeriod = GetMaxPeriodFromTextGVar(win, shortName);
+         
+         Print(&quot;Processing indicator&lt;&quot;, shortName, &quot;&gt;, plot count: &lt;&quot;, plotCount, &quot;&gt;, maxPeriod: &lt;&quot;, maxPeriod, &quot;&gt;&quot;);
+         
+         for(int lineIdx = 0; lineIdx &lt; plotCount; lineIdx++)
+         {
+            if(g_totalBuffers &gt;= MAX_BUFFERS)
+            {
+               Print(&quot;ERROR: Buffer limit (&quot;, MAX_BUFFERS, &quot;) reached while processing &quot;, shortName);
+               break;
+            }
+            
+            string lineName = GetPlotDisplayName(win, shortName, lineIdx);
+            
+            //--- Read color/width from TextGVar, fall back to defaults
+            color defaultColor = GetAutoColor(g_totalPlots);
+            int defaultWidth = 2;
+            
+            string colorStr = ReadTextGVar(win, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+            color lineColor = (colorStr != &quot;&quot;) ? StringToColor(colorStr) : defaultColor;
+            
+            string widthStr = ReadTextGVar(win, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+            int lineWidth = (widthStr != &quot;&quot;) ? (int)StringToInteger(widthStr) : defaultWidth;
+            int lineStyle = STYLE_SOLID;
+            
+            int idx = ArraySize(g_lines);
+            ArrayResize(g_lines, idx + 1);
+            
+            g_lines[idx].indicatorHandle = handle;
+            g_lines[idx].indicatorShortName = shortName;
+            g_lines[idx].indicatorWindow = win;
+            g_lines[idx].lineIndex = lineIdx;
+            g_lines[idx].bufferIndex = g_totalBuffers;
+            g_lines[idx].period = maxPeriod;
+            g_lines[idx].lineColor = lineColor;
+            g_lines[idx].lineStyle = lineStyle;
+            g_lines[idx].lineWidth = lineWidth;
+            g_lines[idx].lineName = lineName;
+            g_lines[idx].lastRatesTotal = 0;
+            g_lines[idx].isValid = true;
+            g_lines[idx].cachedColorStr = colorStr;
+            g_lines[idx].cachedWidthStr = widthStr;
+            
+            Print(&quot;Line &quot;, idx, &quot;: ShortName&lt;&quot;, shortName, 
+                  &quot;&gt; Handle&lt;&quot;, g_lines[idx].indicatorHandle,
+                  &quot;&gt; ShortName&lt;&quot;, g_lines[idx].indicatorShortName,
+                  &quot;&gt; Window&lt;&quot;, g_lines[idx].indicatorWindow,
+                  &quot;&gt; LineIdx&lt;&quot;, g_lines[idx].lineIndex,
+                  &quot;&gt; BufferIdx&lt;&quot;, g_lines[idx].bufferIndex,
+                  &quot;&gt; Period&lt;&quot;, g_lines[idx].period,
+                  &quot;&gt; Color&lt;&quot;, g_lines[idx].lineColor,
+                  &quot;&gt; Style&lt;&quot;, g_lines[idx].lineStyle,
+                  &quot;&gt; Width&lt;&quot;, g_lines[idx].lineWidth,
+                  &quot;&gt; LineName&lt;&quot;, g_lines[idx].lineName,
+                  &quot;&gt; CachedColorStr&lt;&quot;, g_lines[idx].cachedColorStr,
+                  &quot;&gt; CachedWidthStr&lt;&quot;, g_lines[idx].cachedWidthStr,
+                  &quot;&gt;&quot;);
+            
+            SetBufferByIndex(g_totalBuffers);
+            PlotIndexSetInteger(g_totalPlots, PLOT_DRAW_TYPE, DRAW_LINE);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_STYLE, lineStyle);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_WIDTH, lineWidth);
+            PlotIndexSetInteger(g_totalPlots, PLOT_LINE_COLOR, lineColor);
+            PlotIndexSetString(g_totalPlots, PLOT_LABEL, shortName + &quot; &quot; + lineName + &quot; Slope&quot;);
+
+            g_totalBuffers++;
+            g_totalPlots++;
+         }
+         
+         indicatorCount++;
+      }
+   }
+   
+   //--- Configure summary buffers if we have active line buffers
+   if(g_totalBuffers &gt; 0)
+   {
+      //--- Buffer30: Slopes Avg
+      SetBufferByIndex(SUMMARY_AVG_BUFFER);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_WIDTH, InpSummaryAvgWidth);
+      PlotIndexSetInteger(SUMMARY_AVG_BUFFER, PLOT_LINE_COLOR, InpSummaryAvgColor);
+      PlotIndexSetString(SUMMARY_AVG_BUFFER, PLOT_LABEL, &quot;Slopes Avg&quot;);
+      
+      //--- Buffer31: Slope % UP/DN
+      SetBufferByIndex(SUMMARY_PCT_BUFFER);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_DRAW_TYPE, DRAW_LINE);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_STYLE, STYLE_SOLID);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_WIDTH, InpSummaryPctWidth);
+      PlotIndexSetInteger(SUMMARY_PCT_BUFFER, PLOT_LINE_COLOR, InpSummaryPctColor);
+      PlotIndexSetString(SUMMARY_PCT_BUFFER, PLOT_LABEL, &quot;Slope % UP/DN&quot;);
+   }
+   
+   Print(&quot;Total slope lines configured&lt;&quot;, g_totalBuffers, &quot;&gt; from &quot;, indicatorCount, &quot; indicators&quot;);
+}
+
+//+------------------------------------------------------------------+
+//| Check for REINIT signals from TextGVar objects                   |
+//| Returns true if rescan is needed                                 |
+//+------------------------------------------------------------------+
+bool CheckReinitSignals()
+{
+   string checkedNames[];
+   int checkedCount = 0;
+   
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int window = g_lines[i].indicatorWindow;
+      
+      //--- Check if we&#x27;ve already processed this shortName
+      bool alreadyChecked = false;
+      for(int j = 0; j &lt; checkedCount; j++)
+      {
+         if(checkedNames[j] == shortName)
+         {
+            alreadyChecked = true;
+            break;
+         }
+      }
+      
+      if(alreadyChecked)
+         continue;
+      
+      ArrayResize(checkedNames, checkedCount + 1);
+      checkedNames[checkedCount] = shortName;
+      checkedCount++;
+      
+      //--- Check for REINIT signal
+      string reinitSignal = ReadTextGVar(window, shortName, TEXTGVAR_REINIT, &quot;&quot;);
+      
+      if(reinitSignal == &quot;&quot;)
+         continue;
+      
+      Print(&quot;REINIT detected for &quot;, shortName, &quot;, triggering rescan&quot;);
+      
+      //--- Delete the REINIT flag
+      TextGVar_Delete(TEXTGVAR_PREFIX, window, shortName, TEXTGVAR_REINIT);
+      
+      return true;
+   }
+   
+   return false;
+}
+
+////+------------------------------------------------------------------+
+////| Check for REINIT signals from TextGVar objects                   |
+////+------------------------------------------------------------------+
+//void CheckReinitSignals()
+//{
+//   //--- Track which shortNames we&#x27;ve already checked (avoid redundant checks for multi-buffer indicators)
+//   string checkedNames[];
+//   int checkedCount = 0;
+//   
+//   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//   {
+//      if(!g_lines[i].isValid)
+//         continue;
+//      
+//      string shortName = g_lines[i].indicatorShortName;
+//      
+//      //--- Check if we&#x27;ve already processed this shortName
+//      bool alreadyChecked = false;
+//      for(int j = 0; j &lt; checkedCount; j++)
+//      {
+//         if(checkedNames[j] == shortName)
+//         {
+//            alreadyChecked = true;
+//            break;
+//         }
+//      }
+//      
+//      if(alreadyChecked)
+//         continue;
+//      
+//      //--- Add to checked list
+//      ArrayResize(checkedNames, checkedCount + 1);
+//      checkedNames[checkedCount] = shortName;
+//      checkedCount++;
+//      
+//      //--- Check for REINIT signal
+//      string reinitSignal = ReadTextGVar(shortName, &quot;_REINIT&quot;, &quot;&quot;);
+//      
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - BEFORE reinitSignal check, reinitSignal&lt;&quot;, reinitSignal, &quot;&gt;&quot;);
+//      if(reinitSignal == &quot;&quot;)
+//         continue;
+//      
+//      //--- Get max period from TextGVar
+//      int maxPeriod = GetMaxPeriodFromTextGVar(shortName);
+////      Print(&quot;IndicatorSlopes[CheckReinitSignals] - Got maxPeriod&lt;&quot;, maxPeriod, &quot;&gt; from TextGVar&quot;);
+//      
+//      //--- Update all lines belonging to this indicator
+//      for(int k = 0; k &lt; ArraySize(g_lines); k++)
+//      {
+//         if(g_lines[k].indicatorShortName == shortName)
+//         {
+//            g_lines[k].period = maxPeriod;
+//            g_lines[k].lastRatesTotal = 0;  // Force full recalculation
+//            Print(&quot;Updated line &quot;, k, &quot; (&quot;, shortName, &quot; &quot;, g_lines[k].lineName, &quot;) period to &quot;, maxPeriod);
+//         }
+//      }
+//      
+//      //--- Delete the REINIT text object
+//      TextGVar_Delete(TEXTGVAR_PREFIX, shortName, &quot;_REINIT&quot;);
+//      
+//      ChartRedraw(0);
+//   }
+//}
+
+//+------------------------------------------------------------------+
+//| Get total indicator count across all windows                     |
+//+------------------------------------------------------------------+
+int GetTotalIndicatorCount()
+{
+   int total = 0;
+   int totalWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   for(int win = 0; win &lt; totalWindows; win++)
+   {
+      total += ChartIndicatorsTotal(0, win);
+   }
+   return total;
+}
+
+//+------------------------------------------------------------------+
+//| Create the palette 
+//+------------------------------------------------------------------+
+color GetAutoColor(int index)
+{
+   color palette[] = {
+      clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold, clrMagenta,
+      clrCyan, clrCoral, clrSpringGreen, clrViolet, clrYellow,
+      clrDeepSkyBlue, clrTomato, clrChartreuse, clrOrchid, clrAqua
+   };
+   return palette[index % ArraySize(palette)];
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   //--- Validate InpSlopeBarCnt
+   if(InpSlopeBarCnt &lt; 2)
+   {
+      Print(&quot;InpSlopeBarCnt must be &gt;= 2&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   IndicatorSetString(INDICATOR_SHORTNAME, sMeShortName);
+   
+   //--- Reset line array
+   ArrayResize(g_lines, 0);
+
+   //--- Clean any outstanding REINIT flags (stale from previous session or just-completed SI reinits)
+   for(int obj = ObjectsTotal(0) - 1; obj &gt;= 0; obj--)
+   {
+      string objName = ObjectName(0, obj);
+      if(StringFind(objName, TEXTGVAR_PREFIX + &quot;_&quot;) == 0 &amp;&amp; 
+         StringFind(objName, &quot;_REINIT&quot;) &gt; 0)
+      {
+         ObjectDelete(0, objName);
+      }
+   }
+   
+   //--- Scan chart for indicators
+   ScanChartIndicators();
+   
+   if(g_totalBuffers == 0)
+   {
+      Print(&quot;No indicator plots found on chart!&quot;);
+      
+      //--- Remove this indicator from the chart
+      int chartWindow = ChartWindowFind();
+      if(chartWindow &gt;= 0)
+      {
+         Print(&quot;Removing indicator - ChartWindow&lt;&quot;, chartWindow, &quot;&gt; ShortName&lt;&quot;, sMeShortName, &quot;&gt;&quot;);
+         ChartIndicatorDelete(0, chartWindow, sMeShortName);
+      }
+      
+      return(INIT_FAILED);
+   }
+   
+   EventSetMillisecondTimer(250);  // Check every 250 milliseconds
+//   EventSetTimer(1);  // Check every 1 second
+   g_lastIndicatorCount = GetTotalIndicatorCount();
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator deinitialization function                       |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   //--- Kill the timer
+   EventKillTimer();
+   
+   //--- Release all indicator handles
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+         IndicatorRelease(g_lines[i].indicatorHandle);
+   }
+   
+   g_Uninit_Reason = reason; 
+}
+
+//+------------------------------------------------------------------+
+//| Timer function - detect indicator changes                        |
+//+------------------------------------------------------------------+
+void OnTimer()
+{
+   //--- Check for line property changes from TextGVar
+   CheckLinePropertyChanges();
+   
+   //--- Check for REINIT signals
+   bool needsRescan = CheckReinitSignals();
+   
+   //--- Count indicators across all subwindows
+   int currentCount = GetTotalIndicatorCount();
+   
+   if(needsRescan || currentCount != g_lastIndicatorCount)
+   {
+      Print(&quot;Reinitializing...&quot;);
+      g_lastIndicatorCount = currentCount;
+      
+      //--- Release existing handles
+      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+      {
+         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+            IndicatorRelease(g_lines[i].indicatorHandle);
+      }
+      ArrayResize(g_lines, 0);
+      
+      //--- Rescan and rebuild
+      ScanChartIndicators();
+      
+      //--- Force full recalculation on next OnCalculate
+      ChartSetSymbolPeriod(0, _Symbol, _Period);
+   }
+}
+
+
+////+------------------------------------------------------------------+
+////| Timer function - detect indicator changes                        |
+////+------------------------------------------------------------------+
+//void OnTimer()
+//{
+//   //--- Check for REINIT signals
+//   CheckReinitSignals();
+//   
+//   //--- Count indicators across all subwindows
+//   int currentCount = GetTotalIndicatorCount();
+//   
+//   if(currentCount != g_lastIndicatorCount)
+//   {
+//      Print(&quot;Indicator count changed: &quot;, g_lastIndicatorCount, &quot; -&gt; &quot;, currentCount, &quot;. Reinitializing...&quot;);
+//      g_lastIndicatorCount = currentCount;
+//      
+//      //--- Release existing handles
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         if(g_lines[i].indicatorHandle != INVALID_HANDLE)
+//            IndicatorRelease(g_lines[i].indicatorHandle);
+//      }
+//      ArrayResize(g_lines, 0);
+//      
+//      //--- Rescan and rebuild
+//      ScanChartIndicators();
+//      
+//      //--- Force full recalculation on next OnCalculate
+//      ChartSetSymbolPeriod(0, _Symbol, _Period);
+//   }
+//}
+//
+
+//+------------------------------------------------------------------+
+//| Check and apply TextGVar property changes for all lines          |
+//+------------------------------------------------------------------+
+void CheckLinePropertyChanges()
+{
+   for(int i = 0; i &lt; ArraySize(g_lines); i++)
+   {
+      if(!g_lines[i].isValid)
+         continue;
+      
+      string shortName = g_lines[i].indicatorShortName;
+      int window = g_lines[i].indicatorWindow;
+      int lineIdx = g_lines[i].lineIndex;
+      
+      //--- Read current values from TextGVar
+      string currentColorStr = ReadTextGVar(window, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Color&quot;, &quot;&quot;);
+      string currentWidthStr = ReadTextGVar(window, shortName, &quot;Plot[&quot; + IntegerToString(lineIdx) + &quot;]_Width&quot;, &quot;&quot;);
+      
+      bool changed = false;
+      
+      //--- Check color change
+      if(currentColorStr != &quot;&quot; &amp;&amp; currentColorStr != g_lines[i].cachedColorStr)
+      {
+         color newColor = StringToColor(currentColorStr);
+         g_lines[i].lineColor = newColor;
+         g_lines[i].cachedColorStr = currentColorStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_COLOR, newColor);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) color changed to &quot;, currentColorStr);
+      }
+      
+      //--- Check width change
+      if(currentWidthStr != &quot;&quot; &amp;&amp; currentWidthStr != g_lines[i].cachedWidthStr)
+      {
+         int newWidth = (int)StringToInteger(currentWidthStr);
+         g_lines[i].lineWidth = newWidth;
+         g_lines[i].cachedWidthStr = currentWidthStr;
+         PlotIndexSetInteger(g_lines[i].bufferIndex, PLOT_LINE_WIDTH, newWidth);
+         changed = true;
+         Print(&quot;Line &quot;, i, &quot; (&quot;, shortName, &quot; &quot;, g_lines[i].lineName, &quot;) width changed to &quot;, currentWidthStr);
+      }
+      
+      if(changed)
+         ChartRedraw(0);
+   }
+}
+
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+
+//   //--- Dump arrays on first call only
+//   if(prev_calculated == 0)
+//   {
+//      Print(&quot;=== OnCalculate First Run Dump ===&quot;);
+//      Print(&quot;g_totalBuffers&lt;&quot;, g_totalBuffers, &quot;&gt; g_totalPlots&lt;&quot;, g_totalPlots, &quot;&gt; g_lines size&lt;&quot;, ArraySize(g_lines), &quot;&gt;&quot;);
+//      
+//      for(int i = 0; i &lt; ArraySize(g_lines); i++)
+//      {
+//         Print(&quot;g_lines[&quot;, i, &quot;]: Handle&lt;&quot;, g_lines[i].indicatorHandle,
+//               &quot;&gt; ShortName&lt;&quot;, g_lines[i].indicatorShortName,
+//               &quot;&gt; LineIdx&lt;&quot;, g_lines[i].lineIndex,
+//               &quot;&gt; BufIdx&lt;&quot;, g_lines[i].bufferIndex,
+//               &quot;&gt; Period&lt;&quot;, g_lines[i].period,
+//               &quot;&gt; Color&lt;&quot;, g_lines[i].lineColor,
+//               &quot;&gt; LineName&lt;&quot;, g_lines[i].lineName,
+//               &quot;&gt; CacheSize&lt;&quot;, ArraySize(g_lines[i].cache),
+//               &quot;&gt; lastRatesTotal&lt;&quot;, g_lines[i].lastRatesTotal,
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;g_knownIndicators size&lt;&quot;, ArraySize(g_knownIndicators), &quot;&gt;&quot;);
+//      for(int i = 0; i &lt; ArraySize(g_knownIndicators); i++)
+//      {
+//         Print(&quot;g_knownIndicators[&quot;, i, &quot;]: ShortName&lt;&quot;, g_knownIndicators[i].shortName,
+//               &quot;&gt; PlotCount&lt;&quot;, g_knownIndicators[i].plotCount,
+//               &quot;&gt; PlotNames size&lt;&quot;, ArraySize(g_knownIndicators[i].plotNames),
+//               &quot;&gt;&quot;);
+//      }
+//      
+//      Print(&quot;=== End Dump ===&quot;);
+//   }
+   
+   if(rates_total &lt; InpSlopeBarCnt)
+      return 0;
+
+   //--- Track the earliest bar we need to recalculate for summary
+   int summaryStartBar = 0;
+
+   for(int lineIdx = 0; lineIdx &lt; ArraySize(g_lines); lineIdx++)
+   {
+      //--- Capture before cache update overwrites it
+      bool forceFullRecalc = (g_lines[lineIdx].lastRatesTotal == 0);
+      
+      //--- Guard: need enough bars for indicator period + slope calc
+      int minBarsRequired = g_lines[lineIdx].period + InpSlopeBarCnt;
+      
+      if(rates_total &lt; minBarsRequired)
+         continue;
+      if(!g_lines[lineIdx].isValid)
+         continue;
+      
+      int lastRates = g_lines[lineIdx].lastRatesTotal;
+      int newBars = rates_total - lastRates;
+      
+      //--- First call or history changed: full copy
+      if(lastRates == 0 || newBars &lt; 0 || newBars &gt; rates_total)
+      {
+         ArrayResize(g_lines[lineIdx].cache, rates_total);
+         ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     rates_total,
+                                     g_lines[lineIdx].cache);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer full copy FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+
+         //--- Accept what we got (indicator may have fewer bars due to warmup period)
+         g_lines[lineIdx].lastRatesTotal = rates_total;
+      }
+      else
+      {
+         //--- Incremental update: copy new bars + bar 0 update
+         int barsToCopy = newBars + 1;  // +1 to recalc bar 0
+         if(barsToCopy &gt; rates_total)
+            barsToCopy = rates_total;
+         
+         //--- Resize cache if new bars arrived
+         if(rates_total &gt; ArraySize(g_lines[lineIdx].cache))
+         {
+            ArrayResize(g_lines[lineIdx].cache, rates_total);
+            ArraySetAsSeries(g_lines[lineIdx].cache, true);
+         }
+         
+         double tempBuffer[];
+         ArraySetAsSeries(tempBuffer, true);
+         
+         int copyResult = CopyBuffer(g_lines[lineIdx].indicatorHandle, 
+                                     g_lines[lineIdx].lineIndex, 
+                                     0,
+                                     barsToCopy,
+                                     tempBuffer);
+         
+         if(copyResult &lt;= 0)
+         {
+            Print(&quot;CopyBuffer incremental FAILED for line &quot;, lineIdx, &quot;: got &quot;, copyResult);
+            g_lines[lineIdx].isValid = false;
+            continue;
+         }
+         
+         //--- Update cache with new values
+         for(int i = 0; i &lt; copyResult; i++)
+         {
+            g_lines[lineIdx].cache[i] = tempBuffer[i];
+         }
+         g_lines[lineIdx].lastRatesTotal = rates_total;       
+      }
+
+      //--- Calculate Z-score normalized slopes
+      //--- Oldest bar we can calculate slope for (need room for slope bars + z-score lookback)
+      int oldestSlopeBar = rates_total - 1 - g_lines[lineIdx].period - (InpSlopeBarCnt - 1) - InpZScorePeriod;
+      if(oldestSlopeBar &lt; 0)
+         oldestSlopeBar = 0;
+      
+      //--- Determine which bars to recalculate
+      int startBar;
+      if(prev_calculated == 0 || forceFullRecalc)
+      {
+         startBar = oldestSlopeBar;
+      }
+      else
+      {
+         startBar = newBars;  // recalc new bars + bar 0
+         if(startBar &gt; oldestSlopeBar)
+            startBar = oldestSlopeBar;
+      }
+      
+      //--- Track for summary calculation
+      if(startBar &gt; summaryStartBar)
+         summaryStartBar = startBar;
+      
+      //+------------------------------------------------------------------+
+      // NOTE: loop MUST run from older bars to newer for EMA correctness
+      //+------------------------------------------------------------------+
+      for(int CalcBarIX = startBar; CalcBarIX &gt;= 0; CalcBarIX--)      
+      {
+         int PrevBarIX = CalcBarIX + InpSlopeBarCnt - 1;
+      
+         //--- Guard against out of range
+         if(PrevBarIX &gt;= ArraySize(g_lines[lineIdx].cache))
+            continue;
+      
+         //--- Calculate raw slope for current bar
+         double currentValue = g_lines[lineIdx].cache[CalcBarIX];
+         double prevValue    = g_lines[lineIdx].cache[PrevBarIX];
+      
+         //--- Guard against EMPTY_VALUE
+         if(currentValue == EMPTY_VALUE || prevValue == EMPTY_VALUE)
+            continue;
+      
+         double slope = (currentValue - prevValue) / (InpSlopeBarCnt - 1);
+         
+         double outValue = 0.0;
+         
+         //================ CALCULATE outValue BY MODE =================
+         if(InpRawSlope)
+         {
+            outValue = slope;
+         }
+         else if(InpSlopeMode == SLOPE_ZSCORE)
+         {
+            //--- Calculate mean and standard deviation of slopes over lookback period
+            double sumSlope = 0.0;
+            double sumSlopeSq = 0.0;
+            int count = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpZScorePeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               double s = (val - valPrev) / (InpSlopeBarCnt - 1);
+               sumSlope   += s;
+               sumSlopeSq += s * s;
+               count++;
+            }
+      
+            if(count &gt; 1)
+            {
+               double mean     = sumSlope / count;
+               double variance = (sumSlopeSq / count) - (mean * mean);
+               double stdDev   = (variance &gt; 0) ? MathSqrt(variance) : 0;
+      
+               if(stdDev &gt; 0)
+                  outValue = (slope - mean) / stdDev;
+               else
+                  outValue = 0.0;
+            }
+            else
+               outValue = 0.0;
+         }
+         else if(InpSlopeMode == SLOPE_EMA)
+         {
+            double alpha = 2.0 / (InpEmaPeriod + 1.0);
+            double prev;
+            
+            if(CalcBarIX + 1 &gt;= rates_total)
+            {
+               prev = slope;
+            }
+            else
+            {
+               switch(g_lines[lineIdx].bufferIndex)
+               {
+                  case 0:  prev = Buffer0[CalcBarIX + 1]; break;
+                  case 1:  prev = Buffer1[CalcBarIX + 1]; break;
+                  case 2:  prev = Buffer2[CalcBarIX + 1]; break;
+                  case 3:  prev = Buffer3[CalcBarIX + 1]; break;
+                  case 4:  prev = Buffer4[CalcBarIX + 1]; break;
+                  case 5:  prev = Buffer5[CalcBarIX + 1]; break;
+                  case 6:  prev = Buffer6[CalcBarIX + 1]; break;
+                  case 7:  prev = Buffer7[CalcBarIX + 1]; break;
+                  case 8:  prev = Buffer8[CalcBarIX + 1]; break;
+                  case 9:  prev = Buffer9[CalcBarIX + 1]; break;
+                  case 10: prev = Buffer10[CalcBarIX + 1]; break;
+                  case 11: prev = Buffer11[CalcBarIX + 1]; break;
+                  case 12: prev = Buffer12[CalcBarIX + 1]; break;
+                  case 13: prev = Buffer13[CalcBarIX + 1]; break;
+                  case 14: prev = Buffer14[CalcBarIX + 1]; break;
+                  case 15: prev = Buffer15[CalcBarIX + 1]; break;
+                  case 16: prev = Buffer16[CalcBarIX + 1]; break;
+                  case 17: prev = Buffer17[CalcBarIX + 1]; break;
+                  case 18: prev = Buffer18[CalcBarIX + 1]; break;
+                  case 19: prev = Buffer19[CalcBarIX + 1]; break;
+                  case 20: prev = Buffer20[CalcBarIX + 1]; break;
+                  case 21: prev = Buffer21[CalcBarIX + 1]; break;
+                  case 22: prev = Buffer22[CalcBarIX + 1]; break;
+                  case 23: prev = Buffer23[CalcBarIX + 1]; break;
+                  case 24: prev = Buffer24[CalcBarIX + 1]; break;
+                  case 25: prev = Buffer25[CalcBarIX + 1]; break;
+                  case 26: prev = Buffer26[CalcBarIX + 1]; break;
+                  case 27: prev = Buffer27[CalcBarIX + 1]; break;
+                  case 28: prev = Buffer28[CalcBarIX + 1]; break;
+                  case 29: prev = Buffer29[CalcBarIX + 1]; break;
+                  default: prev = slope; break;
+               }
+            }
+      
+            if(prev == EMPTY_VALUE)
+               prev = slope;
+      
+            outValue = alpha * slope + (1.0 - alpha) * prev;
+         }
+         else if(InpSlopeMode == SLOPE_MEDIAN)
+         {
+            double tmp[];
+            ArrayResize(tmp, InpMedianPeriod);
+            int k = 0;
+      
+            for(int j = CalcBarIX;
+                j &lt; CalcBarIX + InpMedianPeriod &amp;&amp;
+                j + InpSlopeBarCnt - 1 &lt; ArraySize(g_lines[lineIdx].cache);
+                j++)
+            {
+               double val     = g_lines[lineIdx].cache[j];
+               double valPrev = g_lines[lineIdx].cache[j + InpSlopeBarCnt - 1];
+      
+               if(val == EMPTY_VALUE || valPrev == EMPTY_VALUE)
+                  continue;
+      
+               tmp[k++] = (val - valPrev) / (InpSlopeBarCnt - 1);
+            }
+      
+            if(k &gt; 0)
+            {
+               ArrayResize(tmp, k);
+               ArraySort(tmp);
+               outValue = tmp[k / 2];
+            }
+            else
+               outValue = 0.0;
+         }
+         
+         //================ NORMALIZE outValue =================
+         double minVal = currentValue;
+         double maxVal = currentValue;
+         
+         for(int j = CalcBarIX; 
+             j &lt; CalcBarIX + InpRawNormPeriod &amp;&amp; 
+             j &lt; ArraySize(g_lines[lineIdx].cache); 
+             j++)
+         {
+            double val = g_lines[lineIdx].cache[j];
+            if(val == EMPTY_VALUE)
+               continue;
+            if(val &lt; minVal) minVal = val;
+            if(val &gt; maxVal) maxVal = val;
+         }
+         
+         double range = maxVal - minVal;
+         if(range &gt; 0)
+            outValue = outValue * 100.0 * (InpSlopeBarCnt - 1) / range;
+         else
+            outValue = 0.0;
+         
+         //================ WRITE TO BUFFER =================
+         switch(g_lines[lineIdx].bufferIndex)
+         {
+            case 0:  Buffer0[CalcBarIX]  = outValue; break;
+            case 1:  Buffer1[CalcBarIX]  = outValue; break;
+            case 2:  Buffer2[CalcBarIX]  = outValue; break;
+            case 3:  Buffer3[CalcBarIX]  = outValue; break;
+            case 4:  Buffer4[CalcBarIX]  = outValue; break;
+            case 5:  Buffer5[CalcBarIX]  = outValue; break;
+            case 6:  Buffer6[CalcBarIX]  = outValue; break;
+            case 7:  Buffer7[CalcBarIX]  = outValue; break;
+            case 8:  Buffer8[CalcBarIX]  = outValue; break;
+            case 9:  Buffer9[CalcBarIX]  = outValue; break;
+            case 10: Buffer10[CalcBarIX] = outValue; break;
+            case 11: Buffer11[CalcBarIX] = outValue; break;
+            case 12: Buffer12[CalcBarIX] = outValue; break;
+            case 13: Buffer13[CalcBarIX] = outValue; break;
+            case 14: Buffer14[CalcBarIX] = outValue; break;
+            case 15: Buffer15[CalcBarIX] = outValue; break;
+            case 16: Buffer16[CalcBarIX] = outValue; break;
+            case 17: Buffer17[CalcBarIX] = outValue; break;
+            case 18: Buffer18[CalcBarIX] = outValue; break;
+            case 19: Buffer19[CalcBarIX] = outValue; break;
+            case 20: Buffer20[CalcBarIX] = outValue; break;
+            case 21: Buffer21[CalcBarIX] = outValue; break;
+            case 22: Buffer22[CalcBarIX] = outValue; break;
+            case 23: Buffer23[CalcBarIX] = outValue; break;
+            case 24: Buffer24[CalcBarIX] = outValue; break;
+            case 25: Buffer25[CalcBarIX] = outValue; break;
+            case 26: Buffer26[CalcBarIX] = outValue; break;
+            case 27: Buffer27[CalcBarIX] = outValue; break;
+            case 28: Buffer28[CalcBarIX] = outValue; break;
+            case 29: Buffer29[CalcBarIX] = outValue; break;
+         }
+      }
+   }
+   
+   //================ CALCULATE SUMMARY BUFFERS =================
+   if(g_totalBuffers &gt; 0)
+   {
+      for(int bar = summaryStartBar; bar &gt;= 0; bar--)
+      {
+         double sum = 0.0;
+         int positiveCount = 0;
+         int negativeCount = 0;
+         int validCount = 0;
+         
+         //--- Read from all active line buffers
+         for(int i = 0; i &lt; g_totalBuffers; i++)
+         {
+            double val = GetBufferValue(i, bar);
+            if(val == EMPTY_VALUE)
+               continue;
+            sum += val;
+            if(val &gt; 0)
+               positiveCount++;
+            else if(val &lt; 0)
+               negativeCount++;
+            validCount++;
+         }
+         
+         if(validCount &gt; 0)
+         {
+            double avg = sum / validCount;
+            
+            //--- Mean average, all slopes
+            Buffer30[bar] = avg;
+            
+//            //--- Position avg above/below zero based on majority
+//            if(positiveCount &gt; negativeCount)
+//               Buffer30[bar] = MathAbs(avg);
+//            else if(negativeCount &gt; positiveCount)
+//               Buffer30[bar] = -MathAbs(avg);
+//            else
+//               Buffer30[bar] = 0.0;  // 50/50 on zero line
+//            
+            //--- Calculate percentage UP (positive) vs DN (negative)
+            //--- Encode as: positive value = % UP, negative value = % DN
+            double pctUp = (double)positiveCount / validCount * 100.0;
+            double pctDn = (double)negativeCount / validCount * 100.0;
+            
+            //--- Store signed value: positive if majority up, negative if majority down
+            if(positiveCount &gt; negativeCount)
+               Buffer31[bar] = pctUp;
+            else if(negativeCount &gt; positiveCount)
+               Buffer31[bar] = -pctDn;
+            else
+               Buffer31[bar] = 0.0;
+         }
+         else
+         {
+            Buffer30[bar] = EMPTY_VALUE;
+            Buffer31[bar] = EMPTY_VALUE;
+         }
+      }
+   }
+   
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 15:11 UTC</span></div><div class="body"><h2>Analysis</h2>
+<h3>Proposed Changes Summary:</h3>
+<ol>
+<li>Replace window number with unique instance ID in TextGVar naming pattern</li>
+<li>Global counter (<code>GlobalVariableGet/Set</code>) provides unique IDs</li>
+<li>Each SI instance gets new ID on every OnInit (including reinit)</li>
+<li>OnDeinit uses its retained ID to clean only its own objects</li>
+<li>Eliminate REINIT flags entirely</li>
+<li>IS detects changes by scanning <code>*_ShortName</code> objects and comparing against cache</li>
+</ol>
+<h3>Issues Identified:</h3>
+<p><strong>Issue 1: IS can't read metadata without knowing instanceID</strong></p>
+<p>Current: <code>ReadTextGVar(window, shortName, &quot;PlotCount&quot;)</code> → looks for <code>MJM_1_ATR(14)_PlotCount</code></p>
+<p>New: IS discovers object <code>MJM_5_ATR(14)_ShortName</code> but doesn't know instanceID=5 to read other metadata.</p>
+<p><strong>Solution:</strong> IS extracts the prefix from discovered ShortName object name. Object name minus <code>_ShortName</code> suffix = prefix. Use prefix directly to build other object names.</p>
+<p><strong>Issue 2: Window number still needed</strong></p>
+<p>IS needs window for <code>ChartIndicatorGet(0, win, shortName)</code>. Without window in TextGVar pattern, IS must either:</p>
+<ul>
+<li>Store window as metadata field (e.g., <code>_Window</code>)</li>
+<li>Scan all windows to find indicator by shortName (IS already does this in ScanChartIndicators)</li>
+</ul>
+<p><strong>Solution:</strong> IS already iterates windows. When it finds a ShortName object, verify indicator exists via ChartIndicatorGet across windows. Slightly less efficient but works.</p>
+<p><strong>Issue 3: Orphaned TextGVars</strong></p>
+<p>If OnDeinit is skipped (as we observed), old objects remain. New instance has new ID, creates new objects. Old objects persist.</p>
+<p><strong>Solution:</strong> Acceptable. IS filters orphans naturally — when it finds a ShortName object, it verifies indicator exists via ChartIndicatorGet. Orphan fails verification, gets skipped. Objects accumulate but are harmless.</p>
+<p><strong>Issue 4: LineInfo struct needs prefix storage</strong></p>
+<p>IS currently stores window+shortName. Now needs to store the discovered prefix for metadata reads.</p>
+<hr />
+<h2>Change Plan</h2>
+<h3>TextGVar_MJM.mqh</h3>
+<ul>
+<li>Rename parameter <code>window</code> → <code>instanceID</code> in all functions (cosmetic clarity, no functional change)</li>
+</ul>
+<h3>Ind_ATR MJM.mq5</h3>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Globals</td>
+<td>Add <code>int g_InstanceID = -1;</code></td>
+</tr>
+<tr>
+<td>Defines</td>
+<td>Add <code>#define INSTANCE_COUNTER_GV &quot;MJM_InstanceCounter&quot;</code></td>
+</tr>
+<tr>
+<td>Defines</td>
+<td>Remove <code>#define TEXTGVAR_REINIT &quot;REINIT&quot;</code></td>
+</tr>
+<tr>
+<td>Globals</td>
+<td>Remove <code>g_TextGVar_DeletePrefix</code> (no longer needed)</td>
+</tr>
+<tr>
+<td>OnInit</td>
+<td>Add: read GlobalVariable, increment, store in g_InstanceID</td>
+</tr>
+<tr>
+<td>OnInit</td>
+<td>Replace <code>g_MyWindow</code> with <code>g_InstanceID</code> in all TextGVar calls</td>
+</tr>
+<tr>
+<td>OnInit</td>
+<td>Remove g_TextGVar_DeletePrefix logic</td>
+</tr>
+<tr>
+<td>OnDeinit</td>
+<td>Simplify: delete all objects matching <code>MJM_[g_InstanceID]_</code></td>
+</tr>
+<tr>
+<td>OnDeinit</td>
+<td>Remove all REINIT-related code</td>
+</tr>
+<tr>
+<td>OnDeinit</td>
+<td>Remove stale REINIT cleanup loop</td>
+</tr>
+</tbody>
+</table>
+<h3>IndicatorSlopes_MJM.mq5</h3>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>Change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Defines</td>
+<td>Remove <code>#define TEXTGVAR_REINIT &quot;REINIT&quot;</code></td>
+</tr>
+<tr>
+<td>LineInfo struct</td>
+<td>Add <code>string instancePrefix;</code> field</td>
+</tr>
+<tr>
+<td>Functions</td>
+<td>Remove <code>CheckReinitSignals()</code> entirely</td>
+</tr>
+<tr>
+<td>Functions</td>
+<td>Add <code>CheckForIndicatorChanges()</code> — scans objects for <code>_ShortName</code>, compares to cache</td>
+</tr>
+<tr>
+<td>ScanChartIndicators</td>
+<td>Discovery: scan objects for <code>_ShortName</code> suffix, extract prefix, verify via ChartIndicatorGet</td>
+</tr>
+<tr>
+<td>ScanChartIndicators</td>
+<td>Store prefix in <code>g_lines[].instancePrefix</code></td>
+</tr>
+<tr>
+<td>ScanChartIndicators</td>
+<td>Metadata reads: use prefix directly (e.g., <code>prefix + &quot;_PlotCount&quot;</code>)</td>
+</tr>
+<tr>
+<td>OnInit</td>
+<td>Remove REINIT cleanup loop</td>
+</tr>
+<tr>
+<td>OnTimer</td>
+<td>Replace <code>CheckReinitSignals()</code> with <code>CheckForIndicatorChanges()</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p>Any issues with this plan?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-20 15:15 UTC</span></div><div class="body">Explain &quot;IS extracts the prefix from discovered ShortName object name. Object name minus `_ShortName` suffix = prefix. Use prefix directly to build other object names.&quot; more fully.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-20 15:15 UTC</span></div><div class="body"><p>Current flow (with window number):</p>
+<ol>
+<li>IS iterates windows, gets shortName from <code>ChartIndicatorName(0, win, i)</code></li>
+<li>IS knows window=1, shortName=<code>ATR(14)</code></li>
+<li>IS constructs object name: <code>MJM_</code> + <code>1</code> + <code>_</code> + <code>ATR(14)</code> + <code>_PlotCount</code></li>
+<li>Reads object, gets value</li>
+</ol>
+<p>New flow (with instance ID):</p>
+<ol>
+<li>IS scans all chart objects via <code>ObjectsTotal(0)</code> / <code>ObjectName(0, i)</code></li>
+<li>Finds object ending with <code>_ShortName</code>, e.g. <code>MJM_5_ATR(14)_ShortName</code></li>
+<li>Reads its value: <code>ATR(14)</code></li>
+<li>Strips <code>_ShortName</code> from object name → <code>MJM_5_ATR(14)</code></li>
+<li>This string is the prefix for ALL metadata for this instance</li>
+<li>To read PlotCount: <code>ObjectGetString(0, &quot;MJM_5_ATR(14)_PlotCount&quot;, OBJPROP_TEXT)</code></li>
+<li>To read color: <code>ObjectGetString(0, &quot;MJM_5_ATR(14)_Plot[0]_Color&quot;, OBJPROP_TEXT)</code></li>
+</ol>
+<p>IS never parses out the instance ID. It just uses the discovered prefix as an opaque string and appends <code>_varName</code> to read other fields.</p>
+</div></div>
+<nav class="pager"><a href="607-2026-01-19-fixing-textgvar-cleanup-issues-in-sonnet-4-5.html">&larr; Fixing TextGVar cleanup issues in Sonnet 4.5</a><a href="../index.html">All chats</a><a href="609-2026-01-20-converting-exercises-to-document-format.html">Converting exercises to document format &rarr;</a></nav></div></body></html>

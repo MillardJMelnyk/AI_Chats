@@ -1,0 +1,2417 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bullish and bearish candle differentiation</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="666-2026-02-20-disable-codex-approval-prompts-in-vs-code.html">&larr; Disable Codex approval prompts in VS Code</a><a href="../index.html">All chats</a><a href="668-2026-02-21-usd-pair-points-and-pips-terminology.html">USD pair points and pips terminology &rarr;</a></nav>
+<header class="top">
+<h1>Bullish and bearish candle differentiation</h1>
+<div class="meta">Created 2026-02-21 07:13 UTC &middot; Last updated 2026-02-21 08:48 UTC &middot; 42 messages<br>Original: <a href="https://claude.ai/chat/2463e53d-e063-41ae-b0d1-b4c8eb380a79">claude.ai/chat/2463e53d-e063-41ae-b0d1-b4c8eb380a79</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:14 UTC</span></div><div class="body">can you differentiate between bullish and bearish candles in these screenshots?<p class="note">[File attached: 1771657987363_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1771658028789_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:14 UTC</span></div><div class="body"><p>Saturday, February 21, 2026, CST</p>
+<p>Yes. Your color scheme uses:</p>
+<ul>
+<li><strong>Bullish (up) candles</strong>: Blue/cyan body outline</li>
+<li><strong>Bearish (down) candles</strong>: Pink/magenta/red body outline</li>
+</ul>
+<p>Both are visible and distinguishable in the screenshots.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:20 UTC</span></div><div class="body">good. As you can tell by the signals, I have an indicator that works pretty well. I&#x27;m trying to optimize it.
+
+I&#x27;m interested in 3 things.
+
+1. The code is supposed to dynamically adjust a blackout period when the Keltner Channel goes sideways and narrows. It&#x27;s not doing anything.
+2. I want to add the option of triggering a signal when price moves through both TEMA and EMA(TEMA) rather than waiting for a TEMA cross over the EMA, but that might bite me on the other end: premature signals. Think of a way I can get the advantage of this earlier signal triggering while avoiding the drawbacks.
+3. Gold has a unique moderately frequent price action: a rapid dive or spike with a 60%-80% retracement on the next bar or two. We might need to do some historical analysis to figure out tolerances that signal one of these formations is likely.
+
+Here&#x27;s the code. Let&#x27;s fix #1 first. Then we&#x27;ll talk about the other two.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                           TEMA_EMA_CockedTrigger_MJM.mq5         |
+//|   TEMA/EMA cocked-trigger signal indicator with trade simulation |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#property version   &quot;1.00&quot;
+#property strict
+#property indicator_chart_window
+
+#property indicator_buffers 16
+#property indicator_plots   16
+
+#include &lt;DevoInclude/TradeSimulation_MJM.mqh&gt;
+
+//--- Plot 0: TEMA
+#property indicator_label1  &quot;TEMA&quot;
+#property indicator_type1   DRAW_LINE
+#property indicator_color1  clrYellow
+#property indicator_style1  STYLE_SOLID
+#property indicator_width1  3
+
+//--- Plot 1: EMA(TEMA)
+#property indicator_label2  &quot;EMA(TEMA)&quot;
+#property indicator_type2   DRAW_LINE
+#property indicator_color2  clrAqua
+#property indicator_style2  STYLE_SOLID
+#property indicator_width2  2
+
+//--- Plot 2: Trigger Threshold (pips)
+#property indicator_label3  &quot;Trigger Threshold (pips)&quot;
+#property indicator_type3   DRAW_NONE
+
+//--- Plot 3: T/E Spread (pips)
+#property indicator_label4  &quot;T/E Spread (pips)&quot;
+#property indicator_type4   DRAW_NONE
+
+//--- Plot 4: Active Blackout Bars
+#property indicator_label5  &quot;Active Blackout Bars&quot;
+#property indicator_type5   DRAW_NONE
+
+//--- Plot 5: Buy arrows
+#property indicator_label6  &quot;Buy Signal&quot;
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrLime
+#property indicator_style6  STYLE_SOLID
+#property indicator_width6  4
+
+//--- Plot 6: Sell arrows
+#property indicator_label7  &quot;Sell Signal&quot;
+#property indicator_type7   DRAW_ARROW
+#property indicator_color7  clrRed
+#property indicator_style7  STYLE_SOLID
+#property indicator_width7  4
+
+enum ENUM_MOCK_PRICE_SOURCE
+{
+   MOCK_PRICE_CLOSE    = 0,
+   MOCK_PRICE_TEMA     = 1,
+   MOCK_PRICE_EMA_TEMA = 2
+};
+
+input group &quot;=== Core Inputs ===&quot;
+input int                InpTEMAPeriod      = 12;            // TEMA period
+input ENUM_APPLIED_PRICE InpTEMAApplied     = PRICE_CLOSE;  // TEMA applied price
+input int                InpEMAPeriod       = 7;            // EMA period of TEMA
+input int                InpOpenRefOffset   = 0;            // OPEN reference offset from hi/lo bar (0=same bar, 1=prior bar, ...)
+input double             InpTriggerSensitivityPips = 1.8;   // TEMA trigger sensitivity (in pips, 0=hair trigger)
+
+input group &quot;=== Signal/Trade Simulation ===&quot;
+input bool               InpEnableTradeSim  = true;                  // Enable mock trade simulation
+input bool               InpShowArrows      = true;                  // Show chart arrow objects
+input datetime           InpTradeStartDate  = D&#x27;2026.02.15 00:00&#x27;;   // Start date
+input int                InpSignalBlackout  = 2;                     // Minimum blackout bars after signal
+input bool               InpSoundTradeAlarm = true;                  // Play alert on live signal
+input int                InpObjectArrowOffsetPips = 100;             // Chart object arrow offset (pips)
+input ENUM_MOCK_PRICE_SOURCE InpMockTradePriceSource = MOCK_PRICE_TEMA; // Mock trade execution price source
+
+input group &quot;=== KC Settings (Object Arrow Placement) ===&quot;
+input int                InpKCPeriod        = 35;                    // KC EMA period
+input int                InpKCATRPeriod     = 10;                    // KC ATR period
+input double             InpKCMultiplier    = 1.5;                   // KC ATR multiplier
+
+input group &quot;=== Dynamic Blackout ===&quot;
+input bool               InpUseDynamicBlackout   = false;            // Enable KC-width/slope based blackout adjustment
+input int                InpBlackoutMax          = 12;               // Dynamic blackout cap (max bars)
+input int                InpKCWidthLookback      = 50;               // Lookback for KC width baseline
+input int                InpKCMidSlopePeriod     = 5;                // KC mid slope period
+input double             InpNarrowWidthRatio     = 0.80;             // Width ratio threshold (curr/baseline)
+input double             InpFlatSlopePipsPerBar  = 0.20;             // KC mid flatness threshold (pips/bar)
+input double             InpBlackoutScaleK       = 10.0;             // Dynamic sensitivity scale
+
+input group &quot;=== Visibility / CSV Debug ===&quot;
+input bool               InpEnableVisibilityWindow = false;          // Apply start/end date filter to debug stream
+input datetime           InpVisibilityStartDT      = D&#x27;2026.02.01 00:00&#x27;; // Visibility window start
+input datetime           InpVisibilityEndDT        = D&#x27;2026.02.28 23:59&#x27;; // Visibility window end
+input bool               InpEnableCsvDebugExport   = false;          // Export raw/work/result stream to CSV
+input string             InpCsvDebugFileName       = &quot;TEMA_EMA_CockedTrigger_Debug.csv&quot;; // File in MQL5\\Files
+
+//--- Indicator data buffers
+double BufferTEMA[];
+double BufferEMAofTEMA[];
+double BufferTemaEmaSpread[];
+double BufferArrowBuy[];
+double BufferArrowSell[];
+
+//--- Trade simulation buffers (data window use)
+double BufferTradePL[];
+double BufferRunningPL[];
+double BufferTradeCount[];
+double BufferWinPct[];
+double BufferShortCount[];
+double BufferShortWinPct[];
+double BufferLongCount[];
+double BufferLongWinPct[];
+double BufferDynBlackout[];
+double BufferKCWidthRatio[];
+double BufferTriggerThreshold[];
+double BufferKCUpper[];
+double BufferKCMiddle[];
+double BufferKCLower[];
+
+//--- Handles
+int iHndlTEMA      = INVALID_HANDLE;
+int iHndlEMAofTEMA = INVALID_HANDLE;
+int iHndlKC        = INVALID_HANDLE;
+
+//--- Trade simulation state
+STradeStats        g_tradeStats;
+STradeEntry        g_currentTrade;
+SSignalArrowConfig g_arrowCfg;
+STradeLabel        g_labelCfg;
+datetime           g_signalStartDT = 0;
+int                g_lastSignalBar = -999;
+
+//--- Cocked-trigger state
+int    iDir = 0;                // +1: hunt high (TEMA &gt; EMA), -1: hunt low (TEMA &lt; EMA)
+int    g_crossBar = -1;
+int    g_extremeBar = -1;
+int    g_extremeOpenRefBar = -1;
+double g_extremePrice = 0.0;
+double g_extremeOpen = 0.0;
+bool   g_pendingConfirm = false;
+bool   g_isCocked = false;
+int    g_cockedDir = 0;         // +1 long, -1 short
+double g_cockLevel = 0.0;       // Open of hi/lo bar that cocked signal
+int    g_maxPeriodsBack = 0;
+bool   g_triggerPending = false;
+int    g_triggerDir = 0;        // +1 long, -1 short
+int    g_triggerCrossBar = -1;
+int    g_lastExportedBar = -1;
+bool   g_blackoutSignalPending = false;
+int    g_blackoutSignalDir = 0; // +1 long, -1 short
+int    g_blackoutSignalBar = -1;
+
+//+------------------------------------------------------------------+
+double GetMockTradePrice(const int bar, const double &amp;close[])
+{
+   if(InpMockTradePriceSource == MOCK_PRICE_TEMA &amp;&amp; BufferTEMA[bar] != EMPTY_VALUE)
+      return BufferTEMA[bar];
+   if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA &amp;&amp; BufferEMAofTEMA[bar] != EMPTY_VALUE)
+      return BufferEMAofTEMA[bar];
+   return close[bar];
+}
+
+//+------------------------------------------------------------------+
+void UpdateOpenTradeLiveState(const int bar, const double liveExitPrice)
+{
+   if(g_currentTrade.direction == 0 || g_currentTrade.entryBar &lt; 0)
+      return;
+
+   if(bar &gt;= ArraySize(BufferTradePL))
+      TS_GrowStatsArrays(bar + 1, BufferTradePL, BufferRunningPL, BufferTradeCount, BufferWinPct,
+                         BufferShortCount, BufferShortWinPct, BufferLongCount, BufferLongWinPct);
+
+   double livePL = TS_Price2Pips(liveExitPrice - g_currentTrade.entryPrice) * g_currentTrade.direction;
+   double liveRunning = g_tradeStats.runningPL + livePL;
+
+   BufferTradePL[bar] = livePL;
+   BufferRunningPL[bar] = liveRunning;
+   BufferTradeCount[bar] = g_tradeStats.TotalTrades();
+   BufferWinPct[bar] = g_tradeStats.WinPct();
+   BufferShortCount[bar] = g_tradeStats.shortCount;
+   BufferShortWinPct[bar] = g_tradeStats.ShortWinPct();
+   BufferLongCount[bar] = g_tradeStats.longCount;
+   BufferLongWinPct[bar] = g_tradeStats.LongWinPct();
+
+   if(g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0)
+   {
+      string tip = StringFormat(&quot;Entry: %s | Exit: %s | P/L: %.1f pips | Running: %.1f pips&quot;,
+                                DoubleToString(g_currentTrade.entryPrice, _Digits),
+                                DoubleToString(liveExitPrice, _Digits),
+                                BufferTradePL[bar],
+                                BufferRunningPL[bar]);
+      ObjectSetString(0, g_currentTrade.arrowName, OBJPROP_TOOLTIP, tip);
+   }
+}
+
+//+------------------------------------------------------------------+
+int RelSign(double v, double eps)
+{
+   if(v &gt; eps)  return 1;
+   if(v &lt; -eps) return -1;
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+string SignalToText(ENUM_SIGNAL_TYPE signal)
+{
+   if(signal == SIGNAL_LONG)  return &quot;LONG&quot;;
+   if(signal == SIGNAL_SHORT) return &quot;SHORT&quot;;
+   return &quot;NONE&quot;;
+}
+
+//+------------------------------------------------------------------+
+bool IsInVisibilityWindow(datetime dt)
+{
+   if(!InpEnableVisibilityWindow)
+      return true;
+
+   return (dt &gt;= InpVisibilityStartDT &amp;&amp; dt &lt;= InpVisibilityEndDT);
+}
+
+//+------------------------------------------------------------------+
+void InitCsvDebugFile()
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+
+   FileDelete(InpCsvDebugFileName);
+   int h = FileOpen(InpCsvDebugFileName, FILE_WRITE|FILE_CSV|FILE_ANSI, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CSV init failed. file&lt;&quot;,InpCsvDebugFileName,&quot;&gt; err=&quot;,GetLastError());
+      return;
+   }
+
+   FileWrite(h,
+             &quot;time&quot;,&quot;bar&quot;,&quot;open&quot;,&quot;high&quot;,&quot;low&quot;,&quot;close&quot;,
+             &quot;tema&quot;,&quot;ema_tema&quot;,
+             &quot;kc_upper&quot;,&quot;kc_mid&quot;,&quot;kc_lower&quot;,
+             &quot;kc_width_pips&quot;,&quot;kc_width_ratio&quot;,&quot;kc_mid_slope_pips_per_bar&quot;,
+             &quot;active_blackout&quot;,
+             &quot;direction&quot;,&quot;cross_up&quot;,&quot;cross_dn&quot;,&quot;is_cross&quot;,
+             &quot;extreme_bar&quot;,&quot;extreme_open_ref_bar&quot;,&quot;extreme_open&quot;,&quot;extreme_price&quot;,
+             &quot;pending_confirm&quot;,&quot;is_cocked&quot;,&quot;cocked_dir&quot;,&quot;cock_level&quot;,
+             &quot;trigger_pending&quot;,&quot;trigger_dir&quot;,&quot;trigger_cross_bar&quot;,
+             &quot;signal&quot;,&quot;arrow_buy&quot;,&quot;arrow_sell&quot;,
+             &quot;trade_count&quot;,&quot;running_pl&quot;);
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void AppendCsvDebugRow(const datetime dt, const int bar,
+                       const double opn, const double hi, const double lo, const double cls,
+                       const double tema, const double emaTema,
+                       const double kcUpper, const double kcMid, const double kcLower,
+                       const double kcWidthPips, const double kcWidthRatio, const double kcMidSlopePips,
+                       const int activeBlackout,
+                       const bool crossUp, const bool crossDn, const bool isCross,
+                       const ENUM_SIGNAL_TYPE signal)
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+   if(!IsInVisibilityWindow(dt))
+      return;
+
+   int h = FileOpen(InpCsvDebugFileName, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI|FILE_SHARE_READ, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+      return;
+
+   FileSeek(h, 0, SEEK_END);
+   FileWrite(h,
+             TimeToString(dt, TIME_DATE|TIME_MINUTES),
+             bar,
+             opn, hi, lo, cls,
+             tema, emaTema,
+             kcUpper, kcMid, kcLower,
+             kcWidthPips, kcWidthRatio, kcMidSlopePips,
+             activeBlackout,
+             iDir, (int)crossUp, (int)crossDn, (int)isCross,
+             g_extremeBar, g_extremeOpenRefBar, g_extremeOpen, g_extremePrice,
+             (int)g_pendingConfirm, (int)g_isCocked, g_cockedDir, g_cockLevel,
+             (int)g_triggerPending, g_triggerDir, g_triggerCrossBar,
+             SignalToText(signal), BufferArrowBuy[bar], BufferArrowSell[bar],
+             g_tradeStats.tradeCount, g_tradeStats.runningPL);
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void UpdateExtremeOpenReference(int extremeBar, const double &amp;open[])
+{
+   g_extremeOpenRefBar = MathMax(0, extremeBar - InpOpenRefOffset);
+   g_extremeOpen = open[g_extremeOpenRefBar];
+}
+
+//+------------------------------------------------------------------+
+void ResetCycleForDirection(int iDirection, int bar, const double &amp;open[], const double &amp;high[], const double &amp;low[],
+                            bool preserveTriggerState = false)
+{
+   iDir = iDirection;
+   g_crossBar = bar;
+   g_extremeBar = bar;
+   UpdateExtremeOpenReference(g_extremeBar, open);
+   g_pendingConfirm = true;
+
+   if(iDirection &gt; 0)
+      g_extremePrice = high[bar];
+   else
+      g_extremePrice = low[bar];
+
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   if(!preserveTriggerState)
+   {
+      g_triggerPending = false;
+      g_triggerDir = 0;
+      g_triggerCrossBar = -1;
+   }
+}
+
+//+------------------------------------------------------------------+
+void ResetAllStateAndBuffers()
+{
+   g_tradeStats.Reset();
+   g_currentTrade.Reset();
+   g_signalStartDT = 0;
+   g_lastSignalBar = -999;
+
+   iDir = 0;
+   g_crossBar = -1;
+   g_extremeBar = -1;
+   g_extremeOpenRefBar = -1;
+   g_extremePrice = 0.0;
+   g_extremeOpen = 0.0;
+   g_pendingConfirm = false;
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   g_triggerPending = false;
+   g_triggerDir = 0;
+   g_triggerCrossBar = -1;
+   g_blackoutSignalPending = false;
+   g_blackoutSignalDir = 0;
+   g_blackoutSignalBar = -1;
+
+   ArrayInitialize(BufferArrowBuy, EMPTY_VALUE);
+   ArrayInitialize(BufferArrowSell, EMPTY_VALUE);
+   ArrayInitialize(BufferTradePL, EMPTY_VALUE);
+   ArrayInitialize(BufferRunningPL, EMPTY_VALUE);
+   ArrayInitialize(BufferTradeCount, EMPTY_VALUE);
+   ArrayInitialize(BufferWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferShortCount, EMPTY_VALUE);
+   ArrayInitialize(BufferShortWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferLongCount, EMPTY_VALUE);
+   ArrayInitialize(BufferLongWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferDynBlackout, EMPTY_VALUE);
+   ArrayInitialize(BufferKCWidthRatio, EMPTY_VALUE);
+   ArrayInitialize(BufferTriggerThreshold, EMPTY_VALUE);
+   ArrayInitialize(BufferTemaEmaSpread, EMPTY_VALUE);
+
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+}
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   if(InpTEMAPeriod &lt; 1 || InpEMAPeriod &lt; 1 || InpOpenRefOffset &lt; 0 ||
+      InpTriggerSensitivityPips &lt; 0.0 || InpObjectArrowOffsetPips &lt; 0 ||
+      InpKCPeriod &lt; 1 || InpKCATRPeriod &lt; 1 || InpKCMultiplier &lt;= 0.0 ||
+      InpSignalBlackout &lt; 0 || InpBlackoutMax &lt; InpSignalBlackout ||
+      InpKCWidthLookback &lt; 1 || InpKCMidSlopePeriod &lt; 1 ||
+      InpNarrowWidthRatio &lt;= 0.0 || InpFlatSlopePipsPerBar &lt; 0.0 || InpBlackoutScaleK &lt; 0.0 ||
+      (InpEnableVisibilityWindow &amp;&amp; InpVisibilityEndDT &lt; InpVisibilityStartDT))
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Invalid inputs. Check period/offset/sensitivity/KC settings.&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   IndicatorSetString(INDICATOR_SHORTNAME,
+                      StringFormat(&quot;TEMA_EMA_CockedTrigger(%d,%d,OpenRef-%d)&quot;, InpTEMAPeriod, InpEMAPeriod, InpOpenRefOffset));
+
+   SetIndexBuffer(0, BufferTEMA, INDICATOR_DATA);
+   SetIndexBuffer(1, BufferEMAofTEMA, INDICATOR_DATA);
+   SetIndexBuffer(2, BufferTriggerThreshold, INDICATOR_DATA);
+   SetIndexBuffer(3, BufferTemaEmaSpread, INDICATOR_DATA);
+   SetIndexBuffer(4, BufferDynBlackout, INDICATOR_DATA);
+   SetIndexBuffer(5, BufferArrowBuy, INDICATOR_DATA);
+   SetIndexBuffer(6, BufferArrowSell, INDICATOR_DATA);
+
+   SetIndexBuffer(7,  BufferTradePL, INDICATOR_DATA);
+   SetIndexBuffer(8,  BufferRunningPL, INDICATOR_DATA);
+   SetIndexBuffer(9,  BufferTradeCount, INDICATOR_DATA);
+   SetIndexBuffer(10, BufferWinPct, INDICATOR_DATA);
+   SetIndexBuffer(11, BufferShortCount, INDICATOR_DATA);
+   SetIndexBuffer(12, BufferShortWinPct, INDICATOR_DATA);
+   SetIndexBuffer(13, BufferLongCount, INDICATOR_DATA);
+   SetIndexBuffer(14, BufferLongWinPct, INDICATOR_DATA);
+   SetIndexBuffer(15, BufferKCWidthRatio, INDICATOR_DATA);
+
+   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(2, PLOT_LABEL, &quot;Trigger Threshold (pips)&quot;);
+   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(3, PLOT_LABEL, &quot;T/E Spread (pips)&quot;);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(4, PLOT_LABEL, &quot;Active Blackout Bars&quot;);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(5, PLOT_ARROW, 233);
+   PlotIndexSetInteger(6, PLOT_ARROW, 234);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   //--- Trade simulation buffers in Data Window only
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(7, PLOT_LABEL, &quot;Trade P/L&quot;);
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(8, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(8, PLOT_LABEL, &quot;Running P/L&quot;);
+   PlotIndexSetDouble(8, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(9, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(9, PLOT_LABEL, &quot;Trade Count&quot;);
+   PlotIndexSetDouble(9, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(10, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(10, PLOT_LABEL, &quot;Win %&quot;);
+   PlotIndexSetDouble(10, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(11, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(11, PLOT_LABEL, &quot;Short Count&quot;);
+   PlotIndexSetDouble(11, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(12, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(12, PLOT_LABEL, &quot;Short Win %&quot;);
+   PlotIndexSetDouble(12, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(13, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(13, PLOT_LABEL, &quot;Long Count&quot;);
+   PlotIndexSetDouble(13, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(14, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(14, PLOT_LABEL, &quot;Long Win %&quot;);
+   PlotIndexSetDouble(14, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(15, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(15, PLOT_LABEL, &quot;KC Width Ratio&quot;);
+   PlotIndexSetDouble(15, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   ArraySetAsSeries(BufferTEMA, false);
+   ArraySetAsSeries(BufferEMAofTEMA, false);
+   ArraySetAsSeries(BufferTemaEmaSpread, false);
+   ArraySetAsSeries(BufferArrowBuy, false);
+   ArraySetAsSeries(BufferArrowSell, false);
+   ArraySetAsSeries(BufferTradePL, false);
+   ArraySetAsSeries(BufferRunningPL, false);
+   ArraySetAsSeries(BufferTradeCount, false);
+   ArraySetAsSeries(BufferWinPct, false);
+   ArraySetAsSeries(BufferShortCount, false);
+   ArraySetAsSeries(BufferShortWinPct, false);
+   ArraySetAsSeries(BufferLongCount, false);
+   ArraySetAsSeries(BufferLongWinPct, false);
+   ArraySetAsSeries(BufferDynBlackout, false);
+   ArraySetAsSeries(BufferKCWidthRatio, false);
+   ArraySetAsSeries(BufferTriggerThreshold, false);
+
+   iHndlTEMA = iTEMA(_Symbol, PERIOD_CURRENT, InpTEMAPeriod, 0, InpTEMAApplied);
+   if(iHndlTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create TEMA handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   iHndlEMAofTEMA = iMA(_Symbol, PERIOD_CURRENT, InpEMAPeriod, 0, MODE_EMA, (ENUM_APPLIED_PRICE)iHndlTEMA);
+   if(iHndlEMAofTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create EMA(TEMA) handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   iHndlKC = iCustom(_Symbol, PERIOD_CURRENT, &quot;DevoIndies\\Ind_KC_MJM&quot;,
+                     InpKCPeriod, InpKCATRPeriod, InpKCMultiplier, InpTEMAApplied,
+                     clrBlueViolet, 3, clrWhite, 2, clrBlueViolet, 3);
+   if(iHndlKC == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create KC handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   g_arrowCfg.SetDefaults();
+   g_labelCfg.SetDefaults();
+   g_arrowCfg.longColor  = clrLime;
+   g_arrowCfg.shortColor = clrRed;
+   g_labelCfg.prefix = &quot;T/E CockedTrigger...&quot;;
+
+   g_maxPeriodsBack = MathMax(InpTEMAPeriod, InpEMAPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCATRPeriod);
+   g_maxPeriodsBack += (3 + InpOpenRefOffset);
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+
+   if(iHndlKC != INVALID_HANDLE)
+      IndicatorRelease(iHndlKC);
+   if(iHndlEMAofTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlEMAofTEMA);
+   if(iHndlTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlTEMA);
+}
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt;= g_maxPeriodsBack)
+      return(0);
+
+   int start = (prev_calculated == 0) ? g_maxPeriodsBack : prev_calculated - 1;
+   if(start &lt; 1)
+      start = 1;
+
+   if(prev_calculated == 0)
+   {
+      ResetAllStateAndBuffers();
+      g_lastExportedBar = -1;
+      InitCsvDebugFile();
+   }
+
+   int copyStart = MathMax(0, start - 3);
+   int copyCount = rates_total - copyStart;
+
+   double temaTail[];
+   double emaTail[];
+   double kcUpperTail[];
+   double kcMiddleTail[];
+   double kcLowerTail[];
+   ArrayResize(temaTail, copyCount);
+   ArrayResize(emaTail, copyCount);
+   ArrayResize(kcUpperTail, copyCount);
+   ArrayResize(kcMiddleTail, copyCount);
+   ArrayResize(kcLowerTail, copyCount);
+   ArraySetAsSeries(temaTail, false);
+   ArraySetAsSeries(emaTail, false);
+   ArraySetAsSeries(kcUpperTail, false);
+   ArraySetAsSeries(kcMiddleTail, false);
+   ArraySetAsSeries(kcLowerTail, false);
+
+   int temaCopied = CopyBuffer(iHndlTEMA, 0, 0, copyCount, temaTail);
+   int emaCopied  = CopyBuffer(iHndlEMAofTEMA, 0, 0, copyCount, emaTail);
+   int kcUpperCopied  = CopyBuffer(iHndlKC, 0, 0, copyCount, kcUpperTail);
+   int kcMiddleCopied = CopyBuffer(iHndlKC, 1, 0, copyCount, kcMiddleTail);
+   int kcLowerCopied  = CopyBuffer(iHndlKC, 2, 0, copyCount, kcLowerTail);
+   if(temaCopied != copyCount || emaCopied != copyCount ||
+      kcUpperCopied != copyCount || kcMiddleCopied != copyCount || kcLowerCopied != copyCount)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CopyBuffer failed. temaCopied=&quot;,temaCopied,
+            &quot; emaCopied=&quot;,emaCopied,
+            &quot; kcUpperCopied=&quot;,kcUpperCopied,
+            &quot; kcMiddleCopied=&quot;,kcMiddleCopied,
+            &quot; kcLowerCopied=&quot;,kcLowerCopied,
+            &quot; expected=&quot;,copyCount,
+            &quot; err=&quot;,GetLastError());
+      return(prev_calculated);
+   }
+
+   ArrayResize(BufferKCUpper, rates_total);
+   ArrayResize(BufferKCMiddle, rates_total);
+   ArrayResize(BufferKCLower, rates_total);
+
+   for(int k = 0; k &lt; copyCount; k++)
+   {
+      BufferTEMA[copyStart + k] = temaTail[k];
+      BufferEMAofTEMA[copyStart + k] = emaTail[k];
+      BufferKCUpper[copyStart + k] = kcUpperTail[k];
+      BufferKCMiddle[copyStart + k] = kcMiddleTail[k];
+      BufferKCLower[copyStart + k] = kcLowerTail[k];
+   }
+
+   double pointSize = MathPow(10.0, -_Digits);
+   double eps = pointSize * 0.1;
+   double pipSize = pointSize * 10.0;
+   bool bDoHistory = (prev_calculated == 0);
+
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      if(prev_calculated == 0 || i &gt;= prev_calculated)
+      {
+         BufferArrowBuy[i] = EMPTY_VALUE;
+         BufferArrowSell[i] = EMPTY_VALUE;
+      }
+
+      int prevRel = RelSign(BufferTEMA[i - 1] - BufferEMAofTEMA[i - 1], eps);
+      int currRel = RelSign(BufferTEMA[i] - BufferEMAofTEMA[i], eps);
+      double temaEmaSpread = BufferTEMA[i] - BufferEMAofTEMA[i];
+      double temaEmaSpreadPips = TS_Price2Pips(temaEmaSpread);
+      BufferTemaEmaSpread[i] = temaEmaSpreadPips;
+      if(prevRel == 0)
+         prevRel = iDir;
+      if(currRel == 0)
+         currRel = prevRel;
+
+      //--- Cocking logic: evaluate local hi/lo candidates from prior 2 bars.
+      //--- Must run before cross handling so same-bar cock+cross can trigger.
+      if(iDir != 0)
+      {
+         bool candidateFound = false;
+         bool cockedThisBar = false;
+
+         for(int d = 1; d &lt;= 2; d++)
+         {
+            int cand = i - d;
+            if(cand &lt;= g_crossBar || cand &lt; 1 || cand + 1 &gt;= rates_total)
+               continue;
+
+            candidateFound = true;
+
+            int refBar = MathMax(0, cand - InpOpenRefOffset);
+            double refOpen = open[refBar];
+
+            //--- Keep debug/state fields aligned with the candidate under evaluation.
+            g_extremeBar = cand;
+            g_extremeOpenRefBar = refBar;
+            g_extremeOpen = refOpen;
+            g_extremePrice = (iDir &gt; 0) ? high[cand] : low[cand];
+
+            if((iDir &gt; 0 &amp;&amp; close[i] &lt; refOpen) ||
+               (iDir &lt; 0 &amp;&amp; close[i] &gt; refOpen))
+            {
+               g_isCocked = true;
+               g_cockedDir = (iDir &gt; 0) ? -1 : 1;
+               g_cockLevel = refOpen;
+               cockedThisBar = true;
+               break;
+            }
+         }
+
+         g_pendingConfirm = (candidateFound &amp;&amp; !cockedThisBar);
+      }
+
+      bool crossUp = (prevRel &lt; 0 &amp;&amp; currRel &gt; 0);
+      bool crossDn = (prevRel &gt; 0 &amp;&amp; currRel &lt; 0);
+      bool isCross = (crossUp || crossDn);
+
+      int activeBlackout = InpSignalBlackout;
+      double currWidthPips = EMPTY_VALUE;
+      double widthRatio = EMPTY_VALUE;
+      double slopePipsPerBar = EMPTY_VALUE;
+      if(BufferKCUpper[i] != EMPTY_VALUE &amp;&amp; BufferKCLower[i] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[i] != EMPTY_VALUE)
+      {
+         currWidthPips = TS_Price2Pips(MathAbs(BufferKCUpper[i] - BufferKCLower[i]));
+
+         int lb = MathMin(InpKCWidthLookback, i + 1);
+         double widthSumPips = 0.0;
+         int widthCnt = 0;
+         int from = i - lb + 1;
+         if(from &lt; 0) from = 0;
+         for(int j = from; j &lt;= i; j++)
+         {
+            if(BufferKCUpper[j] == EMPTY_VALUE || BufferKCLower[j] == EMPTY_VALUE)
+               continue;
+            widthSumPips += TS_Price2Pips(MathAbs(BufferKCUpper[j] - BufferKCLower[j]));
+            widthCnt++;
+         }
+
+         double baselineWidthPips = (widthCnt &gt; 0) ? (widthSumPips / widthCnt) : currWidthPips;
+         widthRatio = (baselineWidthPips &gt; 0.0) ? (currWidthPips / baselineWidthPips) : 1.0;
+
+         slopePipsPerBar = 0.0;
+         if(i &gt;= InpKCMidSlopePeriod &amp;&amp; BufferKCMiddle[i - InpKCMidSlopePeriod] != EMPTY_VALUE)
+            slopePipsPerBar = TS_Price2Pips((BufferKCMiddle[i] - BufferKCMiddle[i - InpKCMidSlopePeriod]) / InpKCMidSlopePeriod);
+
+         if(InpUseDynamicBlackout)
+         {
+            bool isNarrow = (widthRatio &lt; InpNarrowWidthRatio);
+            bool isFlat = (MathAbs(slopePipsPerBar) &lt;= InpFlatSlopePipsPerBar);
+            if(isNarrow &amp;&amp; isFlat)
+            {
+               double extra = (InpNarrowWidthRatio - widthRatio) * InpBlackoutScaleK;
+               if(extra &lt; 0.0) extra = 0.0;
+               activeBlackout = InpSignalBlackout + (int)MathRound(extra);
+               if(activeBlackout &gt; InpBlackoutMax)
+                  activeBlackout = InpBlackoutMax;
+            }
+         }
+      }
+      BufferDynBlackout[i] = activeBlackout;
+      BufferKCWidthRatio[i] = widthRatio;
+      BufferTriggerThreshold[i] = InpTriggerSensitivityPips;
+
+      if(iDir == 0 &amp;&amp; currRel != 0)
+         ResetCycleForDirection(currRel, i, open, high, low);
+
+      ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
+      ENUM_SIGNAL_TYPE signalCandidate = SIGNAL_NONE;
+      if(isCross)
+      {
+         if(g_isCocked)
+         {
+            if(crossDn &amp;&amp; g_cockedDir == -1)
+            {
+               g_triggerPending = true;
+               g_triggerDir = -1;
+               g_triggerCrossBar = i;
+            }
+            else if(crossUp &amp;&amp; g_cockedDir == 1)
+            {
+               g_triggerPending = true;
+               g_triggerDir = 1;
+               g_triggerCrossBar = i;
+            }
+            else
+            {
+               g_triggerPending = false;
+               g_triggerDir = 0;
+               g_triggerCrossBar = -1;
+            }
+         }
+         else
+         {
+            g_triggerPending = false;
+            g_triggerDir = 0;
+            g_triggerCrossBar = -1;
+         }
+      }
+
+      if(g_triggerPending)
+      {
+         bool wrongSide = ((g_triggerDir == 1 &amp;&amp; currRel &lt; 0) || (g_triggerDir == -1 &amp;&amp; currRel &gt; 0));
+         if(wrongSide)
+         {
+            g_triggerPending = false;
+            g_triggerDir = 0;
+            g_triggerCrossBar = -1;
+         }
+         else
+         {
+            double cumulativeSpreadPips = 0.0;
+            int sumFrom = MathMax(0, g_triggerCrossBar);
+            if(sumFrom &lt;= i)
+            {
+               for(int s = sumFrom; s &lt;= i; s++)
+               {
+                  if(BufferTemaEmaSpread[s] == EMPTY_VALUE)
+                     continue;
+                  cumulativeSpreadPips += MathAbs(BufferTemaEmaSpread[s]);
+               }
+            }
+
+            if(cumulativeSpreadPips &gt;= InpTriggerSensitivityPips)
+            {
+               signalCandidate = (g_triggerDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+               g_triggerPending = false;
+               g_triggerDir = 0;
+               g_triggerCrossBar = -1;
+            }
+         }
+      }
+
+      bool canFireNow = ((i - g_lastSignalBar) &gt; activeBlackout &amp;&amp; time[i] &gt;= InpTradeStartDate);
+      if(signalCandidate != SIGNAL_NONE)
+      {
+         if(canFireNow)
+         {
+            signal = signalCandidate;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+         else
+         {
+            g_blackoutSignalPending = true;
+            g_blackoutSignalDir = (signalCandidate == SIGNAL_LONG) ? 1 : -1;
+            g_blackoutSignalBar = i;
+         }
+      }
+
+      if(signal == SIGNAL_NONE &amp;&amp; g_blackoutSignalPending)
+      {
+         bool retraced = ((g_blackoutSignalDir == 1 &amp;&amp; currRel &lt; 0) || (g_blackoutSignalDir == -1 &amp;&amp; currRel &gt; 0));
+         if(retraced)
+         {
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+         else if(canFireNow)
+         {
+            signal = (g_blackoutSignalDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+      }
+
+      if(signal != SIGNAL_NONE)
+      {
+         if(g_signalStartDT == 0)
+            g_signalStartDT = time[i];
+
+         double mockExecPrice = GetMockTradePrice(i, close);
+
+         if(InpEnableTradeSim)
+         {
+            if(InpMockTradePriceSource == MOCK_PRICE_TEMA)
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 BufferTEMA,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+            else if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA)
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 BufferEMAofTEMA,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+            else
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 close,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+         }
+
+         //--- Buffer arrows should be anchored at selected mock execution price for the signal bar.
+         if(signal == SIGNAL_LONG)
+            BufferArrowBuy[i] = mockExecPrice;
+         else
+            BufferArrowSell[i] = mockExecPrice;
+
+         //--- Reposition object arrows 100 pips outside the farther of KC outer line or TEMA from KC midline.
+         if(InpShowArrows &amp;&amp; g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0 &amp;&amp;
+            BufferKCUpper[i] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[i] != EMPTY_VALUE &amp;&amp;
+            BufferKCLower[i] != EMPTY_VALUE &amp;&amp; BufferTEMA[i] != EMPTY_VALUE)
+         {
+            double mid = BufferKCMiddle[i];
+            double arrowPrice = 0.0;
+            double offset = InpObjectArrowOffsetPips * pipSize;
+
+            if(signal == SIGNAL_SHORT)
+            {
+               double baseUpper = BufferKCUpper[i];
+               double distUpper = MathAbs(baseUpper - mid);
+               double distTema  = MathAbs(BufferTEMA[i] - mid);
+               double base = (distTema &gt; distUpper) ? BufferTEMA[i] : baseUpper;
+               arrowPrice = base + offset;
+               BufferArrowSell[i] = mockExecPrice;
+            }
+            else
+            {
+               double baseLower = BufferKCLower[i];
+               double distLower = MathAbs(baseLower - mid);
+               double distTema  = MathAbs(BufferTEMA[i] - mid);
+               double base = (distTema &gt; distLower) ? BufferTEMA[i] : baseLower;
+               arrowPrice = base - offset;
+               BufferArrowBuy[i] = mockExecPrice;
+            }
+
+            ObjectMove(0, g_currentTrade.arrowName, 0, time[i], arrowPrice);
+         }
+
+         g_lastSignalBar = i;
+      }
+
+      //--- Keep the most recent open trade tooltip/buffers live on the current bar.
+      if(i == rates_total - 1 &amp;&amp; InpEnableTradeSim)
+      {
+         double liveExitPrice = GetMockTradePrice(i, close);
+         UpdateOpenTradeLiveState(i, liveExitPrice);
+      }
+
+      //--- Uncock only after trigger decisions on this bar.
+      if(g_isCocked)
+      {
+         if(g_cockedDir == -1 &amp;&amp; close[i] &gt; g_cockLevel)
+         {
+            g_isCocked = false;
+            g_cockedDir = 0;
+         }
+         else if(g_cockedDir == 1 &amp;&amp; close[i] &lt; g_cockLevel)
+         {
+            g_isCocked = false;
+            g_cockedDir = 0;
+         }
+      }
+
+      if(i &lt; rates_total - 1 &amp;&amp; i &gt; g_lastExportedBar)
+      {
+         AppendCsvDebugRow(time[i], i,
+                           open[i], high[i], low[i], close[i],
+                           BufferTEMA[i], BufferEMAofTEMA[i],
+                           BufferKCUpper[i], BufferKCMiddle[i], BufferKCLower[i],
+                           currWidthPips, widthRatio, slopePipsPerBar,
+                           activeBlackout,
+                           crossUp, crossDn, isCross,
+                           signal);
+         g_lastExportedBar = i;
+      }
+
+      //--- Cross after signal check: trigger consumes prior cocked state, then reset cycle.
+      if(isCross &amp;&amp; currRel != 0)
+      {
+         ResetCycleForDirection(currRel, i, open, high, low, g_triggerPending);
+         continue;
+      }
+
+   }
+
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:21 UTC</span></div><div class="body"><p>Three problems with the dynamic blackout logic, in order of severity:</p>
+<p><strong>1. Scaling formula produces near-zero output in realistic scenarios.</strong></p>
+<p>The formula: <code>extra = (InpNarrowWidthRatio - widthRatio) * InpBlackoutScaleK</code></p>
+<p>With defaults (threshold 0.80, scale 10.0): even if <code>widthRatio</code> drops to 0.70 (notably narrow), you get <code>(0.80 - 0.70) * 10.0 = 1.0</code> — one extra bar. At 0.75 you get half a bar, which rounds to 1. You'd need the ratio to plummet to 0.20 to get the full range, and that essentially never happens. The formula can't meaningfully populate the range between <code>InpSignalBlackout</code> (2) and <code>InpBlackoutMax</code> (12).</p>
+<p><strong>2. Self-referencing baseline.</strong></p>
+<p><code>baselineWidthPips</code> is the mean KC width over the last 50 bars <em>including the current narrowing period</em>. As the channel narrows, the baseline drops with it, keeping <code>widthRatio</code> pinned near 1.0 and preventing the threshold from ever triggering. The baseline needs to be anchored to a period <em>before</em> the narrowing begins, or use a much longer lookback that doesn't adapt so quickly.</p>
+<p><strong>3. AND gate is too strict.</strong></p>
+<p>Both <code>isNarrow</code> AND <code>isFlat</code> must be true simultaneously. A strongly narrowing channel with even slight directional slope gets excluded entirely. In practice on gold M3, slope rarely holds below 0.20 pips/bar for long.</p>
+<p>The default <code>InpUseDynamicBlackout = false</code> is also worth confirming you've toggled, but even if enabled, issues 1–3 ensure it does essentially nothing.</p>
+<p><strong>Proposed fix direction:</strong></p>
+<p>Replace the linear scaling with something that actually uses the available range (e.g., map the ratio into a normalized 0–1 score, possibly nonlinear). Decouple the baseline from the detection window — use a longer trailing lookback or a percentile-based reference that's resistant to adaptation. Consider relaxing the AND to a weighted composite score rather than a binary gate.</p>
+<p>Want me to spec the revised formula in detail before coding?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:24 UTC</span></div><div class="body">TOO SOON FOR PROPOSALS.
+
+WE&#x27;RE JUST TALKING UNTIL ASK YOU FOR A CHANGE PLAN.
+
+I&#x27;d forgotten about the InpBlackoutMax. I called it out to the AI that wrote it. I indicates an inverse grasp of what I want that feature to do. The input variable should instead be InpBlackoutMin, and then the dynamic code should EXPAND the blackout window as appropriate. Do you understand the fundamental difference?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:24 UTC</span></div><div class="body"><p>Yes. The current design treats the base blackout as the ceiling and tries to <em>reduce</em> it — exactly backwards. What you want: the base <code>InpSignalBlackout</code> (2) is the floor for normal conditions. When KC narrows and flattens, the dynamic logic <em>extends</em> the blackout above that floor to suppress whipsaw signals during chop. <code>InpBlackoutMin</code> would set the lowest the dynamic value can shrink back to (which might just equal <code>InpSignalBlackout</code>, or could be set independently). No artificial ceiling — the expansion scales with how bad the conditions are.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:25 UTC</span></div><div class="body">so how do you propose to detect the conditions that would enlarge the blackout window dynamically?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:26 UTC</span></div><div class="body"><p>Three inputs worth measuring, each independently informative:</p>
+<p><strong>KC width contraction</strong> — ratio of current width to a stable baseline. The baseline needs to be decoupled from the detection window. Either a much longer lookback (200+ bars so recent narrowing barely moves the average), or an offset lookback that explicitly excludes the most recent N bars, so the baseline represents &quot;normal&quot; conditions rather than adapting to the squeeze.</p>
+<p><strong>KC midline slope</strong> — how directional the market is. But instead of a binary flat/not-flat test, treat it as a continuous value. Less slope = more chop risk. Absolute value, normalized against something sensible (maybe the same baseline KC width, giving you slope-relative-to-volatility).</p>
+<p><strong>Cross frequency</strong> — how many TEMA/EMA crosses have occurred in a recent window. This is direct evidence of chop. High cross count in a short period = the lines are tangled and signals are unreliable. This one costs nothing — you already track crosses.</p>
+<p>Rather than AND-gating binary flags, combine these into a composite chop score (0.0 = trending cleanly, 1.0 = maximum chop), then map that score onto the blackout expansion range. Each factor contributes independently, and when multiple factors align, the effect compounds.</p>
+<p>The question is weighting. Do you have intuition about which of these three matters most on gold, or do you want to treat them equally and tune from there?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:27 UTC</span></div><div class="body">how do you propose establishing a &quot;stable baseline&quot;?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:27 UTC</span></div><div class="body"><p>Two viable approaches:</p>
+<p><strong>Percentile-based:</strong> Over a long lookback (say 500 bars), take the median or 75th percentile KC width rather than the mean. Median resists skew from extreme spikes or prolonged squeezes. The long window means any single narrowing episode is a small fraction of the sample. This gives you &quot;what KC width normally looks like&quot; rather than &quot;what it's been doing lately.&quot;</p>
+<p><strong>Gapped lookback:</strong> Measure the mean KC width from bar <code>i - offset - window</code> to bar <code>i - offset</code>, where <code>offset</code> creates a dead zone (say 50 bars) between the measurement and the baseline sample. The baseline literally cannot see the current narrowing because there's a gap. Simpler to reason about, but the gap size becomes another parameter to tune.</p>
+<p>The percentile approach is more robust — it doesn't need a gap parameter and self-stabilizes regardless of how long a squeeze persists. The gapped approach is more transparent but can still adapt if a squeeze outlasts the gap.</p>
+<p>Which appeals, or do you see problems with either?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:32 UTC</span></div><div class="body">OK, think that thru with the thought in mind that gold carries an inherent upward bias.<p class="note">[File attached: 1771659144877_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:32 UTC</span></div><div class="body"><p>Good catch to flag. The upward bias means KC width in absolute pips systematically expands as price rises. A $5000 gold bar with 0.5% volatility is twice as wide in pips as a $2500 bar with the same proportional volatility.</p>
+<p>On M3 with 500 bars (~1 day), the price drift is negligible. But it's a design flaw waiting to bite you on longer timeframes, larger lookbacks, or if you ever port this to daily/weekly.</p>
+<p>The clean fix: normalize KC width as a <strong>percentage of KC midline</strong> before computing the ratio. <code>widthPct = (upper - lower) / midline * 100</code>. Then the baseline and current measurement are both proportional, and the ratio is immune to price level drift. A squeeze at $5000 looks the same as a squeeze at $2500.</p>
+<p>This also means the percentile baseline stays valid over arbitrarily long lookbacks without contamination from the secular trend.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:35 UTC</span></div><div class="body">OK, sounds good.
+
+I like KC width contraction vs. KC midline slope as a 60/40 weight (configurable by input parms) with the Cross frequency acting as an amplifier.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:36 UTC</span></div><div class="body"><p>That structure makes sense. Width and slope as the core assessment, cross frequency as confirmation that the chop is actually producing whipsaw conditions.</p>
+<p>Few things to nail down:</p>
+<p><strong>Amplifier range</strong> — cross frequency needs bounds. At minimum (say, 0–1 crosses in the lookback window), the amplifier is 1.0x — no effect. What's the ceiling? 1.5x? 2.0x? And what cross count saturates it? This determines how aggressively recent whipsaw history can push the blackout beyond what width+slope alone would produce.</p>
+<p><strong>Slope normalization</strong> — raw slope in pips/bar is price-level dependent, same problem you just solved for width. Normalize slope against KC width percentage? That way &quot;slope is small relative to current volatility&quot; is the actual measurement, not &quot;slope is small in absolute pips.&quot;</p>
+<p><strong>Cross frequency window</strong> — separate lookback from the width baseline lookback, or same window? My instinct says shorter — maybe 20–30 bars — since you want recent cross density, not historical average.</p>
+<p><strong>Score-to-bars mapping</strong> — linear or curved? Linear is simpler to reason about. Curved (e.g., quadratic) would make the blackout ramp up harder as conditions worsen. Preference?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:40 UTC</span></div><div class="body">Amplifier range: same rationale as establishing a baseline for KC width, then amplification is a function of divergence from baseline.
+
+Slope normalization: give it to me both ways, controlled by input parm switch.
+
+Cross frequency window: sounds good
+
+Score-to-bars mapping: both ways, controlled by switch and any respective needed constant values.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:40 UTC</span></div><div class="body"><p>Clear. Let me confirm the full spec as I understand it:</p>
+<p><strong>Baseline method (shared by width and cross frequency):</strong> Percentile-based over a long lookback, normalized to KC midline percentage. Inputs: lookback length, percentile value.</p>
+<p><strong>Chop score components:</strong></p>
+<ul>
+<li>Width contraction: current KC width % vs. baseline percentile. Weight input (default 0.60).</li>
+<li>Slope: switchable between raw pips/bar and normalized-to-KC-width-%. Weight input (default 0.40).</li>
+<li>Both produce 0.0–1.0 subscores.</li>
+</ul>
+<p><strong>Cross frequency amplifier:</strong> Own short lookback window (input, default ~25). Own baseline via same percentile method over the long lookback. Divergence above baseline scales a multiplier starting at 1.0x. No hardcoded ceiling — it's a function of how far cross density deviates from normal.</p>
+<p><strong>Score-to-bars mapping:</strong> Switch between linear and curved. Linear gets a scale constant. Curved gets its own constant (exponent or similar). Output added to <code>InpSignalBlackout</code> floor. <code>InpBlackoutMin</code> replaces <code>InpBlackoutMax</code> as the lower bound the dynamic value can't drop below.</p>
+<p><strong>New inputs:</strong> lookback length, percentile, width weight, slope weight, slope normalization switch, cross frequency lookback, mapping mode switch, linear scale constant, curve exponent.</p>
+<p>Anything missing or wrong before I draft the change plan?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:42 UTC</span></div><div class="body">you said both:
+
+Baseline method (shared by width and cross frequency): Percentile-based over a long lookback
+Cross frequency amplifier: Own short lookback window (input, default ~25).
+
+Can&#x27;t be both.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:42 UTC</span></div><div class="body"><p>Right. Let me separate the two things:</p>
+<p>Cross frequency has a <strong>current measurement window</strong> (short, ~25 bars — how many crosses are happening right now) and a <strong>baseline</strong> (what's normal cross density). The baseline should use the same long percentile lookback as KC width, not its own.</p>
+<p>So: one shared long lookback + percentile for establishing baselines. Cross frequency just also needs a short window input for its current-condition measurement. Width and slope don't need that because they're instantaneous values — you read them off the current bar.</p>
+<p>That clean it up?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:42 UTC</span></div><div class="body">got it. OK, GO.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:48 UTC</span></div><div class="body"><p><strong>Change plan — Dynamic Blackout Overhaul:</strong></p>
+<p><strong>Remove inputs:</strong> <code>InpBlackoutMax</code>, <code>InpKCWidthLookback</code>, <code>InpNarrowWidthRatio</code>, <code>InpFlatSlopePipsPerBar</code>, <code>InpBlackoutScaleK</code></p>
+<p><strong>New/modified inputs (Dynamic Blackout group):</strong></p>
+<ul>
+<li><code>InpUseDynamicBlackout</code> (keep)</li>
+<li><code>InpBlackoutMin</code> (floor, default 2)</li>
+<li><code>InpDynBaselineLookback</code> (long lookback, default 500)</li>
+<li><code>InpDynBaselinePercentile</code> (default 75.0)</li>
+<li><code>InpKCMidSlopePeriod</code> (keep, default 5)</li>
+<li><code>InpWidthWeight</code> (default 0.60)</li>
+<li><code>InpSlopeWeight</code> (default 0.40)</li>
+<li><code>InpSlopeNormMode</code> enum: raw pips/bar vs KC-normalized %/bar</li>
+<li><code>InpCrossFreqWindow</code> (short window, default 25)</li>
+<li><code>InpScoreMapMode</code> enum: linear vs curved</li>
+<li><code>InpLinearScaleK</code> (default 20.0)</li>
+<li><code>InpCurveExponent</code> (default 2.0)</li>
+</ul>
+<p><strong>New internal work arrays:</strong> <code>g_kcWidthPctArr</code>, <code>g_crossFlagArr</code>, <code>g_crossPrefixSum</code>, <code>g_absSlopeArr</code></p>
+<p><strong>New helpers:</strong> <code>ComputePercentile()</code>, <code>CountCrossesInWindow()</code> (prefix-sum based), <code>ComputeCrossFreqPercentile()</code></p>
+<p><strong>Logic:</strong> KC width normalized to midline %. Width/slope subscores = <code>max(0, 1 - current/baseline_percentile)</code>. Weighted composite × cross frequency amplifier (<code>max(1.0, currentFreq/baselineFreq)</code>). Mapped to extra bars via linear or curved formula. Floored at <code>InpBlackoutMin</code>.</p>
+<p><strong>CSV debug:</strong> append new columns for widthScore, slopeScore, chopScore, amplifier.</p>
+<p>Producing file now.</p>
+<p>Key changes from original:</p>
+<p><strong>Removed:</strong> <code>InpBlackoutMax</code>, <code>InpKCWidthLookback</code>, <code>InpNarrowWidthRatio</code>, <code>InpFlatSlopePipsPerBar</code>, <code>InpBlackoutScaleK</code>, and the old binary AND-gate logic.</p>
+<p><strong>Added:</strong> Three helper functions (<code>ComputePercentile</code>, <code>CountCrossesInWindow</code>, <code>ComputeCrossFreqPercentile</code>), four internal work arrays with prefix-sum cross counting, weight normalization in <code>OnInit</code>, and the full composite chop-score system in the main loop.</p>
+<p><strong>Buffer 15 label</strong> changed from &quot;KC Width Ratio&quot; to &quot;Chop Score&quot; — now shows the amplified composite score in the Data Window so you can watch it live.</p>
+<p><strong>CSV debug</strong> columns updated to match: <code>kc_width_pct</code>, <code>kc_mid_slope</code>, <code>width_score</code>, <code>slope_score</code>, <code>chop_score</code>, <code>cross_amplifier</code> replace the old fields.</p>
+<p>The <code>ComputePercentile</code> function resizes <code>g_percentileWork</code> as a shared scratch array to avoid per-call allocations. <code>ComputeCrossFreqPercentile</code> also uses it, resizing down to exact sample count before sorting to prevent stale data contamination.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:57 UTC</span></div><div class="body">testing
+
+In general, I&#x27;d say the blackout windows are much too wide. How do I decrease them?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:58 UTC</span></div><div class="body"><p><code>InpLinearScaleK</code> — drop it from 20.0. That's the direct multiplier: at chopScore 1.0 you get that many extra bars. Try 8 or 10 first.</p>
+<p>If the scores themselves are too high (amplifier pushing chopScore above 1.0), <code>InpDynBaselinePercentile</code> at 75 may be too low — raising it to 85 or 90 makes the baselines harder to exceed, producing smaller width/slope scores and a less aggressive cross amplifier.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 07:58 UTC</span></div><div class="body">I should say that the code is working, the blackout window changes continuously.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 07:58 UTC</span></div><div class="body"><p>Good. That confirms the percentile baselines and composite scoring are doing their job. Tune away.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:19 UTC</span></div><div class="body">OK, #2. Here&#x27;s a couple of examples:
+
+The bar under the crosshair is the local high, but it closes below both TEMA and EMA. The current logic keys off the TEMA cross over the EMA, but I would like the option of the trigger being the bar that crosses both TEMA and EMA and use the EMA value as the mock trade exit/entry price. Another both/and controlled by a switch.<p class="note">[File attached: 1771661928772_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:21 UTC</span></div><div class="body">OK, #2. Here&#x27;s a couple of examples:
+
+The bar under the crosshair is the local high, but it closes below both TEMA and EMA. The current logic keys off the TEMA cross over the EMA, but I would like the option of the trigger being the bar that crosses both TEMA and EMA and use the EMA value as the mock trade exit/entry price. Another both/and controlled by a switch.
+
+The 2nd example is the tall blue bar right after the following low. It crosses above both TEMA and EMA 3 bars earlier than where the TEMA/EMA cross method fires a signal.<p class="note">[File attached: 1771661928772_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:22 UTC</span></div><div class="body"><p>I see the mechanics. Two things to confirm before discussing mitigation:</p>
+<p><strong>Trigger condition in this mode:</strong> Bar close crosses to the other side of both TEMA and EMA simultaneously. So for a short: close drops below both lines. For a long: close rises above both lines. The cocked-trigger prerequisite still applies — this just replaces <em>what pulls the trigger</em>, not the cocking mechanism.</p>
+<p><strong>Premature signal mitigation:</strong> The sensitivity threshold (<code>InpTriggerSensitivityPips</code>) could still apply, but measured as the distance of close past the <em>farther</em> of the two lines (since close must be past both, the farther one is the binding constraint). This preserves the &quot;don't fire on a hair-trigger crossing&quot; protection.</p>
+<p>The main remaining risk is a bar that spikes through both lines on a wick and closes just barely past them, then reverses. The cumulative spread approach doesn't apply here since there's no cross to accumulate from. Options:</p>
+<ul>
+<li>Minimum close distance past the farther line (single-bar threshold)</li>
+<li>Require the bar body (open-to-close range) to be majority on the signal side</li>
+<li>Both</li>
+</ul>
+<p>Which direction, or do you see the risk differently?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:25 UTC</span></div><div class="body">Your grasp is right on. As far as mitigation, KISS it for now: trigger when bar closes across both lines, use the EMA for mock trade price.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:25 UTC</span></div><div class="body"><p><strong>Change plan:</strong></p>
+<p><strong>New input:</strong> <code>InpUsePriceCrossTrigger</code> (bool, default false) in Core Inputs group. When true, the price-cross-both-lines trigger runs alongside the existing TEMA/EMA crossover trigger. Whichever fires first on a cocked state wins.</p>
+<p><strong>Logic insertion point:</strong> In the main loop, after cocking evaluation and before the existing cross-handling block. If <code>InpUsePriceCrossTrigger</code> is true and <code>g_isCocked</code> is true:</p>
+<ul>
+<li>Long (cockedDir == 1): check <code>close[i] &gt; MathMax(BufferTEMA[i], BufferEMAofTEMA[i])</code></li>
+<li>Short (cockedDir == -1): check <code>close[i] &lt; MathMin(BufferTEMA[i], BufferEMAofTEMA[i])</code></li>
+</ul>
+<p>If met: set <code>signalCandidate</code> directly (bypassing cumulative spread check), then clear cocked state.</p>
+<p><strong>Mock trade price override:</strong> When the signal fires via price-cross path, force EMA as the execution price regardless of <code>InpMockTradePriceSource</code>.</p>
+<p><strong>No other changes.</strong> Cocking logic, blackout, CSV debug all untouched. The existing TEMA/EMA crossover path still runs if price-cross doesn't fire first.</p>
+<p>GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:31 UTC</span></div><div class="body">a little more talk, here is an example of how it could backfire. Under the TEMA/EMA cross method, the red bar and the dip just barely below the EMA doesn&#x27;t trigger a signal because the TEMA dip doesn&#x27;t meet the trigger threshold. The bar-crosses both lines method would trigger a short here, and the blackout window would preclude an immediate long, but then the 3rd bar crosses down again, so no signal there, either (since we&#x27;re not issuing multiple consecutive signals in the same direction). I dunno if this is a problem or not.<p class="note">[File attached: 1771662443523_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:32 UTC</span></div><div class="body"><p>It's an empirical question. That short fires, price bounces back, and the short gets closed at a loss when the next long eventually triggers. The question is whether the <em>aggregate</em> gain from the 3-bar-earlier entries (like your tall blue bar example) outweighs the occasional false trigger like this one.</p>
+<p>Two ways to find out:</p>
+<ol>
+<li>
+<p>Run the trade sim with the switch on vs. off over the same date range and compare running P/L, win %, and trade count. The numbers will answer it directly.</p>
+</li>
+<li>
+<p>If the false triggers are frequent enough to hurt, add a minimum close distance past the farther line as a second phase — but don't add complexity until the data says you need it.</p>
+</li>
+</ol>
+<p>Build it clean, measure, then decide?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:32 UTC</span></div><div class="body">yeah, agreed, go</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:33 UTC</span></div><div class="body">wait, I&#x27;ll give you the code again, I think I might have changed a couple of values. Work from this copy.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                           TEMA_EMA_CockedTrigger_MJM.mq5         |
+//|   TEMA/EMA cocked-trigger signal indicator with trade simulation |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J. Melnyk&quot;
+#property version   &quot;1.01&quot;
+#property strict
+#property indicator_chart_window
+
+#property indicator_buffers 16
+#property indicator_plots   16
+
+#include &lt;DevoInclude/TradeSimulation_MJM.mqh&gt;
+
+//--- Plot 0: TEMA
+#property indicator_label1  &quot;TEMA&quot;
+#property indicator_type1   DRAW_LINE
+#property indicator_color1  clrYellow
+#property indicator_style1  STYLE_SOLID
+#property indicator_width1  3
+
+//--- Plot 1: EMA(TEMA)
+#property indicator_label2  &quot;EMA(TEMA)&quot;
+#property indicator_type2   DRAW_LINE
+#property indicator_color2  clrAqua
+#property indicator_style2  STYLE_SOLID
+#property indicator_width2  2
+
+//--- Plot 2: Trigger Threshold (pips)
+#property indicator_label3  &quot;Trigger Threshold (pips)&quot;
+#property indicator_type3   DRAW_NONE
+
+//--- Plot 3: T/E Spread (pips)
+#property indicator_label4  &quot;T/E Spread (pips)&quot;
+#property indicator_type4   DRAW_NONE
+
+//--- Plot 4: Active Blackout Bars
+#property indicator_label5  &quot;Active Blackout Bars&quot;
+#property indicator_type5   DRAW_NONE
+
+//--- Plot 5: Buy arrows
+#property indicator_label6  &quot;Buy Signal&quot;
+#property indicator_type6   DRAW_ARROW
+#property indicator_color6  clrLime
+#property indicator_style6  STYLE_SOLID
+#property indicator_width6  4
+
+//--- Plot 6: Sell arrows
+#property indicator_label7  &quot;Sell Signal&quot;
+#property indicator_type7   DRAW_ARROW
+#property indicator_color7  clrRed
+#property indicator_style7  STYLE_SOLID
+#property indicator_width7  4
+
+enum ENUM_MOCK_PRICE_SOURCE
+{
+   MOCK_PRICE_CLOSE    = 0,
+   MOCK_PRICE_TEMA     = 1,
+   MOCK_PRICE_EMA_TEMA = 2
+};
+
+enum ENUM_SLOPE_NORM_MODE
+{
+   SLOPE_RAW_PIPS      = 0,  // Raw pips/bar
+   SLOPE_KC_NORMALIZED = 1   // Normalized to KC midline %/bar
+};
+
+enum ENUM_SCORE_MAP_MODE
+{
+   MAP_LINEAR = 0,  // Linear
+   MAP_CURVED = 1   // Curved (exponential)
+};
+
+input group &quot;=== Core Inputs ===&quot;
+input int                InpTEMAPeriod      = 12;            // TEMA period
+input ENUM_APPLIED_PRICE InpTEMAApplied     = PRICE_CLOSE;  // TEMA applied price
+input int                InpEMAPeriod       = 7;            // EMA period of TEMA
+input int                InpOpenRefOffset   = 0;            // OPEN reference offset from hi/lo bar (0=same bar, 1=prior bar, ...)
+input double             InpTriggerSensitivityPips = 1.8;   // TEMA trigger sensitivity (in pips, 0=hair trigger)
+
+input group &quot;=== Signal/Trade Simulation ===&quot;
+input bool               InpEnableTradeSim  = true;                  // Enable mock trade simulation
+input bool               InpShowArrows      = true;                  // Show chart arrow objects
+input datetime           InpTradeStartDate  = D&#x27;2026.02.15 00:00&#x27;;   // Start date
+input int                InpSignalBlackout  = 2;                     // Base blackout bars after signal
+input bool               InpSoundTradeAlarm = true;                  // Play alert on live signal
+input int                InpObjectArrowOffsetPips = 100;             // Chart object arrow offset (pips)
+input ENUM_MOCK_PRICE_SOURCE InpMockTradePriceSource = MOCK_PRICE_TEMA; // Mock trade execution price source
+
+input group &quot;=== KC Settings (Object Arrow Placement) ===&quot;
+input int                InpKCPeriod        = 35;                    // KC EMA period
+input int                InpKCATRPeriod     = 10;                    // KC ATR period
+input double             InpKCMultiplier    = 1.5;                   // KC ATR multiplier
+
+input group &quot;=== Dynamic Blackout ===&quot;
+input bool               InpUseDynamicBlackout      = false;         // Enable dynamic blackout expansion
+input int                InpBlackoutMin              = 2;            // Minimum blackout bars (floor)
+input int                InpDynBaselineLookback      = 500;          // Long lookback for percentile baselines
+input double             InpDynBaselinePercentile    = 75.0;         // Percentile for baselines (0-100)
+input int                InpKCMidSlopePeriod         = 5;            // KC mid slope measurement period
+input double             InpWidthWeight              = 0.60;         // Width contraction weight
+input double             InpSlopeWeight              = 0.40;         // Slope flatness weight
+input ENUM_SLOPE_NORM_MODE InpSlopeNormMode          = SLOPE_RAW_PIPS; // Slope normalization mode
+input int                InpCrossFreqWindow          = 25;           // Cross frequency measurement window (bars)
+input ENUM_SCORE_MAP_MODE  InpScoreMapMode           = MAP_LINEAR;   // Score-to-bars mapping mode
+input double             InpLinearScaleK             = 25.0;         // Mapping scale constant (extra bars at chopScore=1.0)
+input double             InpCurveExponent            = 2.0;          // Curve exponent (curved mode only)
+
+input group &quot;=== Visibility / CSV Debug ===&quot;
+input bool               InpEnableVisibilityWindow = false;          // Apply start/end date filter to debug stream
+input datetime           InpVisibilityStartDT      = D&#x27;2026.02.01 00:00&#x27;; // Visibility window start
+input datetime           InpVisibilityEndDT        = D&#x27;2026.02.28 23:59&#x27;; // Visibility window end
+input bool               InpEnableCsvDebugExport   = false;          // Export raw/work/result stream to CSV
+input string             InpCsvDebugFileName        = &quot;TEMA_EMA_CockedTrigger_Debug.csv&quot;; // File in MQL5\\Files
+
+//--- Indicator data buffers
+double BufferTEMA[];
+double BufferEMAofTEMA[];
+double BufferTemaEmaSpread[];
+double BufferArrowBuy[];
+double BufferArrowSell[];
+
+//--- Trade simulation buffers (data window use)
+double BufferTradePL[];
+double BufferRunningPL[];
+double BufferTradeCount[];
+double BufferWinPct[];
+double BufferShortCount[];
+double BufferShortWinPct[];
+double BufferLongCount[];
+double BufferLongWinPct[];
+double BufferDynBlackout[];
+double BufferKCWidthRatio[];
+double BufferTriggerThreshold[];
+double BufferKCUpper[];
+double BufferKCMiddle[];
+double BufferKCLower[];
+
+//--- Dynamic blackout work arrays (internal, not indicator buffers)
+double g_kcWidthPctArr[];     // KC width as % of midline per bar
+double g_absSlopeArr[];       // Absolute slope per bar (raw or normalized per mode)
+double g_crossFlagArr[];      // 1.0 if cross occurred on this bar, 0.0 otherwise
+double g_crossPrefixSum[];    // Cumulative sum of cross flags for O(1) window counting
+double g_percentileWork[];    // Reusable scratch array for percentile computation
+
+//--- Handles
+int iHndlTEMA      = INVALID_HANDLE;
+int iHndlEMAofTEMA = INVALID_HANDLE;
+int iHndlKC        = INVALID_HANDLE;
+
+//--- Trade simulation state
+STradeStats        g_tradeStats;
+STradeEntry        g_currentTrade;
+SSignalArrowConfig g_arrowCfg;
+STradeLabel        g_labelCfg;
+datetime           g_signalStartDT = 0;
+int                g_lastSignalBar = -999;
+
+//--- Cocked-trigger state
+int    iDir = 0;                // +1: hunt high (TEMA &gt; EMA), -1: hunt low (TEMA &lt; EMA)
+int    g_crossBar = -1;
+int    g_extremeBar = -1;
+int    g_extremeOpenRefBar = -1;
+double g_extremePrice = 0.0;
+double g_extremeOpen = 0.0;
+bool   g_pendingConfirm = false;
+bool   g_isCocked = false;
+int    g_cockedDir = 0;         // +1 long, -1 short
+double g_cockLevel = 0.0;       // Open of hi/lo bar that cocked signal
+int    g_maxPeriodsBack = 0;
+bool   g_triggerPending = false;
+int    g_triggerDir = 0;        // +1 long, -1 short
+int    g_triggerCrossBar = -1;
+int    g_lastExportedBar = -1;
+bool   g_blackoutSignalPending = false;
+int    g_blackoutSignalDir = 0; // +1 long, -1 short
+int    g_blackoutSignalBar = -1;
+
+//--- Normalized weights (computed once in OnInit)
+double g_normWidthWeight = 0.60;
+double g_normSlopeWeight = 0.40;
+
+//+------------------------------------------------------------------+
+//| Percentile helper: extracts values from g_&lt;source&gt; array range   |
+//| [from..to], sorts, returns the requested percentile.             |
+//| Uses g_percentileWork[] as scratch space.                        |
+//+------------------------------------------------------------------+
+double ComputePercentile(const double &amp;source[], int from, int to, double percentile)
+{
+   int count = to - from + 1;
+   if(count &lt;= 0)
+      return 0.0;
+
+   if(ArraySize(g_percentileWork) &lt; count)
+      ArrayResize(g_percentileWork, count);
+
+   ArrayCopy(g_percentileWork, source, 0, from, count);
+   ArraySort(g_percentileWork);
+
+   //--- ArraySort sorts the entire array; we only filled &#x27;count&#x27; elements.
+   //--- Since ArrayResize may leave the array larger, sort is still valid
+   //--- as long as we index within [0..count-1].
+   int idx = (int)MathRound(percentile / 100.0 * (count - 1));
+   idx = MathMax(0, MathMin(idx, count - 1));
+   return g_percentileWork[idx];
+}
+
+//+------------------------------------------------------------------+
+//| Count crosses in window [barEnd - windowSize + 1 .. barEnd]      |
+//| using prefix sums. O(1).                                         |
+//+------------------------------------------------------------------+
+int CountCrossesInWindow(int barEnd, int windowSize)
+{
+   if(barEnd &lt; 0 || barEnd &gt;= ArraySize(g_crossPrefixSum))
+      return 0;
+
+   int barStart = barEnd - windowSize + 1;
+   if(barStart &lt; 0)
+      barStart = 0;
+
+   double sumEnd = g_crossPrefixSum[barEnd];
+   double sumBefore = (barStart &gt; 0) ? g_crossPrefixSum[barStart - 1] : 0.0;
+   return (int)(sumEnd - sumBefore + 0.5);
+}
+
+//+------------------------------------------------------------------+
+//| Compute percentile of cross-frequency values over the baseline   |
+//| lookback. Each sample = cross count in a window of crossWindow   |
+//| bars ending at successive bars within [bar-lookback .. bar-1].   |
+//+------------------------------------------------------------------+
+double ComputeCrossFreqPercentile(int bar, int lookback, int crossWindow, double percentile)
+{
+   int from = bar - lookback;
+   int to   = bar - 1;
+   if(from &lt; crossWindow - 1)
+      from = crossWindow - 1;
+   if(to &lt; from)
+      return 0.0;
+
+   int sampleCount = to - from + 1;
+   if(ArraySize(g_percentileWork) &lt; sampleCount)
+      ArrayResize(g_percentileWork, sampleCount);
+
+   for(int j = 0; j &lt; sampleCount; j++)
+   {
+      int sampleBar = from + j;
+      g_percentileWork[j] = (double)CountCrossesInWindow(sampleBar, crossWindow);
+   }
+
+   //--- Sort only the filled portion by copying to a temp if needed.
+   //--- ArraySort sorts the whole array, but we only read [0..sampleCount-1].
+   //--- To avoid stale data in tail slots, resize exactly.
+   if(ArraySize(g_percentileWork) &gt; sampleCount)
+      ArrayResize(g_percentileWork, sampleCount);
+
+   ArraySort(g_percentileWork);
+
+   int idx = (int)MathRound(percentile / 100.0 * (sampleCount - 1));
+   idx = MathMax(0, MathMin(idx, sampleCount - 1));
+   return g_percentileWork[idx];
+}
+
+//+------------------------------------------------------------------+
+double GetMockTradePrice(const int bar, const double &amp;close[])
+{
+   if(InpMockTradePriceSource == MOCK_PRICE_TEMA &amp;&amp; BufferTEMA[bar] != EMPTY_VALUE)
+      return BufferTEMA[bar];
+   if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA &amp;&amp; BufferEMAofTEMA[bar] != EMPTY_VALUE)
+      return BufferEMAofTEMA[bar];
+   return close[bar];
+}
+
+//+------------------------------------------------------------------+
+void UpdateOpenTradeLiveState(const int bar, const double liveExitPrice)
+{
+   if(g_currentTrade.direction == 0 || g_currentTrade.entryBar &lt; 0)
+      return;
+
+   if(bar &gt;= ArraySize(BufferTradePL))
+      TS_GrowStatsArrays(bar + 1, BufferTradePL, BufferRunningPL, BufferTradeCount, BufferWinPct,
+                         BufferShortCount, BufferShortWinPct, BufferLongCount, BufferLongWinPct);
+
+   double livePL = TS_Price2Pips(liveExitPrice - g_currentTrade.entryPrice) * g_currentTrade.direction;
+   double liveRunning = g_tradeStats.runningPL + livePL;
+
+   BufferTradePL[bar] = livePL;
+   BufferRunningPL[bar] = liveRunning;
+   BufferTradeCount[bar] = g_tradeStats.TotalTrades();
+   BufferWinPct[bar] = g_tradeStats.WinPct();
+   BufferShortCount[bar] = g_tradeStats.shortCount;
+   BufferShortWinPct[bar] = g_tradeStats.ShortWinPct();
+   BufferLongCount[bar] = g_tradeStats.longCount;
+   BufferLongWinPct[bar] = g_tradeStats.LongWinPct();
+
+   if(g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0)
+   {
+      string tip = StringFormat(&quot;Entry: %s | Exit: %s | P/L: %.1f pips | Running: %.1f pips&quot;,
+                                DoubleToString(g_currentTrade.entryPrice, _Digits),
+                                DoubleToString(liveExitPrice, _Digits),
+                                BufferTradePL[bar],
+                                BufferRunningPL[bar]);
+      ObjectSetString(0, g_currentTrade.arrowName, OBJPROP_TOOLTIP, tip);
+   }
+}
+
+//+------------------------------------------------------------------+
+int RelSign(double v, double eps)
+{
+   if(v &gt; eps)  return 1;
+   if(v &lt; -eps) return -1;
+   return 0;
+}
+
+//+------------------------------------------------------------------+
+string SignalToText(ENUM_SIGNAL_TYPE signal)
+{
+   if(signal == SIGNAL_LONG)  return &quot;LONG&quot;;
+   if(signal == SIGNAL_SHORT) return &quot;SHORT&quot;;
+   return &quot;NONE&quot;;
+}
+
+//+------------------------------------------------------------------+
+bool IsInVisibilityWindow(datetime dt)
+{
+   if(!InpEnableVisibilityWindow)
+      return true;
+
+   return (dt &gt;= InpVisibilityStartDT &amp;&amp; dt &lt;= InpVisibilityEndDT);
+}
+
+//+------------------------------------------------------------------+
+void InitCsvDebugFile()
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+
+   FileDelete(InpCsvDebugFileName);
+   int h = FileOpen(InpCsvDebugFileName, FILE_WRITE|FILE_CSV|FILE_ANSI, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CSV init failed. file&lt;&quot;,InpCsvDebugFileName,&quot;&gt; err=&quot;,GetLastError());
+      return;
+   }
+
+   FileWrite(h,
+             &quot;time&quot;,&quot;bar&quot;,&quot;open&quot;,&quot;high&quot;,&quot;low&quot;,&quot;close&quot;,
+             &quot;tema&quot;,&quot;ema_tema&quot;,
+             &quot;kc_upper&quot;,&quot;kc_mid&quot;,&quot;kc_lower&quot;,
+             &quot;kc_width_pct&quot;,&quot;kc_mid_slope&quot;,
+             &quot;active_blackout&quot;,
+             &quot;width_score&quot;,&quot;slope_score&quot;,&quot;chop_score&quot;,&quot;cross_amplifier&quot;,
+             &quot;direction&quot;,&quot;cross_up&quot;,&quot;cross_dn&quot;,&quot;is_cross&quot;,
+             &quot;extreme_bar&quot;,&quot;extreme_open_ref_bar&quot;,&quot;extreme_open&quot;,&quot;extreme_price&quot;,
+             &quot;pending_confirm&quot;,&quot;is_cocked&quot;,&quot;cocked_dir&quot;,&quot;cock_level&quot;,
+             &quot;trigger_pending&quot;,&quot;trigger_dir&quot;,&quot;trigger_cross_bar&quot;,
+             &quot;signal&quot;,&quot;arrow_buy&quot;,&quot;arrow_sell&quot;,
+             &quot;trade_count&quot;,&quot;running_pl&quot;);
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void AppendCsvDebugRow(const datetime dt, const int bar,
+                       const double opn, const double hi, const double lo, const double cls,
+                       const double tema, const double emaTema,
+                       const double kcUpper, const double kcMid, const double kcLower,
+                       const double kcWidthPct, const double kcMidSlope,
+                       const int activeBlackout,
+                       const double widthScore, const double slopeScore,
+                       const double chopScore, const double crossAmplifier,
+                       const bool crossUp, const bool crossDn, const bool isCross,
+                       const ENUM_SIGNAL_TYPE signal)
+{
+   if(!InpEnableCsvDebugExport)
+      return;
+   if(!IsInVisibilityWindow(dt))
+      return;
+
+   int h = FileOpen(InpCsvDebugFileName, FILE_READ|FILE_WRITE|FILE_CSV|FILE_ANSI|FILE_SHARE_READ, &#x27;,&#x27;);
+   if(h == INVALID_HANDLE)
+      return;
+
+   FileSeek(h, 0, SEEK_END);
+   FileWrite(h,
+             TimeToString(dt, TIME_DATE|TIME_MINUTES),
+             bar,
+             opn, hi, lo, cls,
+             tema, emaTema,
+             kcUpper, kcMid, kcLower,
+             kcWidthPct, kcMidSlope,
+             activeBlackout,
+             widthScore, slopeScore, chopScore, crossAmplifier,
+             iDir, (int)crossUp, (int)crossDn, (int)isCross,
+             g_extremeBar, g_extremeOpenRefBar, g_extremeOpen, g_extremePrice,
+             (int)g_pendingConfirm, (int)g_isCocked, g_cockedDir, g_cockLevel,
+             (int)g_triggerPending, g_triggerDir, g_triggerCrossBar,
+             SignalToText(signal), BufferArrowBuy[bar], BufferArrowSell[bar],
+             g_tradeStats.tradeCount, g_tradeStats.runningPL);
+   FileClose(h);
+}
+
+//+------------------------------------------------------------------+
+void UpdateExtremeOpenReference(int extremeBar, const double &amp;open[])
+{
+   g_extremeOpenRefBar = MathMax(0, extremeBar - InpOpenRefOffset);
+   g_extremeOpen = open[g_extremeOpenRefBar];
+}
+
+//+------------------------------------------------------------------+
+void ResetCycleForDirection(int iDirection, int bar, const double &amp;open[], const double &amp;high[], const double &amp;low[],
+                            bool preserveTriggerState = false)
+{
+   iDir = iDirection;
+   g_crossBar = bar;
+   g_extremeBar = bar;
+   UpdateExtremeOpenReference(g_extremeBar, open);
+   g_pendingConfirm = true;
+
+   if(iDirection &gt; 0)
+      g_extremePrice = high[bar];
+   else
+      g_extremePrice = low[bar];
+
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   if(!preserveTriggerState)
+   {
+      g_triggerPending = false;
+      g_triggerDir = 0;
+      g_triggerCrossBar = -1;
+   }
+}
+
+//+------------------------------------------------------------------+
+void ResetAllStateAndBuffers()
+{
+   g_tradeStats.Reset();
+   g_currentTrade.Reset();
+   g_signalStartDT = 0;
+   g_lastSignalBar = -999;
+
+   iDir = 0;
+   g_crossBar = -1;
+   g_extremeBar = -1;
+   g_extremeOpenRefBar = -1;
+   g_extremePrice = 0.0;
+   g_extremeOpen = 0.0;
+   g_pendingConfirm = false;
+   g_isCocked = false;
+   g_cockedDir = 0;
+   g_cockLevel = 0.0;
+   g_triggerPending = false;
+   g_triggerDir = 0;
+   g_triggerCrossBar = -1;
+   g_blackoutSignalPending = false;
+   g_blackoutSignalDir = 0;
+   g_blackoutSignalBar = -1;
+
+   ArrayInitialize(BufferArrowBuy, EMPTY_VALUE);
+   ArrayInitialize(BufferArrowSell, EMPTY_VALUE);
+   ArrayInitialize(BufferTradePL, EMPTY_VALUE);
+   ArrayInitialize(BufferRunningPL, EMPTY_VALUE);
+   ArrayInitialize(BufferTradeCount, EMPTY_VALUE);
+   ArrayInitialize(BufferWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferShortCount, EMPTY_VALUE);
+   ArrayInitialize(BufferShortWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferLongCount, EMPTY_VALUE);
+   ArrayInitialize(BufferLongWinPct, EMPTY_VALUE);
+   ArrayInitialize(BufferDynBlackout, EMPTY_VALUE);
+   ArrayInitialize(BufferKCWidthRatio, EMPTY_VALUE);
+   ArrayInitialize(BufferTriggerThreshold, EMPTY_VALUE);
+   ArrayInitialize(BufferTemaEmaSpread, EMPTY_VALUE);
+
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+}
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   if(InpTEMAPeriod &lt; 1 || InpEMAPeriod &lt; 1 || InpOpenRefOffset &lt; 0 ||
+      InpTriggerSensitivityPips &lt; 0.0 || InpObjectArrowOffsetPips &lt; 0 ||
+      InpKCPeriod &lt; 1 || InpKCATRPeriod &lt; 1 || InpKCMultiplier &lt;= 0.0 ||
+      InpSignalBlackout &lt; 0 || InpBlackoutMin &lt; 0 ||
+      InpKCMidSlopePeriod &lt; 1 ||
+      InpDynBaselineLookback &lt; 10 || InpDynBaselinePercentile &lt;= 0.0 || InpDynBaselinePercentile &gt;= 100.0 ||
+      InpWidthWeight &lt; 0.0 || InpSlopeWeight &lt; 0.0 || (InpWidthWeight + InpSlopeWeight) &lt;= 0.0 ||
+      InpCrossFreqWindow &lt; 3 ||
+      InpLinearScaleK &lt;= 0.0 || InpCurveExponent &lt;= 0.0 ||
+      (InpEnableVisibilityWindow &amp;&amp; InpVisibilityEndDT &lt; InpVisibilityStartDT))
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Invalid inputs. Check period/offset/sensitivity/dynamic-blackout settings.&quot;);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
+   //--- Normalize weights so they sum to 1.0
+   double wSum = InpWidthWeight + InpSlopeWeight;
+   g_normWidthWeight = InpWidthWeight / wSum;
+   g_normSlopeWeight = InpSlopeWeight / wSum;
+
+   IndicatorSetString(INDICATOR_SHORTNAME,
+                      StringFormat(&quot;TEMA_EMA_CockedTrigger(%d,%d,OpenRef-%d)&quot;, InpTEMAPeriod, InpEMAPeriod, InpOpenRefOffset));
+
+   SetIndexBuffer(0, BufferTEMA, INDICATOR_DATA);
+   SetIndexBuffer(1, BufferEMAofTEMA, INDICATOR_DATA);
+   SetIndexBuffer(2, BufferTriggerThreshold, INDICATOR_DATA);
+   SetIndexBuffer(3, BufferTemaEmaSpread, INDICATOR_DATA);
+   SetIndexBuffer(4, BufferDynBlackout, INDICATOR_DATA);
+   SetIndexBuffer(5, BufferArrowBuy, INDICATOR_DATA);
+   SetIndexBuffer(6, BufferArrowSell, INDICATOR_DATA);
+
+   SetIndexBuffer(7,  BufferTradePL, INDICATOR_DATA);
+   SetIndexBuffer(8,  BufferRunningPL, INDICATOR_DATA);
+   SetIndexBuffer(9,  BufferTradeCount, INDICATOR_DATA);
+   SetIndexBuffer(10, BufferWinPct, INDICATOR_DATA);
+   SetIndexBuffer(11, BufferShortCount, INDICATOR_DATA);
+   SetIndexBuffer(12, BufferShortWinPct, INDICATOR_DATA);
+   SetIndexBuffer(13, BufferLongCount, INDICATOR_DATA);
+   SetIndexBuffer(14, BufferLongWinPct, INDICATOR_DATA);
+   SetIndexBuffer(15, BufferKCWidthRatio, INDICATOR_DATA);
+
+   PlotIndexSetInteger(2, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(2, PLOT_LABEL, &quot;Trigger Threshold (pips)&quot;);
+   PlotIndexSetDouble(2, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(3, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(3, PLOT_LABEL, &quot;T/E Spread (pips)&quot;);
+   PlotIndexSetDouble(3, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(4, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(4, PLOT_LABEL, &quot;Active Blackout Bars&quot;);
+   PlotIndexSetDouble(4, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(5, PLOT_ARROW, 233);
+   PlotIndexSetInteger(6, PLOT_ARROW, 234);
+   PlotIndexSetDouble(5, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+   PlotIndexSetDouble(6, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   //--- Trade simulation buffers in Data Window only
+   PlotIndexSetInteger(7, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(7, PLOT_LABEL, &quot;Trade P/L&quot;);
+   PlotIndexSetDouble(7, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(8, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(8, PLOT_LABEL, &quot;Running P/L&quot;);
+   PlotIndexSetDouble(8, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(9, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(9, PLOT_LABEL, &quot;Trade Count&quot;);
+   PlotIndexSetDouble(9, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(10, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(10, PLOT_LABEL, &quot;Win %&quot;);
+   PlotIndexSetDouble(10, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(11, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(11, PLOT_LABEL, &quot;Short Count&quot;);
+   PlotIndexSetDouble(11, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(12, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(12, PLOT_LABEL, &quot;Short Win %&quot;);
+   PlotIndexSetDouble(12, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(13, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(13, PLOT_LABEL, &quot;Long Count&quot;);
+   PlotIndexSetDouble(13, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(14, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(14, PLOT_LABEL, &quot;Long Win %&quot;);
+   PlotIndexSetDouble(14, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   PlotIndexSetInteger(15, PLOT_DRAW_TYPE, DRAW_NONE);
+   PlotIndexSetString(15, PLOT_LABEL, &quot;Chop Score&quot;);
+   PlotIndexSetDouble(15, PLOT_EMPTY_VALUE, EMPTY_VALUE);
+
+   ArraySetAsSeries(BufferTEMA, false);
+   ArraySetAsSeries(BufferEMAofTEMA, false);
+   ArraySetAsSeries(BufferTemaEmaSpread, false);
+   ArraySetAsSeries(BufferArrowBuy, false);
+   ArraySetAsSeries(BufferArrowSell, false);
+   ArraySetAsSeries(BufferTradePL, false);
+   ArraySetAsSeries(BufferRunningPL, false);
+   ArraySetAsSeries(BufferTradeCount, false);
+   ArraySetAsSeries(BufferWinPct, false);
+   ArraySetAsSeries(BufferShortCount, false);
+   ArraySetAsSeries(BufferShortWinPct, false);
+   ArraySetAsSeries(BufferLongCount, false);
+   ArraySetAsSeries(BufferLongWinPct, false);
+   ArraySetAsSeries(BufferDynBlackout, false);
+   ArraySetAsSeries(BufferKCWidthRatio, false);
+   ArraySetAsSeries(BufferTriggerThreshold, false);
+
+   iHndlTEMA = iTEMA(_Symbol, PERIOD_CURRENT, InpTEMAPeriod, 0, InpTEMAApplied);
+   if(iHndlTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create TEMA handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   iHndlEMAofTEMA = iMA(_Symbol, PERIOD_CURRENT, InpEMAPeriod, 0, MODE_EMA, (ENUM_APPLIED_PRICE)iHndlTEMA);
+   if(iHndlEMAofTEMA == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create EMA(TEMA) handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   iHndlKC = iCustom(_Symbol, PERIOD_CURRENT, &quot;DevoIndies\\Ind_KC_MJM&quot;,
+                     InpKCPeriod, InpKCATRPeriod, InpKCMultiplier, InpTEMAApplied,
+                     clrBlueViolet, 3, clrWhite, 2, clrBlueViolet, 3);
+   if(iHndlKC == INVALID_HANDLE)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; Failed to create KC handle. err=&quot;, GetLastError());
+      return(INIT_FAILED);
+   }
+
+   g_arrowCfg.SetDefaults();
+   g_labelCfg.SetDefaults();
+   g_arrowCfg.longColor  = clrLime;
+   g_arrowCfg.shortColor = clrRed;
+   g_labelCfg.prefix = &quot;T/E CockedTrigger...&quot;;
+
+   g_maxPeriodsBack = MathMax(InpTEMAPeriod, InpEMAPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCPeriod);
+   g_maxPeriodsBack = MathMax(g_maxPeriodsBack, InpKCATRPeriod);
+   g_maxPeriodsBack += (3 + InpOpenRefOffset);
+
+   return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectsDeleteAll(0, SIGNAL_PREFIX+&quot;_&quot;);
+
+   if(iHndlKC != INVALID_HANDLE)
+      IndicatorRelease(iHndlKC);
+   if(iHndlEMAofTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlEMAofTEMA);
+   if(iHndlTEMA != INVALID_HANDLE)
+      IndicatorRelease(iHndlTEMA);
+}
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   if(rates_total &lt;= g_maxPeriodsBack)
+      return(0);
+
+   int start = (prev_calculated == 0) ? g_maxPeriodsBack : prev_calculated - 1;
+   if(start &lt; 1)
+      start = 1;
+
+   if(prev_calculated == 0)
+   {
+      ResetAllStateAndBuffers();
+      g_lastExportedBar = -1;
+      InitCsvDebugFile();
+   }
+
+   //--- Ensure dynamic blackout work arrays are sized
+   if(ArraySize(g_kcWidthPctArr) &lt; rates_total)
+   {
+      ArrayResize(g_kcWidthPctArr, rates_total);
+      ArrayResize(g_absSlopeArr, rates_total);
+      ArrayResize(g_crossFlagArr, rates_total);
+      ArrayResize(g_crossPrefixSum, rates_total);
+   }
+   if(prev_calculated == 0)
+   {
+      ArrayInitialize(g_kcWidthPctArr, 0.0);
+      ArrayInitialize(g_absSlopeArr, 0.0);
+      ArrayInitialize(g_crossFlagArr, 0.0);
+      ArrayInitialize(g_crossPrefixSum, 0.0);
+   }
+
+   int copyStart = MathMax(0, start - 3);
+   int copyCount = rates_total - copyStart;
+
+   double temaTail[];
+   double emaTail[];
+   double kcUpperTail[];
+   double kcMiddleTail[];
+   double kcLowerTail[];
+   ArrayResize(temaTail, copyCount);
+   ArrayResize(emaTail, copyCount);
+   ArrayResize(kcUpperTail, copyCount);
+   ArrayResize(kcMiddleTail, copyCount);
+   ArrayResize(kcLowerTail, copyCount);
+   ArraySetAsSeries(temaTail, false);
+   ArraySetAsSeries(emaTail, false);
+   ArraySetAsSeries(kcUpperTail, false);
+   ArraySetAsSeries(kcMiddleTail, false);
+   ArraySetAsSeries(kcLowerTail, false);
+
+   int temaCopied = CopyBuffer(iHndlTEMA, 0, 0, copyCount, temaTail);
+   int emaCopied  = CopyBuffer(iHndlEMAofTEMA, 0, 0, copyCount, emaTail);
+   int kcUpperCopied  = CopyBuffer(iHndlKC, 0, 0, copyCount, kcUpperTail);
+   int kcMiddleCopied = CopyBuffer(iHndlKC, 1, 0, copyCount, kcMiddleTail);
+   int kcLowerCopied  = CopyBuffer(iHndlKC, 2, 0, copyCount, kcLowerTail);
+   if(temaCopied != copyCount || emaCopied != copyCount ||
+      kcUpperCopied != copyCount || kcMiddleCopied != copyCount || kcLowerCopied != copyCount)
+   {
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; CopyBuffer failed. temaCopied=&quot;,temaCopied,
+            &quot; emaCopied=&quot;,emaCopied,
+            &quot; kcUpperCopied=&quot;,kcUpperCopied,
+            &quot; kcMiddleCopied=&quot;,kcMiddleCopied,
+            &quot; kcLowerCopied=&quot;,kcLowerCopied,
+            &quot; expected=&quot;,copyCount,
+            &quot; err=&quot;,GetLastError());
+      return(prev_calculated);
+   }
+
+   ArrayResize(BufferKCUpper, rates_total);
+   ArrayResize(BufferKCMiddle, rates_total);
+   ArrayResize(BufferKCLower, rates_total);
+
+   for(int k = 0; k &lt; copyCount; k++)
+   {
+      BufferTEMA[copyStart + k] = temaTail[k];
+      BufferEMAofTEMA[copyStart + k] = emaTail[k];
+      BufferKCUpper[copyStart + k] = kcUpperTail[k];
+      BufferKCMiddle[copyStart + k] = kcMiddleTail[k];
+      BufferKCLower[copyStart + k] = kcLowerTail[k];
+   }
+
+   double pointSize = MathPow(10.0, -_Digits);
+   double eps = pointSize * 0.1;
+   double pipSize = pointSize * 10.0;
+   bool bDoHistory = (prev_calculated == 0);
+
+   for(int i = start; i &lt; rates_total; i++)
+   {
+      if(prev_calculated == 0 || i &gt;= prev_calculated)
+      {
+         BufferArrowBuy[i] = EMPTY_VALUE;
+         BufferArrowSell[i] = EMPTY_VALUE;
+      }
+
+      int prevRel = RelSign(BufferTEMA[i - 1] - BufferEMAofTEMA[i - 1], eps);
+      int currRel = RelSign(BufferTEMA[i] - BufferEMAofTEMA[i], eps);
+      double temaEmaSpread = BufferTEMA[i] - BufferEMAofTEMA[i];
+      double temaEmaSpreadPips = TS_Price2Pips(temaEmaSpread);
+      BufferTemaEmaSpread[i] = temaEmaSpreadPips;
+      if(prevRel == 0)
+         prevRel = iDir;
+      if(currRel == 0)
+         currRel = prevRel;
+
+      //--- Cocking logic: evaluate local hi/lo candidates from prior 2 bars.
+      //--- Must run before cross handling so same-bar cock+cross can trigger.
+      if(iDir != 0)
+      {
+         bool candidateFound = false;
+         bool cockedThisBar = false;
+
+         for(int d = 1; d &lt;= 2; d++)
+         {
+            int cand = i - d;
+            if(cand &lt;= g_crossBar || cand &lt; 1 || cand + 1 &gt;= rates_total)
+               continue;
+
+            candidateFound = true;
+
+            int refBar = MathMax(0, cand - InpOpenRefOffset);
+            double refOpen = open[refBar];
+
+            //--- Keep debug/state fields aligned with the candidate under evaluation.
+            g_extremeBar = cand;
+            g_extremeOpenRefBar = refBar;
+            g_extremeOpen = refOpen;
+            g_extremePrice = (iDir &gt; 0) ? high[cand] : low[cand];
+
+            if((iDir &gt; 0 &amp;&amp; close[i] &lt; refOpen) ||
+               (iDir &lt; 0 &amp;&amp; close[i] &gt; refOpen))
+            {
+               g_isCocked = true;
+               g_cockedDir = (iDir &gt; 0) ? -1 : 1;
+               g_cockLevel = refOpen;
+               cockedThisBar = true;
+               break;
+            }
+         }
+
+         g_pendingConfirm = (candidateFound &amp;&amp; !cockedThisBar);
+      }
+
+      bool crossUp = (prevRel &lt; 0 &amp;&amp; currRel &gt; 0);
+      bool crossDn = (prevRel &gt; 0 &amp;&amp; currRel &lt; 0);
+      bool isCross = (crossUp || crossDn);
+
+      //=================================================================
+      //  DYNAMIC BLACKOUT COMPUTATION
+      //=================================================================
+      double kcWidthPct = 0.0;
+      double slopePipsPerBar = 0.0;
+      double absSlope = 0.0;
+      double widthScore = 0.0;
+      double slopeScore = 0.0;
+      double chopScore = 0.0;
+      double crossAmplifier = 1.0;
+
+      //--- Compute and store KC width as % of midline
+      if(BufferKCUpper[i] != EMPTY_VALUE &amp;&amp; BufferKCLower[i] != EMPTY_VALUE &amp;&amp;
+         BufferKCMiddle[i] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[i] &gt; 0.0)
+      {
+         kcWidthPct = (BufferKCUpper[i] - BufferKCLower[i]) / BufferKCMiddle[i] * 100.0;
+      }
+      g_kcWidthPctArr[i] = kcWidthPct;
+
+      //--- Compute and store slope
+      if(i &gt;= InpKCMidSlopePeriod &amp;&amp;
+         BufferKCMiddle[i] != EMPTY_VALUE &amp;&amp;
+         BufferKCMiddle[i - InpKCMidSlopePeriod] != EMPTY_VALUE)
+      {
+         double rawSlopePrice = (BufferKCMiddle[i] - BufferKCMiddle[i - InpKCMidSlopePeriod]) / InpKCMidSlopePeriod;
+         slopePipsPerBar = TS_Price2Pips(rawSlopePrice);
+
+         if(InpSlopeNormMode == SLOPE_KC_NORMALIZED &amp;&amp; BufferKCMiddle[i] &gt; 0.0)
+            absSlope = MathAbs(rawSlopePrice / BufferKCMiddle[i] * 100.0);
+         else
+            absSlope = MathAbs(slopePipsPerBar);
+      }
+      g_absSlopeArr[i] = absSlope;
+
+      //--- Store cross flag and update prefix sum
+      g_crossFlagArr[i] = isCross ? 1.0 : 0.0;
+      g_crossPrefixSum[i] = (i &gt; 0 ? g_crossPrefixSum[i - 1] : 0.0) + g_crossFlagArr[i];
+
+      //--- Compute active blackout
+      int activeBlackout = InpSignalBlackout;
+
+      if(InpUseDynamicBlackout &amp;&amp; i &gt;= InpDynBaselineLookback)
+      {
+         //--- Width score: how contracted is current width vs. baseline?
+         double baselineWidthPct = ComputePercentile(g_kcWidthPctArr,
+                                                     i - InpDynBaselineLookback,
+                                                     i - 1,
+                                                     InpDynBaselinePercentile);
+         if(baselineWidthPct &gt; 0.0)
+            widthScore = MathMax(0.0, 1.0 - (kcWidthPct / baselineWidthPct));
+
+         //--- Slope score: how flat is current slope vs. baseline?
+         double baselineSlope = ComputePercentile(g_absSlopeArr,
+                                                  i - InpDynBaselineLookback,
+                                                  i - 1,
+                                                  InpDynBaselinePercentile);
+         if(baselineSlope &gt; 0.0)
+            slopeScore = MathMax(0.0, 1.0 - (absSlope / baselineSlope));
+
+         //--- Weighted composite chop score
+         chopScore = g_normWidthWeight * widthScore + g_normSlopeWeight * slopeScore;
+
+         //--- Cross frequency amplifier
+         int currentCrossCount = CountCrossesInWindow(i, InpCrossFreqWindow);
+         double baselineCrossFreq = ComputeCrossFreqPercentile(i,
+                                                               InpDynBaselineLookback,
+                                                               InpCrossFreqWindow,
+                                                               InpDynBaselinePercentile);
+         if(baselineCrossFreq &gt; 0.0)
+            crossAmplifier = MathMax(1.0, (double)currentCrossCount / baselineCrossFreq);
+
+         chopScore *= crossAmplifier;
+
+         //--- Map chop score to extra blackout bars
+         double extraBars = 0.0;
+         if(InpScoreMapMode == MAP_LINEAR)
+            extraBars = chopScore * InpLinearScaleK;
+         else
+            extraBars = MathPow(chopScore, InpCurveExponent) * InpLinearScaleK;
+
+         activeBlackout = InpSignalBlackout + (int)MathRound(extraBars);
+         if(activeBlackout &lt; InpBlackoutMin)
+            activeBlackout = InpBlackoutMin;
+      }
+
+      BufferDynBlackout[i] = activeBlackout;
+      BufferKCWidthRatio[i] = chopScore;  // Repurposed: now shows composite chop score
+      BufferTriggerThreshold[i] = InpTriggerSensitivityPips;
+      //=================================================================
+
+      if(iDir == 0 &amp;&amp; currRel != 0)
+         ResetCycleForDirection(currRel, i, open, high, low);
+
+      ENUM_SIGNAL_TYPE signal = SIGNAL_NONE;
+      ENUM_SIGNAL_TYPE signalCandidate = SIGNAL_NONE;
+      if(isCross)
+      {
+         if(g_isCocked)
+         {
+            if(crossDn &amp;&amp; g_cockedDir == -1)
+            {
+               g_triggerPending = true;
+               g_triggerDir = -1;
+               g_triggerCrossBar = i;
+            }
+            else if(crossUp &amp;&amp; g_cockedDir == 1)
+            {
+               g_triggerPending = true;
+               g_triggerDir = 1;
+               g_triggerCrossBar = i;
+            }
+            else
+            {
+               g_triggerPending = false;
+               g_triggerDir = 0;
+               g_triggerCrossBar = -1;
+            }
+         }
+         else
+         {
+            g_triggerPending = false;
+            g_triggerDir = 0;
+            g_triggerCrossBar = -1;
+         }
+      }
+
+      if(g_triggerPending)
+      {
+         bool wrongSide = ((g_triggerDir == 1 &amp;&amp; currRel &lt; 0) || (g_triggerDir == -1 &amp;&amp; currRel &gt; 0));
+         if(wrongSide)
+         {
+            g_triggerPending = false;
+            g_triggerDir = 0;
+            g_triggerCrossBar = -1;
+         }
+         else
+         {
+            double cumulativeSpreadPips = 0.0;
+            int sumFrom = MathMax(0, g_triggerCrossBar);
+            if(sumFrom &lt;= i)
+            {
+               for(int s = sumFrom; s &lt;= i; s++)
+               {
+                  if(BufferTemaEmaSpread[s] == EMPTY_VALUE)
+                     continue;
+                  cumulativeSpreadPips += MathAbs(BufferTemaEmaSpread[s]);
+               }
+            }
+
+            if(cumulativeSpreadPips &gt;= InpTriggerSensitivityPips)
+            {
+               signalCandidate = (g_triggerDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+               g_triggerPending = false;
+               g_triggerDir = 0;
+               g_triggerCrossBar = -1;
+            }
+         }
+      }
+
+      bool canFireNow = ((i - g_lastSignalBar) &gt; activeBlackout &amp;&amp; time[i] &gt;= InpTradeStartDate);
+      if(signalCandidate != SIGNAL_NONE)
+      {
+         if(canFireNow)
+         {
+            signal = signalCandidate;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+         else
+         {
+            g_blackoutSignalPending = true;
+            g_blackoutSignalDir = (signalCandidate == SIGNAL_LONG) ? 1 : -1;
+            g_blackoutSignalBar = i;
+         }
+      }
+
+      if(signal == SIGNAL_NONE &amp;&amp; g_blackoutSignalPending)
+      {
+         bool retraced = ((g_blackoutSignalDir == 1 &amp;&amp; currRel &lt; 0) || (g_blackoutSignalDir == -1 &amp;&amp; currRel &gt; 0));
+         if(retraced)
+         {
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+         else if(canFireNow)
+         {
+            signal = (g_blackoutSignalDir == 1) ? SIGNAL_LONG : SIGNAL_SHORT;
+            g_blackoutSignalPending = false;
+            g_blackoutSignalDir = 0;
+            g_blackoutSignalBar = -1;
+         }
+      }
+
+      if(signal != SIGNAL_NONE)
+      {
+         if(g_signalStartDT == 0)
+            g_signalStartDT = time[i];
+
+         double mockExecPrice = GetMockTradePrice(i, close);
+
+         if(InpEnableTradeSim)
+         {
+            if(InpMockTradePriceSource == MOCK_PRICE_TEMA)
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 BufferTEMA,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+            else if(InpMockTradePriceSource == MOCK_PRICE_EMA_TEMA)
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 BufferEMAofTEMA,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+            else
+            {
+               HandleSignalEvent(i, signal,
+                                 true,              // closeTrade
+                                 true,              // fillBuffers
+                                 true,              // openTrade
+                                 true,              // updateLabel
+                                 InpShowArrows,     // showArrows
+                                 time,
+                                 close,
+                                 g_signalStartDT,
+                                 g_currentTrade,
+                                 g_tradeStats,
+                                 g_arrowCfg,
+                                 g_labelCfg,
+                                 (InpSoundTradeAlarm &amp;&amp; !bDoHistory),
+                                 BufferTradePL,
+                                 BufferRunningPL,
+                                 BufferTradeCount,
+                                 BufferWinPct,
+                                 BufferShortCount,
+                                 BufferShortWinPct,
+                                 BufferLongCount,
+                                 BufferLongWinPct,
+                                 BufferArrowBuy,
+                                 BufferArrowSell);
+            }
+         }
+
+         //--- Buffer arrows should be anchored at selected mock execution price for the signal bar.
+         if(signal == SIGNAL_LONG)
+            BufferArrowBuy[i] = mockExecPrice;
+         else
+            BufferArrowSell[i] = mockExecPrice;
+
+         //--- Reposition object arrows 100 pips outside the farther of KC outer line or TEMA from KC midline.
+         if(InpShowArrows &amp;&amp; g_currentTrade.arrowName != &quot;&quot; &amp;&amp; ObjectFind(0, g_currentTrade.arrowName) &gt;= 0 &amp;&amp;
+            BufferKCUpper[i] != EMPTY_VALUE &amp;&amp; BufferKCMiddle[i] != EMPTY_VALUE &amp;&amp;
+            BufferKCLower[i] != EMPTY_VALUE &amp;&amp; BufferTEMA[i] != EMPTY_VALUE)
+         {
+            double mid = BufferKCMiddle[i];
+            double arrowPrice = 0.0;
+            double offset = InpObjectArrowOffsetPips * pipSize;
+
+            if(signal == SIGNAL_SHORT)
+            {
+               double baseUpper = BufferKCUpper[i];
+               double distUpper = MathAbs(baseUpper - mid);
+               double distTema  = MathAbs(BufferTEMA[i] - mid);
+               double base = (distTema &gt; distUpper) ? BufferTEMA[i] : baseUpper;
+               arrowPrice = base + offset;
+               BufferArrowSell[i] = mockExecPrice;
+            }
+            else
+            {
+               double baseLower = BufferKCLower[i];
+               double distLower = MathAbs(baseLower - mid);
+               double distTema  = MathAbs(BufferTEMA[i] - mid);
+               double base = (distTema &gt; distLower) ? BufferTEMA[i] : baseLower;
+               arrowPrice = base - offset;
+               BufferArrowBuy[i] = mockExecPrice;
+            }
+
+            ObjectMove(0, g_currentTrade.arrowName, 0, time[i], arrowPrice);
+         }
+
+         g_lastSignalBar = i;
+      }
+
+      //--- Keep the most recent open trade tooltip/buffers live on the current bar.
+      if(i == rates_total - 1 &amp;&amp; InpEnableTradeSim)
+      {
+         double liveExitPrice = GetMockTradePrice(i, close);
+         UpdateOpenTradeLiveState(i, liveExitPrice);
+      }
+
+      //--- Uncock only after trigger decisions on this bar.
+      if(g_isCocked)
+      {
+         if(g_cockedDir == -1 &amp;&amp; close[i] &gt; g_cockLevel)
+         {
+            g_isCocked = false;
+            g_cockedDir = 0;
+         }
+         else if(g_cockedDir == 1 &amp;&amp; close[i] &lt; g_cockLevel)
+         {
+            g_isCocked = false;
+            g_cockedDir = 0;
+         }
+      }
+
+      if(i &lt; rates_total - 1 &amp;&amp; i &gt; g_lastExportedBar)
+      {
+         AppendCsvDebugRow(time[i], i,
+                           open[i], high[i], low[i], close[i],
+                           BufferTEMA[i], BufferEMAofTEMA[i],
+                           BufferKCUpper[i], BufferKCMiddle[i], BufferKCLower[i],
+                           kcWidthPct, slopePipsPerBar,
+                           activeBlackout,
+                           widthScore, slopeScore, chopScore, crossAmplifier,
+                           crossUp, crossDn, isCross,
+                           signal);
+         g_lastExportedBar = i;
+      }
+
+      //--- Cross after signal check: trigger consumes prior cocked state, then reset cycle.
+      if(isCross &amp;&amp; currRel != 0)
+      {
+         ResetCycleForDirection(currRel, i, open, high, low, g_triggerPending);
+         continue;
+      }
+
+   }
+
+   return(rates_total);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:41 UTC</span></div><div class="body"><p>Got it. <code>InpLinearScaleK</code> is 25.0 now. Working from this copy.</p>
+<p>v1.02 changes:</p>
+<p><strong>New input:</strong> <code>InpUsePriceCrossTrigger</code> (bool, default false) in Core Inputs group.</p>
+<p><strong>New global:</strong> <code>g_priceCrossFired</code> — per-bar flag tracking which trigger path fired.</p>
+<p><strong>Price-cross logic:</strong> Runs after cocking eval, before the TEMA/EMA crossover block. When cocked and enabled: short fires if <code>close &lt; min(TEMA, EMA)</code>, long fires if <code>close &gt; max(TEMA, EMA)</code>. On fire: sets <code>signalCandidate</code> directly, clears cocked state and any pending trigger state. The existing crossover path is gated by <code>signalCandidate == SIGNAL_NONE</code> so first-to-fire wins.</p>
+<p><strong>Mock trade price:</strong> <code>GetMockTradePrice</code> checks <code>g_priceCrossFired</code> first — if true, returns EMA regardless of <code>InpMockTradePriceSource</code>. Same override in the <code>HandleSignalEvent</code> dispatch — price-cross signals pass <code>BufferEMAofTEMA</code> as the price buffer.</p>
+<p><strong>Blackout interaction:</strong> If a price-cross signal gets blocked by blackout, <code>g_priceCrossFired</code> is cleared so the deferred signal uses normal mock price source when it eventually fires.</p>
+<p><strong>CSV debug:</strong> Added <code>price_cross_fired</code> column.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:46 UTC</span></div><div class="body">well that dropped the P/L to 25% of the original method.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:46 UTC</span></div><div class="body"><p>Data answered. Turn it off and move on to #3?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:47 UTC</span></div><div class="body">I dunno lol. Strike 3 we&#x27;re out?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:47 UTC</span></div><div class="body"><p>Different category entirely. #2 was changing <em>when</em> to pull the trigger — and the data said &quot;earlier&quot; costs more than it gains. #3 is about detecting a specific price action pattern that already exists in gold and exploiting it. That's additive, not a replacement of something that already works.</p>
+<p>But it also needs real historical analysis to establish whether the pattern is statistically exploitable, not just visually recognizable. That's a bigger undertaking than the first two. Up to you whether now's the time.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-21 08:48 UTC</span></div><div class="body">we&#x27;ll attack that one later.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-21 08:48 UTC</span></div><div class="body"><p>Sounds good.</p>
+</div></div>
+<nav class="pager"><a href="666-2026-02-20-disable-codex-approval-prompts-in-vs-code.html">&larr; Disable Codex approval prompts in VS Code</a><a href="../index.html">All chats</a><a href="668-2026-02-21-usd-pair-points-and-pips-terminology.html">USD pair points and pips terminology &rarr;</a></nav></div></body></html>

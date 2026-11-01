@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MT5 indicator panel resizing and scrolling</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-23_esl-reported-speech-practice-video_f4e3466e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-22_ea-ui-text-size-adjustment-for-mt5_9297bf99.html">Next →</a></span></div><h1>MT5 indicator panel resizing and scrolling</h1><div class="meta">Created 2026-07-22 19:58 UTC · Last updated 2026-07-22 21:47 UTC · 14 messages<br>Original: <a href="https://claude.ai/chat/b5e3b97f-01a2-42f8-b2e0-d8ffbbf35139">claude.ai/chat/b5e3b97f-01a2-42f8-b2e0-d8ffbbf35139</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 19:58 UTC</div><p>This is my indicator for Mt5. can you make it resizeable and make it so i can scroll inside the panel because some information like the recent trades is cut off at the bottom, also with the ability to minimize it. or if you have an idea to make it compact but still be able to read all the information on the screen. Maybe make the dial istelf a bit smaller?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 19:58 UTC</div><p>Read the file. Here's what's actually possible in MT5 for a canvas-based bitmap panel:</p>
+<ul>
+<li><strong>True click-drag resize</strong> (corner handle): possible, but you have to hand-roll it — track mouse down/drag on a small hit-zone in the corner, recompute canvas width/height, redraw. Real complexity, real edge cases (min size, redraw cost every frame while dragging).</li>
+<li><strong>Scroll wheel inside the panel</strong>: not possible. MT5 doesn't deliver mouse wheel events to chart objects/indicators — no hook exists for it. Scrolling would have to be up/down arrow buttons instead, not wheel.</li>
+<li><strong>Minimize toggle</strong>: straightforward — a small clickable region that collapses the panel to just the dial (or just a title bar), redraws smaller canvas.</li>
+<li><strong>Compact layout / smaller dial</strong>: straightforward — shrink dial radius, tighten line spacing and font sizes, fits current 3 sections without cutoff at typical <code>InpRecentTrades</code> counts.</li>
+</ul>
+<p>So "resize + scroll" as literally described is the expensive, bug-prone route. "Minimize + compact" gets you the actual outcome (nothing cut off, panel not always taking up a huge footprint) with far less risk.</p>
+<p>Which do you want:</p>
+<p><strong>A.</strong> Minimize button + smaller dial + tighter spacing (no drag-resize, no scroll) — recommended<br />
+<strong>B.</strong> Full drag-resize corner handle + up/down scroll buttons for recent trades (no wheel)<br />
+<strong>C.</strong> Both A and B</p>
+<p>Say which, then GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 19:59 UTC</div><p>lets try A</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 19:59 UTC</div><p>Plan:</p>
+<ol>
+<li>
+<p><strong>Minimize toggle</strong> — small clickable box top-right of panel (shows "–"). Click collapses the panel down to just the dial + win-rate % (trade summary, P/L, recent trades all hidden). Click again (shows "+") expands back to full view. Not persisted across restart — resets to expanded each time the indicator loads.</p>
+</li>
+<li>
+<p><strong>Smaller dial</strong> — reduce dial radius so the gauge takes less vertical room.</p>
+</li>
+<li>
+<p><strong>Tighter spacing</strong> — shrink the gaps between Trade Summary / P/L / Recent Trades blocks so the recent-trades list stops getting cut off at your current <code>InpRecentTrades</code> setting.</p>
+</li>
+<li>
+<p><strong>Panel height recalculated</strong> for both collapsed and expanded states so there's no dead space or clipping either way.</p>
+</li>
+</ol>
+<p>No new inputs added, no drag-resize, no scroll. GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 19:59 UTC</div><p>Go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 20:02 UTC</div><p>Done. Click the "–" box top-right to collapse to just the dial, "+" to expand back. Panel height is now computed from the same offsets used to draw the content, so it can't clip regardless of <code>InpRecentTrades</code> or <code>InpPanelSize</code>.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 21:18 UTC</div><p>could i sell this indicator?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 21:18 UTC</div><p>Yes — it's your code, and <code>&lt;Canvas\Canvas.mqh&gt;</code> is MetaQuotes' standard library, free to use in your own products including ones you sell (MQL5 Market or elsewhere). No third-party licensing blocker here.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 21:19 UTC</div><p>how can i sell it and how much could i sell it for?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 21:19 UTC</div><p><strong>Selling channels:</strong></p>
+<ol>
+<li><strong>MQL5 Market</strong> — register as Seller on MQL5.community (ID verification required), publish product with a demo version, buyers pay through MQL5's internal payment system. This is the standard route and gets you in front of the built-in MT5 user base.</li>
+<li>Outside MQL5: your own site/Gumroad/Discord — sell the .ex5 (compiled) directly, handle licensing yourself (harder to enforce, no built-in trial/payment infra).</li>
+</ol>
+<p><strong>Price:</strong> Dashboard/utility indicators like this — display-only, no signals, no entries — sit at the low end of the market. Comparable info panels (P/L calendars, trade-stat dashboards) go for roughly $15–40. Indicators claiming actual trade signals or "edge" price much higher ($50–200+), but those are a different category and mostly marketing — yours is read-only reporting, not a signal generator, so pricing it like a signal tool would be dishonest to buyers.</p>
+<p>Realistic range for this as-is: <strong>$15–30</strong>. To justify more you'd need to add something with actual decision value (per-session breakdown, drawdown tracking, multi-symbol support) — not just visual polish.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 21:20 UTC</div><p>what about this EA for placing orders? find me realistically how much i could sell it for?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 21:20 UTC</div><p>This one's a different category — it's a real order-placement/management tool, not a display panel. It builds a stop-order ladder with configurable step/lot sizing per rung, per-order or whole-block SL/trailing/TP, trailing entry, dual-direction (buy+sell) cycle tracking, state persistence across restarts, drag-to-reposition levels on chart, and a full interactive control panel. That's comparable to the "grid/ladder pending-order" utility category on MQL5 Market.</p>
+<p>Comparables in that category (grid/ladder builders with panel + trailing + protection) run <strong>$30–80</strong>, with the more feature-loaded ones ($panel, multiple protection modes, persistence) landing $50–80. Bare-bones grid placers with no panel go as low as $15–20; ones stacked with extras (session filters, news filters, multi-symbol) push past $100+ but that's added scope yours doesn't have.</p>
+<p>Realistic range for this as-is: <strong>$40–70</strong>. To push toward the top of that or beyond, you'd want to demonstrate it live (screenshots/video of the ladder + panel in action) and be explicit that it's a manual-trigger execution tool, not a signal generator — that's an honest differentiator, not a weakness, since buyers in this category often specifically want control rather than a black-box strategy.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-22 21:47 UTC</div><p>how many people could you estimate would actually buy it realistically</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-22 21:47 UTC</div><p>No solid public data on per-product sales exists (MQL5 doesn't publish that), but the structural facts are known: the Market has hundreds of developers publishing products, and 10 out of 250 top developers captured 25% of all sales and 67% of total turnover — meaning the long tail of ordinary sellers splits a small remainder. One seller's own forum post confirms the common problem: publishing products that get little visibility, with no clear way to get first sales or reviews without already being known.</p>
+<p>Applied to your situation specifically:</p>
+<ul>
+<li>No seller history, no reviews, no existing audience/following</li>
+<li>The grid/ladder pending-order category is already crowded (you saw the comparables — a dozen+ similar tools, several from established sellers with reviews and years of updates)</li>
+<li>No demo video, no track record of live results shown</li>
+</ul>
+<p>Realistically, with zero marketing outside the Market listing itself: <strong>single digits in the first few months</strong> — plausibly 0–5 sales. If you actively promote it (post it in trader Telegram/Discord groups, forums, get a few reviews, maybe a YouTube demo), you could reasonably get into the <strong>low tens over a year</strong> — 10–30 is a defensible ceiling for a first product in a saturated category at this price point.</p>
+<p>The volume driver isn't the code quality, it's visibility and reviews — the Market's own ranking algorithm favors products that already have sales/reviews, which is the classic cold-start problem. If you want realistic upside you'd need to put in outbound marketing effort, not just publish and wait.</p></div><div class="nav"><span><a href="2026-07-23_esl-reported-speech-practice-video_f4e3466e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-22_ea-ui-text-size-adjustment-for-mt5_9297bf99.html">Next →</a></span></div></div></body></html>

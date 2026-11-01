@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Code explanation and parameter analysis</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="693-2026-03-27-anarchists-who-rejected-government-legitimacy.html">&larr; Anarchists who rejected government legitimacy</a><a href="../index.html">All chats</a><a href="695-2026-03-27-confused-reaction.html">Confused reaction &rarr;</a></nav>
+<header class="top">
+<h1>Code explanation and parameter analysis</h1>
+<div class="meta">Created 2026-03-27 17:02 UTC &middot; Last updated 2026-03-27 17:02 UTC &middot; 2 messages<br>Original: <a href="https://claude.ai/chat/66d85eb0-a9f2-4baa-a390-285d03e804e3">claude.ai/chat/66d85eb0-a9f2-4baa-a390-285d03e804e3</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-03-27 17:02 UTC</span></div><div class="body">Spell out what this code is doing, step by step, and the parameter/threshold/limit values it&#x27;s using.<details><summary>Attached file: phase4_scr_composite.py</summary><pre>&quot;&quot;&quot;Detect composite-body SCR signals and analyze them with opposite-signal boundaries.
+
+SCR definition used here:
+- Prior context is the two-bar composite made from bars t-2 and t-1.
+- Current bar t must move in the opposite direction of the composite.
+- Current body must cancel enough of the prior composite body.
+- Required cancel percent starts at a base threshold and increases as the
+  prior composite becomes more waffly (wick-heavy).
+&quot;&quot;&quot;
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+
+import numpy as np
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class CompositeBar:
+    start_ix: int
+    end_ix: int
+    direction: int
+    body_top: float
+    body_bot: float
+    body_size: float
+    high: float
+    low: float
+    total_range: float
+    wick_total: float
+    body_percent: float
+    wick_percent: float
+
+
+def load(path: str) -&gt; pd.DataFrame:
+    df = pd.read_csv(path)
+    df[&quot;Datetime&quot;] = pd.to_datetime(df[&quot;Datetime&quot;], format=&quot;%Y.%m.%d %H:%M:%S&quot;, errors=&quot;coerce&quot;)
+    for col in [&quot;Open&quot;, &quot;High&quot;, &quot;Low&quot;, &quot;Close&quot;, &quot;TEMA9&quot;, &quot;EMA4_TEMA9&quot;, &quot;EMA2_HLCC4&quot;]:
+        df[col] = pd.to_numeric(df[col], errors=&quot;coerce&quot;)
+    return df.dropna(subset=[&quot;Datetime&quot;, &quot;Open&quot;, &quot;High&quot;, &quot;Low&quot;, &quot;Close&quot;]).reset_index(drop=True)
+
+
+def bar_direction(open_val: float, close_val: float) -&gt; int:
+    if close_val &gt; open_val:
+        return 1
+    if close_val &lt; open_val:
+        return -1
+    return 0
+
+
+def build_composite(open_: np.ndarray, high: np.ndarray, low: np.ndarray, close: np.ndarray, end_ix: int) -&gt; CompositeBar | None:
+    start_ix = end_ix - 1
+    if start_ix &lt; 0:
+        return None
+
+    composite_dir = bar_direction(open_[start_ix], close[end_ix])
+    if composite_dir == 0:
+        return None
+
+    body_top = max(open_[start_ix], close[end_ix])
+    body_bot = min(open_[start_ix], close[end_ix])
+    body_size = body_top - body_bot
+    composite_high = max(high[start_ix], high[end_ix])
+    composite_low = min(low[start_ix], low[end_ix])
+    total_range = composite_high - composite_low
+    if total_range &lt;= 0.0:
+        return None
+
+    wick_total = max(0.0, total_range - body_size)
+    body_percent = body_size / total_range
+    wick_percent = wick_total / total_range
+
+    return CompositeBar(
+        start_ix=start_ix,
+        end_ix=end_ix,
+        direction=composite_dir,
+        body_top=body_top,
+        body_bot=body_bot,
+        body_size=body_size,
+        high=composite_high,
+        low=composite_low,
+        total_range=total_range,
+        wick_total=wick_total,
+        body_percent=body_percent,
+        wick_percent=wick_percent,
+    )
+
+
+def calc_cancel_amount(composite: CompositeBar, curr_body_top: float, curr_body_bot: float) -&gt; float:
+    if composite.direction &gt; 0:
+        cancel_amount = composite.body_top - curr_body_bot
+    else:
+        cancel_amount = curr_body_top - composite.body_bot
+    return max(0.0, min(cancel_amount, composite.body_size))
+
+
+def detect_scrs(
+    df: pd.DataFrame,
+    base_cancel_pct: float = 0.50,
+    waffle_penalty_scale: float = 0.25,
+    min_composite_body: float = 0.01,
+) -&gt; pd.DataFrame:
+    open_ = df[&quot;Open&quot;].to_numpy(dtype=float)
+    high = df[&quot;High&quot;].to_numpy(dtype=float)
+    low = df[&quot;Low&quot;].to_numpy(dtype=float)
+    close = df[&quot;Close&quot;].to_numpy(dtype=float)
+    times = df[&quot;Datetime&quot;].to_numpy()
+    n = len(df)
+
+    rows: list[dict[str, object]] = []
+    for i in range(2, n):
+        composite = build_composite(open_, high, low, close, i - 1)
+        if composite is None or composite.body_size &lt; min_composite_body:
+            continue
+
+        curr_dir = bar_direction(open_[i], close[i])
+        if curr_dir == 0 or curr_dir == composite.direction:
+            continue
+
+        curr_body_top = max(open_[i], close[i])
+        curr_body_bot = min(open_[i], close[i])
+        curr_body_size = curr_body_top - curr_body_bot
+        if curr_body_size &lt;= 0.0:
+            continue
+
+        cancel_amount = calc_cancel_amount(composite, curr_body_top, curr_body_bot)
+        cancel_pct = cancel_amount / composite.body_size
+        required_cancel_pct = base_cancel_pct + composite.wick_percent * waffle_penalty_scale
+        if cancel_pct &lt; required_cancel_pct:
+            continue
+
+        signal_dir = &quot;long&quot; if curr_dir &gt; 0 else &quot;short&quot;
+        rows.append(
+            {
+                &quot;signal_ix&quot;: i,
+                &quot;time&quot;: pd.Timestamp(times[i]).strftime(&quot;%Y.%m.%d %H:%M:%S&quot;),
+                &quot;direction&quot;: signal_dir,
+                &quot;entry_price&quot;: float(close[i]),
+                &quot;prior_comp_start_ix&quot;: composite.start_ix,
+                &quot;prior_comp_end_ix&quot;: composite.end_ix,
+                &quot;prior_comp_body_top&quot;: composite.body_top,
+                &quot;prior_comp_body_bot&quot;: composite.body_bot,
+                &quot;prior_comp_body_size&quot;: composite.body_size,
+                &quot;prior_comp_high&quot;: composite.high,
+                &quot;prior_comp_low&quot;: composite.low,
+                &quot;prior_comp_total_range&quot;: composite.total_range,
+                &quot;prior_comp_wick_total&quot;: composite.wick_total,
+                &quot;prior_comp_body_percent&quot;: composite.body_percent,
+                &quot;prior_comp_wick_percent&quot;: composite.wick_percent,
+                &quot;current_body_size&quot;: curr_body_size,
+                &quot;cancel_amount&quot;: cancel_amount,
+                &quot;cancel_pct&quot;: cancel_pct,
+                &quot;required_cancel_pct&quot;: required_cancel_pct,
+                &quot;rule&quot;: &quot;SCR_COMPOSITE_2BAR&quot;,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def dedupe_same_direction(signals: pd.DataFrame) -&gt; pd.DataFrame:
+    if signals.empty:
+        return signals.copy()
+
+    keep_rows: list[int] = []
+    last_dir = &quot;&quot;
+    for row in signals.itertuples():
+        if row.direction != last_dir:
+            keep_rows.append(int(row.Index))
+            last_dir = row.direction
+    return signals.loc[keep_rows].reset_index(drop=True)
+
+
+def analyze_to_next_opposite(
+    df: pd.DataFrame,
+    signals: pd.DataFrame,
+    min_gain: float,
+) -&gt; tuple[pd.DataFrame, pd.DataFrame]:
+    if signals.empty:
+        return signals.copy(), pd.DataFrame(columns=[&quot;body_q&quot;, &quot;count&quot;, &quot;q_lo&quot;, &quot;q_hi&quot;])
+
+    highs = df[&quot;High&quot;].to_numpy(dtype=float)
+    lows = df[&quot;Low&quot;].to_numpy(dtype=float)
+    closes = df[&quot;Close&quot;].to_numpy(dtype=float)
+    signal_ix = signals[&quot;signal_ix&quot;].to_numpy(dtype=int)
+    dirs = signals[&quot;direction&quot;].to_numpy()
+    count = len(signals)
+
+    next_opp = np.full(count, -1, dtype=int)
+    for i in range(count):
+        for j in range(i + 1, count):
+            if dirs[j] != dirs[i]:
+                next_opp[i] = j
+                break
+
+    mfe_vals: list[float] = []
+    qualifies: list[bool] = []
+    valid: list[bool] = []
+    for i in range(count):
+        start_ix = int(signal_ix[i])
+        opp_ix = int(next_opp[i])
+        if opp_ix &lt; 0:
+            mfe_vals.append(float(&quot;nan&quot;))
+            qualifies.append(False)
+            valid.append(False)
+            continue
+
+        end_ix = int(signal_ix[opp_ix])
+        if end_ix &lt;= start_ix:
+            mfe_vals.append(float(&quot;nan&quot;))
+            qualifies.append(False)
+            valid.append(False)
+            continue
+
+        entry = closes[start_ix]
+        if dirs[i] == &quot;long&quot;:
+            mfe = float(np.max(highs[start_ix + 1 : end_ix + 1]) - entry)
+        else:
+            mfe = float(entry - np.min(lows[start_ix + 1 : end_ix + 1]))
+
+        mfe_vals.append(mfe)
+        qualifies.append(bool(mfe &gt;= min_gain))
+        valid.append(True)
+
+    out = signals.copy()
+    out[&quot;next_opp_signal_row&quot;] = next_opp
+    out[&quot;mfe_to_next_opp_signal&quot;] = mfe_vals
+    out[&quot;valid_window&quot;] = valid
+    out[&quot;qualifies&quot;] = qualifies
+
+    qualified = out[out[&quot;qualifies&quot;]].copy()
+    quantile_rows: list[dict[str, object]] = []
+    if not qualified.empty:
+        qualified[&quot;body_q&quot;] = pd.qcut(
+            qualified[&quot;prior_comp_body_size&quot;],
+            q=min(10, qualified[&quot;prior_comp_body_size&quot;].nunique()),
+            duplicates=&quot;drop&quot;,
+        )
+        grouped = qualified.groupby(&quot;body_q&quot;, dropna=False, observed=False)[&quot;prior_comp_body_size&quot;]
+        for bucket, vals in grouped:
+            quantile_rows.append(
+                {
+                    &quot;body_q&quot;: str(bucket),
+                    &quot;count&quot;: int(len(vals)),
+                    &quot;q_lo&quot;: float(vals.min()),
+                    &quot;q_hi&quot;: float(vals.max()),
+                }
+            )
+
+    return out, pd.DataFrame(quantile_rows)
+
+
+def main() -&gt; None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(&quot;--input&quot;, required=True)
+    parser.add_argument(&quot;--output-signals&quot;, default=r&quot;C:\Temp-C\MQL5\Files\scr_composite_signals.csv&quot;)
+    parser.add_argument(&quot;--output-quantiles&quot;, default=r&quot;C:\Temp-C\MQL5\Files\scr_composite_quantiles.csv&quot;)
+    parser.add_argument(&quot;--base-cancel-pct&quot;, type=float, default=0.50)
+    parser.add_argument(&quot;--waffle-penalty-scale&quot;, type=float, default=0.25)
+    parser.add_argument(&quot;--min-composite-body&quot;, type=float, default=0.01)
+    parser.add_argument(&quot;--min-gain&quot;, type=float, default=15.0)
+    parser.add_argument(&quot;--dedupe-same-direction&quot;, action=&quot;store_true&quot;, default=False)
+    args = parser.parse_args()
+
+    df = load(args.input)
+    signals = detect_scrs(
+        df,
+        base_cancel_pct=args.base_cancel_pct,
+        waffle_penalty_scale=args.waffle_penalty_scale,
+        min_composite_body=args.min_composite_body,
+    )
+    if args.dedupe_same_direction:
+        signals = dedupe_same_direction(signals)
+
+    analyzed, quantiles = analyze_to_next_opposite(df, signals, args.min_gain)
+    analyzed.to_csv(args.output_signals, index=False)
+    quantiles.to_csv(args.output_quantiles, index=False)
+
+    print(f&quot;Signals: {len(analyzed)}&quot;)
+    print(f&quot;Valid windows: {int(analyzed[&#x27;valid_window&#x27;].sum()) if len(analyzed) else 0}&quot;)
+    print(f&quot;Qualified &gt;= ${args.min_gain:.2f}: {int(analyzed[&#x27;qualifies&#x27;].sum()) if len(analyzed) else 0}&quot;)
+    if len(analyzed):
+        print(f&quot;Long: {int((analyzed[&#x27;direction&#x27;] == &#x27;long&#x27;).sum())}  Short: {int((analyzed[&#x27;direction&#x27;] == &#x27;short&#x27;).sum())}&quot;)
+    if not quantiles.empty:
+        for row in quantiles.itertuples(index=False):
+            print(f&quot;{row.body_q},{row.count},{row.q_lo:.2f},{row.q_hi:.2f}&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    main()</pre></details><p class="note">[File attached: phase4_scr_composite.py &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-27 17:02 UTC</span></div><div class="body"><p><strong>Step-by-step logic:</strong></p>
+<ol>
+<li>
+<p><strong>Load data</strong>: Reads CSV with OHLC bars plus TEMA9, EMA4_TEMA9, EMA2_HLCC4 columns (though indicators aren't used in detection).</p>
+</li>
+<li>
+<p><strong>Build 2-bar composite</strong> (for each bar i starting at index 2):</p>
+<ul>
+<li>Composite spans bars i-2 and i-1</li>
+<li>Composite direction = direction from open[i-2] to close[i-1]</li>
+<li>Composite body: top = max(open[i-2], close[i-1]), bottom = min(open[i-2], close[i-1])</li>
+<li>Composite range = max(high[i-2], high[i-1]) to min(low[i-2], low[i-1])</li>
+<li>Calculates body_percent and wick_percent of total range</li>
+</ul>
+</li>
+<li>
+<p><strong>Detect SCR signal</strong> when:</p>
+<ul>
+<li>Current bar i moves opposite direction from composite</li>
+<li>Current bar's body &quot;cancels&quot; enough of the composite body</li>
+<li>Cancel amount = overlap between current body and composite body (directional)</li>
+<li>Required cancel percent = <code>base_cancel_pct + (composite.wick_percent * waffle_penalty_scale)</code></li>
+<li>Signal fires if <code>(cancel_amount / composite.body_size) &gt;= required_cancel_pct</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Optional deduplication</strong>: Keeps only first signal in each consecutive same-direction sequence.</p>
+</li>
+<li>
+<p><strong>Analyze to next opposite signal</strong>:</p>
+<ul>
+<li>For each signal, finds next signal in opposite direction</li>
+<li>Measures MFE (max favorable excursion) from entry close to that boundary</li>
+<li>Long MFE = highest high in window - entry</li>
+<li>Short MFE = entry - lowest low in window</li>
+<li>Signal &quot;qualifies&quot; if MFE &gt;= <code>min_gain</code></li>
+</ul>
+</li>
+<li>
+<p><strong>Quantile bucketing</strong>: Groups qualifying signals into up to 10 buckets by composite body size.</p>
+</li>
+</ol>
+<p><strong>Parameter/threshold/limit values:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_cancel_pct</code></td>
+<td>0.50</td>
+<td>Base percent of composite body that must be canceled</td>
+</tr>
+<tr>
+<td><code>waffle_penalty_scale</code></td>
+<td>0.25</td>
+<td>Multiplier for wick_percent added to required cancel</td>
+</tr>
+<tr>
+<td><code>min_composite_body</code></td>
+<td>0.01</td>
+<td>Minimum composite body size to consider</td>
+</tr>
+<tr>
+<td><code>min_gain</code></td>
+<td>15.0</td>
+<td>Minimum MFE (dollars) for signal to qualify</td>
+</tr>
+<tr>
+<td><code>dedupe_same_direction</code></td>
+<td>False</td>
+<td>Whether to keep only first of consecutive same-dir signals</td>
+</tr>
+<tr>
+<td>Signal detection start index</td>
+<td>2</td>
+<td>First bar that can generate signal (needs 2 prior bars)</td>
+</tr>
+<tr>
+<td>Max quantile buckets</td>
+<td>10</td>
+<td>Maximum qcut buckets for body size grouping</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Derived threshold:</strong></p>
+<ul>
+<li>Actual required cancel percent = <code>0.50 + (wick_percent * 0.25)</code></li>
+<li>For 100% wick composite (pure doji-like): requires 75% cancel</li>
+<li>For 0% wick composite (pure body): requires 50% cancel</li>
+</ul>
+</div></div>
+<nav class="pager"><a href="693-2026-03-27-anarchists-who-rejected-government-legitimacy.html">&larr; Anarchists who rejected government legitimacy</a><a href="../index.html">All chats</a><a href="695-2026-03-27-confused-reaction.html">Confused reaction &rarr;</a></nav></div></body></html>

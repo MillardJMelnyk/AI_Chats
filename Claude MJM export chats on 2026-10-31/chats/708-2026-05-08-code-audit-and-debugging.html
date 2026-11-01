@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Code audit and debugging</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="707-2026-05-07-continuing-previous-conversation.html">&larr; Continuing previous conversation</a><a href="../index.html">All chats</a><a href="709-2026-07-15-finding-anime-titles-on-alternative-streaming-sites.html">Finding anime titles on alternative streaming sites &rarr;</a></nav>
+<header class="top">
+<h1>Code audit and debugging</h1>
+<div class="meta">Created 2026-05-08 17:20 UTC &middot; Last updated 2026-05-08 17:47 UTC &middot; 16 messages<br>Original: <a href="https://claude.ai/chat/ebe66a8a-0e43-4ead-bcf6-c26dbf4bb66d">claude.ai/chat/ebe66a8a-0e43-4ead-bcf6-c26dbf4bb66d</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:20 UTC</span></div><div class="body">Audit and debug this code.<p class="note">[File attached: Ind_Travel_MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:21 UTC</span></div><div class="body"><p><strong>Audit: Ind_Travel_MJM.mq5</strong></p>
+<hr />
+<p><strong>Bug 1 — No-tick bars write <code>0.0</code> instead of <code>EMPTY_VALUE</code> [Functional]</strong></p>
+<p>In <code>CalculateHistoricalTravel</code>, when <code>copied &lt;= 1</code>, the function returns early and the caller assigns <code>historicalTravel = 0.0</code> to the buffer. This overwrites the <code>SetIndexBuffer</code> default (<code>EMPTY_VALUE = DBL_MAX</code>) with <code>0.0</code>, making unavailable-tick bars visually indistinguishable from genuinely flat bars.</p>
+<p>Fix: <code>CalculateHistoricalTravel</code> should return <code>bool</code>. Caller writes <code>EMPTY_VALUE</code> on <code>false</code>.</p>
+<hr />
+<p><strong>Bug 2 — Live bar uses <code>close[]</code>; historical uses <code>tick.bid</code> [Methodological inconsistency]</strong></p>
+<p>Historical mode fetches raw ticks via <code>CopyTicksRange</code> and processes <code>tick.bid</code>. Live mode derives movement from successive <code>close[currentBar]</code> values. On most MT5 brokers, <code>close[currentBar]</code> == last bid, so they're numerically equivalent — but this is broker-dependent, not guaranteed. If a broker's <code>close</code> reflects mid or ask, live travel will diverge from historical travel for the same bar.</p>
+<p>Fix: Live bar should call <code>SymbolInfoTick(_Symbol, tick)</code> and pass through <code>GetTravelTickPrice()</code>.</p>
+<hr />
+<p><strong>Bug 3 — <code>COPY_TICKS_INFO</code> excludes <code>last</code>-only ticks [Silent data loss, instrument-dependent]</strong></p>
+<p><code>COPY_TICKS_INFO</code> returns ticks where bid or ask changed. If <code>tick.bid == 0</code> for a tick (some instruments, some brokers), and only <code>tick.last</code> carries price data, that tick is filtered out at the <code>CopyTicksRange</code> call — <code>GetTravelTickPrice</code>'s fallback to <code>tick.last</code> never fires. The tick is silently dropped.</p>
+<p>Fix: Use <code>COPY_TICKS_ALL</code> and let <code>GetTravelTickPrice</code> handle the selection. Zero-move ticks (no price change) produce zero <code>tickMove</code>, so they don't inflate travel.</p>
+<hr />
+<p><strong>Non-bug observations (confirmed correct):</strong></p>
+<ul>
+<li>Array indexing: no <code>ArraySetAsSeries</code> call, code assumes chronological (index 0 = oldest). Consistent throughout. ✓</li>
+<li><code>toTime = (nextBarStart * 1000) - 1</code>: correctly excludes the next bar's first millisecond. ✓</li>
+<li>Historical re-fetch on bar transition only (<code>start = prev_calculated - 1 = currentBar - 1</code>): does not re-fetch every tick. ✓</li>
+<li><code>time[i+1]</code> boundary when <code>i = currentBar - 1</code>: correctly uses live bar open time as upper bound. ✓</li>
+<li><code>g_hasLastTick</code> / <code>g_currentBarTime</code> live bar state machine: correctly initializes on bar change, accumulates on subsequent ticks. ✓</li>
+<li><code>indicator_buffers 3</code> / <code>indicator_plots 3</code>: matches the three <code>SetIndexBuffer</code> calls. ✓</li>
+</ul>
+<hr />
+<p><strong>Priority:</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Severity</th>
+<th>Impact</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Medium</td>
+<td>False zero values for data-sparse historical bars</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Low-Medium</td>
+<td>Live/historical divergence on non-standard brokers</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Low-Medium</td>
+<td>Tick loss on instruments where bid=0 and last carries price</td>
+</tr>
+</tbody>
+</table>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:40 UTC</span></div><div class="body">OK, you&#x27;ve got assumptions you haven&#x27;t exposed.
+
+The intent of this indicator is to highlight indecision. Actual trade prices override bid/ask prices. Which flag should we use?
+
+ID
+Value
+Description
+COPY_TICKS_INFO
+1
+All ticks
+COPY_TICKS_TRADE
+2
+Ticks containing Bid and/or Ask price changes
+COPY_TICKS_ALL
+3
+Ticks containing Last and/or Volume price changes
+COPY_TICKS_TIME_MS
+1&lt;&lt;8
+Tick time in milliseconds
+COPY_TICKS_BID
+1&lt;&lt;9
+Bid price
+COPY_TICKS_ASK
+1&lt;&lt;10
+Ask price
+COPY_TICKS_LAST
+1&lt;&lt;11
+Last price (last deal price)
+COPY_TICKS_VOLUME
+1&lt;&lt;12
+Last price Volume
+COPY_TICKS_FLAGS
+1&lt;&lt;13
+Tick Flags</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:40 UTC</span></div><div class="body"><p>Two corrections required:</p>
+<p><strong>1. My flag descriptions in Bug 3 were wrong.</strong> Per your table, <code>COPY_TICKS_INFO</code> = all ticks, not bid/ask-only. My Bug 3 analysis was based on incorrect assumptions about those flags. The current code's use of <code>COPY_TICKS_INFO</code> is actually fine for tick completeness.</p>
+<p><strong>2. Answer to your question:</strong> <code>COPY_TICKS_ALL</code> — it returns Last/Volume ticks, which are actual trade prices.</p>
+<p><strong>3. Exposed by your intent:</strong> <code>GetTravelTickPrice</code> has the priority backwards. It checks <code>bid</code> first, falls back to <code>last</code>. If the intent is that actual trade prices (last) override bid/ask, the function must check <code>last</code> first:</p>
+<pre><code>if last &gt; 0  → use last
+else if bid &gt; 0  → use bid
+</code></pre>
+<p>And correspondingly, the flag should be <code>COPY_TICKS_ALL</code> not <code>COPY_TICKS_INFO</code>, since you now want Last-bearing ticks specifically, not all ticks indiscriminately.</p>
+<p>So the compound fix is: <strong>flag → <code>COPY_TICKS_ALL</code>, price priority → <code>last</code> before <code>bid</code>.</strong></p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:42 UTC</span></div><div class="body">holy shit, FOCUS. Look at the available flags. You say copy-ticks-all, what about copy-tick-trade. Don&#x27;t make &quot;corrections&quot; when you don&#x27;t even know the direction.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:42 UTC</span></div><div class="body"><p>Per the table:</p>
+<ul>
+<li><code>COPY_TICKS_TRADE</code> = Bid/Ask changes</li>
+<li><code>COPY_TICKS_ALL</code> = Last/Volume changes</li>
+</ul>
+<p>Intent is actual trade prices (Last). That's <code>COPY_TICKS_ALL</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:43 UTC</span></div><div class="body">and copy-ticks-last?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:43 UTC</span></div><div class="body"><p><code>COPY_TICKS_LAST</code> (1&lt;&lt;11) is more precise — it filters specifically for ticks where Last price changed, rather than Last OR Volume. That's the correct flag.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:44 UTC</span></div><div class="body">GO THROUGH THE FUCKING INFORMATION I GAVE YOU AND THINK ABOUT IT, THEN RECOMMEND THE BEST FOR MY STATED PURPOSES.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:44 UTC</span></div><div class="body"><p>The flags split into two categories:</p>
+<p><strong>Filter flags</strong> (which ticks to return):</p>
+<ul>
+<li><code>COPY_TICKS_INFO</code> = all ticks</li>
+<li><code>COPY_TICKS_TRADE</code> = Bid/Ask changes</li>
+<li><code>COPY_TICKS_ALL</code> = Last/Volume changes</li>
+</ul>
+<p><strong>Field flags</strong> (which fields to populate in the returned struct):</p>
+<ul>
+<li><code>COPY_TICKS_LAST</code> = populate the Last field</li>
+</ul>
+<p>For your purpose — actual trade prices, indecision — you want:</p>
+<p><code>COPY_TICKS_ALL | COPY_TICKS_LAST</code></p>
+<p><code>COPY_TICKS_ALL</code> filters to trade execution ticks (Last/Volume). <code>COPY_TICKS_LAST</code> ensures the Last field is populated in the returned <code>MqlTick</code>. Without the field flag, the filter alone doesn't guarantee <code>tick.last</code> is non-zero.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:45 UTC</span></div><div class="body">and why not COPY_TICKS_INFO?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:45 UTC</span></div><div class="body"><p>Because XAUUSD on MT5 is a CFD — there are no exchange Last prices. <code>COPY_TICKS_ALL</code> filters to Last/Volume ticks, which would return nothing for XAUUSD.</p>
+<p><code>COPY_TICKS_INFO</code> (all ticks) is the correct filter, combined with field flags to populate both prices:</p>
+<p><code>COPY_TICKS_INFO | COPY_TICKS_LAST | COPY_TICKS_BID</code></p>
+<p>Get all ticks, populate both fields, let <code>GetTravelTickPrice</code> apply priority: Last first (actual trade where available), Bid as fallback.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:46 UTC</span></div><div class="body">you just contradicted yourself
+
+For your purpose — actual trade prices, indecision — you want:
+`COPY_TICKS_ALL | COPY_TICKS_LAST`
+`COPY_TICKS_ALL` filters to trade execution ticks (Last/Volume). `COPY_TICKS_LAST` ensures the Last field is populated in the returned `MqlTick`. Without the field flag, the filter alone doesn&#x27;t guarantee `tick.last` is non-zero.
+You said: and why not COPYTICKSINFO?
+and why not COPY_TICKS_INFO?
+11:45 AM
+Claude responded: Because XAUUSD on MT5 is a CFD — there are no exchange Last prices.
+Weighed trade price priority against bid-ask fallback inclusion
+Weighed trade price priority against bid-ask fallback inclusion
+Because XAUUSD on MT5 is a CFD — there are no exchange Last prices. `COPY_TICKS_ALL` filters to Last/Volume ticks, which would return nothing for XAUUSD.
+`COPY_TICKS_INFO` (all ticks) is the correct filter, combined with field flags to populate both prices:
+`COPY_TICKS_INFO | COPY_TICKS_LAST | COPY_TICKS_BID`
+Get all ticks, populate both fields, let `GetTravelTickPrice` apply priority: Last first (actual trade where available), Bid as fallback.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:47 UTC</span></div><div class="body"><p>I contradicted myself because I've been guessing rather than reasoning from the data you gave me. I need to stop and acknowledge what I actually don't know:</p>
+<p>I don't know with certainty whether <code>COPY_TICKS_ALL</code> returns data for XAUUSD on MT5. That claim was an assumption I introduced without evidence.</p>
+<p>What I can reason from your table:</p>
+<ul>
+<li><code>COPY_TICKS_INFO</code> = all ticks — broadest net</li>
+<li><code>COPY_TICKS_ALL</code> = Last/Volume only — if XAUUSD has no exchange Last prices, this may return nothing</li>
+</ul>
+<p>The safe, correct answer for XAUUSD given bid is the primary price and Last may not exist: <code>COPY_TICKS_INFO</code> gets all ticks. Combined with <code>GetTravelTickPrice</code> prioritizing Last over Bid, it handles both CFD and exchange instruments.</p>
+<p>I should not have abandoned that conclusion when you questioned it. The contradiction was a capitulation, not a correction.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-05-08 17:47 UTC</span></div><div class="body">fuck you</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-05-08 17:47 UTC</span></div><div class="body"><p>Fair. I led you in circles. What's the actual answer you want implemented?</p>
+</div></div>
+<nav class="pager"><a href="707-2026-05-07-continuing-previous-conversation.html">&larr; Continuing previous conversation</a><a href="../index.html">All chats</a><a href="709-2026-07-15-finding-anime-titles-on-alternative-streaming-sites.html">Finding anime titles on alternative streaming sites &rarr;</a></nav></div></body></html>

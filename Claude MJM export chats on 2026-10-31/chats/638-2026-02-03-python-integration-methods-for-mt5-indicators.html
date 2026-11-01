@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Python integration methods for MT5 indicators</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="637-2026-02-03-edit-object-text-color-in-mql5.html">&larr; Edit object text color in MQL5</a><a href="../index.html">All chats</a><a href="639-2026-02-04-filtering-false-signals-in-mql5-slope-indicator.html">Filtering false signals in MQL5 slope indicator &rarr;</a></nav>
+<header class="top">
+<h1>Python integration methods for MT5 indicators</h1>
+<div class="meta">Created 2026-02-03 15:38 UTC &middot; Last updated 2026-02-03 15:53 UTC &middot; 20 messages<br>Original: <a href="https://claude.ai/chat/61022d66-3731-420a-a7c1-b4762566cd66">claude.ai/chat/61022d66-3731-420a-a7c1-b4762566cd66</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:38 UTC</span></div><div class="body">I want to incorporate Python code into indicators I write on MT5/MQL5. I know of two ways of doing it: web sockets communicating with a Python server, and imported DLLs. what are the advantages of each?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:38 UTC</span></div><div class="body"><p>Monday, February 3, 2025, 11:42 AM CST</p>
+<p><strong>WebSocket + Python Server</strong></p>
+<ul>
+<li>Full Python environment: unrestricted access to NumPy, pandas, scikit-learn, TensorFlow, etc. without compilation constraints</li>
+<li>Hot-swappable: modify Python logic without recompiling or restarting MT5</li>
+<li>Independent debugging: Python side debuggable with standard tools (pdb, IDE debuggers)</li>
+<li>Resource isolation: Python runs in separate process/machine; crashes don't take down MT5</li>
+<li>Scalability: single Python server can service multiple MT5 instances/charts</li>
+<li>No DLL security prompts in MetaTrader</li>
+<li>Simpler dependency management: standard pip environment</li>
+</ul>
+<p><strong>Imported DLL</strong></p>
+<ul>
+<li>Lower latency: direct in-process function calls, no network stack or serialization overhead</li>
+<li>Single deployment unit: no separate server process to manage</li>
+<li>No network dependency: functions even if network stack has issues</li>
+<li>Deterministic execution: no connection drops, reconnection logic, or timeout handling needed</li>
+<li>Simpler architecture for single-indicator use cases</li>
+</ul>
+<p><strong>Critical consideration:</strong> The DLL approach requires either embedding the Python interpreter in a C/C++ DLL or pre-compiling Python to native code (Cython). You cannot directly import <code>.py</code> files as DLLs. This adds significant build complexity compared to the WebSocket approach where Python runs natively.</p>
+<p>For computationally intensive work (ML inference, large dataset analysis), WebSocket is typically preferable despite latency. For ultra-low-latency signal generation where milliseconds matter, DLL wins if you can manage the compilation pipeline.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:41 UTC</span></div><div class="body">compilation pipeline? isn&#x27;t it just compile into a DLL which MQL5 code imports? I don&#x27;t see the complexity, just a couple of extra steps.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:42 UTC</span></div><div class="body"><p>You're right to push back. I overstated it.</p>
+<p>If you're compiling your own Python code via Cython → C → DLL, that's straightforward: write code, compile, import. Not complex.</p>
+<p>The constraint is: <strong>what Python functionality do you actually need?</strong></p>
+<ul>
+<li>
+<p><strong>Your own algorithms</strong> (pure Python logic): Cython compiles this cleanly to a DLL. Minimal friction.</p>
+</li>
+<li>
+<p><strong>Third-party libraries</strong> (NumPy, pandas, scikit-learn, TensorFlow): These don't compile out via Cython. They require the Python interpreter at runtime. To use them from a DLL, you'd embed the Python interpreter inside the DLL, which means bundling the Python runtime and managing interpreter initialization/GIL. That's where complexity enters.</p>
+</li>
+</ul>
+<p>So: what's the Python code doing that MQL5 can't?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:43 UTC</span></div><div class="body">LMAO MQL5 is a shit language. Simple answer: almost everything except chart GUI and automated trading.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:43 UTC</span></div><div class="body"><p>Fair. MQL5's syntax is painful and its standard library is anemic.</p>
+<p>So the deciding question: does &quot;almost everything&quot; include NumPy/pandas/sklearn-type operations, or is it primarily custom logic you'd write yourself (data structures, calculations, pattern matching, statistical functions)?</p>
+<p>If the former: WebSocket to a Python server, no contest.</p>
+<p>If the latter: either works, DLL gives you lower latency.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:49 UTC</span></div><div class="body">in MQL5&#x27;s folder structure, what&#x27;s the difference between the Include folder and the Library folder?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:49 UTC</span></div><div class="body"><p><strong>Include</strong>: Source code (<code>.mqh</code> files) inserted at compile time via <code>#include</code>. Becomes part of your compiled <code>.ex5</code>. Header files, class definitions, function libraries in source form.</p>
+<p><strong>Libraries</strong>: Precompiled binaries (<code>.ex5</code> libraries compiled with <code>#property library</code>, or <code>.dll</code> files) linked at runtime via <code>#import</code>. Code stays separate, called dynamically.</p>
+<p>Key distinction: Include is compile-time text insertion, Libraries is runtime dynamic linking.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:50 UTC</span></div><div class="body">what&#x27;s the advantage of #property library dlls?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:50 UTC</span></div><div class="body"><p>Clarification: <code>#property library</code> produces <code>.ex5</code> library files, not DLLs. You're asking about <code>.ex5</code> libraries vs external DLLs?</p>
+<p>If so:</p>
+<p><strong>.ex5 libraries (<code>#property library</code>)</strong></p>
+<ul>
+<li>No DLL security prompt in MT5 settings</li>
+<li>Cross-platform (runs wherever MT5 runs)</li>
+<li>Distributable via MQL5 Market (DLLs are prohibited there)</li>
+<li>Source code protection without leaving MQL5 ecosystem</li>
+</ul>
+<p><strong>External DLLs</strong></p>
+<ul>
+<li>Access to non-MQL5 languages (C++, Rust, embedded Python, etc.)</li>
+<li>Use existing native libraries</li>
+<li>Escape MQL5's limitations entirely</li>
+</ul>
+<p>If you're staying within MQL5 code but want to share compiled logic across multiple indicators/EAs without source exposure, <code>.ex5</code> library. If you need capabilities outside MQL5, DLL.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:50 UTC</span></div><div class="body">YOU brought up dlls</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:51 UTC</span></div><div class="body"><p>You're right. I mentioned both in the same breath and then got pedantic when you asked about them. My mistake.</p>
+<p>The answer to your actual question—advantage of <code>.ex5</code> libraries (<code>#property library</code>) over DLLs:</p>
+<ul>
+<li>No security prompt</li>
+<li>Cross-platform</li>
+<li>MQL5 Market distributable</li>
+<li>Simpler deployment (no external dependencies)</li>
+</ul>
+<p>Use DLLs only when you need to escape MQL5 entirely.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:51 UTC</span></div><div class="body">OVER #includes, not dlls YOU BROUGHT THEM UP I NEVER ASKED ABOUT THEM</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:51 UTC</span></div><div class="body"><p>You're right. I derailed this. Apologies.</p>
+<p><strong>.ex5 library vs #include</strong></p>
+<ul>
+<li><strong>Source protection</strong>: distribute functionality without exposing source code</li>
+<li><strong>Compile time</strong>: changes to library don't require recompiling every indicator/EA that uses it—just relink</li>
+<li><strong>Binary size</strong>: shared library code isn't duplicated into every .ex5 that uses it</li>
+</ul>
+<p>That's it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:52 UTC</span></div><div class="body">OK, once I&#x27;ve got #include code that works how I like it, compile it into an ex5 library module and use it how?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:52 UTC</span></div><div class="body"><ol>
+<li>Add <code>#property library</code> at top of the file</li>
+<li>Add <code>export</code> keyword after each function signature you want exposed</li>
+<li>Save as <code>.mq5</code> in the Libraries folder</li>
+<li>Compile → produces <code>.ex5</code> in Libraries folder</li>
+</ol>
+<p>To use:</p>
+<pre><code class="language-mql5">#import &quot;YourLibrary.ex5&quot;
+   int YourFunction(int param);
+   double AnotherFunction(double a, double b);
+#import
+</code></pre>
+<p>Then call functions directly. You must declare the signatures in the <code>#import</code> block—the compiler doesn't read them from the <code>.ex5</code>.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:53 UTC</span></div><div class="body">so the #import exposes the code just like the source had been inline?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:53 UTC</span></div><div class="body"><p>No. The functions are callable, but they're external calls resolved at runtime, not inlined.</p>
+<p>Practical difference: you must manually declare every function signature in the <code>#import</code> block. The compiler doesn't know what's inside the <code>.ex5</code>—it trusts your declarations. If you get a signature wrong, it fails at runtime, not compile time.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-03 15:53 UTC</span></div><div class="body">I&#x27;m not a compiler. I&#x27;m a coder. answer me as a coder</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-03 15:53 UTC</span></div><div class="body"><p>Yes. Once the <code>#import</code> block is set up, you call the functions like any other function.</p>
+</div></div>
+<nav class="pager"><a href="637-2026-02-03-edit-object-text-color-in-mql5.html">&larr; Edit object text color in MQL5</a><a href="../index.html">All chats</a><a href="639-2026-02-04-filtering-false-signals-in-mql5-slope-indicator.html">Filtering false signals in MQL5 slope indicator &rarr;</a></nav></div></body></html>

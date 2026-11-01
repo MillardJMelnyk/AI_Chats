@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Debugging indicator code changes</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="676-2026-02-25-untitled.html">&larr; Untitled</a><a href="../index.html">All chats</a><a href="678-2026-02-26-fix-opposite-arrows-and-signal-timing-in-mq5-indicator.html">Fix opposite arrows and signal timing in MQ5 indicator &rarr;</a></nav>
+<header class="top">
+<h1>Debugging indicator code changes</h1>
+<div class="meta">Created 2026-02-26 00:57 UTC &middot; Last updated 2026-02-26 02:08 UTC &middot; 20 messages<br>Original: <a href="https://claude.ai/chat/972f87f9-e116-41e0-af6c-5479d0b12069">claude.ai/chat/972f87f9-e116-41e0-af6c-5479d0b12069</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 00:57 UTC</span></div><div class="body">Here are all the changes we made to my indicator in another chat. Not all of them are working. Wait, I&#x27;ve got more to say after you digest this. I&#x27;ve attached the code.<p class="note">[File attached: TEMA_EMA_Trigger_MJM.mq5 &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 00:58 UTC</span></div><div class="body"><p>Wednesday, February 25, 2026, ~Current Time, CST</p>
+<p>Reading the file now.</p>
+<p>File digested. 2,242 lines across the full TEMA/EMA cocked-trigger indicator with trade simulation and spike detection module. I have the complete picture of the architecture: OnInit, OnCalculate main loop, cocking logic, aggressive/non-aggressive trigger paths, spike detection (live intra-bar + historical), provisional signal management, backstop guarantee, dynamic blackout, CSV debug, and arrow repositioning.</p>
+<p>Ready for what's next.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:04 UTC</span></div><div class="body">MOSTLY historical processing is working well. There one case where the price is wildly wrong, see image. that blue bar is good for a signal, but the signal should have been just above the blue EMA line where price crossed it. (image 1)
+
+The other problem is live bar processing. Whacked out. Disappearing buffer arrows, orphaned object arrows, and during live processing it even puts out both short and long arrows on the same bar. (image 2) And then those were removed, leaving the orphaned short AND long object arrows on the same bar, with a signal on the next bar... which also later disappeared. (image 3)
+
+I think we&#x27;ve got an indexing problem somewhere on live bar processing that&#x27;s removing good data from the buffer for some reason.
+
+Find the bugs.<p class="note">[File attached: 1772067531302_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1772067651923_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1772067841084_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:07 UTC</span></div><div class="body"><p>I've traced through the logic. There are three bugs, two of which compound to create the live-bar chaos.</p>
+<hr />
+<p><strong>Bug 1: <code>isNewBar</code> wipes confirmed provisional's buffer arrows, then backstop re-fires on the same bar</strong></p>
+<p>This is the primary live-bar bug. The sequence:</p>
+<ol>
+<li>Live tick N: provisional signal (e.g., LONG) fires on bar X. Buffer arrow set, object arrow created.</li>
+<li>New bar arrives: <code>isNewBar = true</code>, <code>rates_total</code> increments. Lines 1464–1474 <strong>confirm</strong> the provisional on bar X. <code>g_lastSignalBar = X</code>, <code>g_isCocked = false</code>.</li>
+<li>The signal loop starts at <code>signalStart = X</code> (i.e., <code>prev_calculated - 1</code>), processing both bar X and bar X+1.</li>
+<li><strong>Line 1531–1535</strong>: Because <code>isNewBar</code> is true, <code>BufferArrowBuy[X]</code> and <code>BufferArrowSell[X]</code> are blanked to <code>EMPTY_VALUE</code>. The confirmed signal's buffer arrows are destroyed.</li>
+<li>Bar X is re-processed through signal logic. Since <code>g_isCocked</code> was reset to false at line 1470, no MA trigger fires. But a raw cross on that bar hits the <strong>backstop</strong> at line 1886–1890, which bypasses blackout (line 1907–1908). A backstop signal fires — potentially in the <strong>opposite direction</strong> from the confirmed provisional.</li>
+<li>Result: orphaned object arrow from the original LONG + new SHORT arrows from the backstop, or vice versa. Both directions on the same bar.</li>
+</ol>
+<p><strong>Root cause</strong>: The arrow-clear at lines 1531–1535 doesn't protect the bar that was just confirmed, and the backstop has no awareness that the bar already has a committed signal.</p>
+<hr />
+<p><strong>Bug 2: Spike signal doesn't revert active provisional</strong></p>
+<p>Lines 1872–1883 (provisional management) only run when <code>signalCandidate == SIGNAL_NONE</code>:</p>
+<pre><code class="language-cpp">if(InpEnableTradeSim &amp;&amp; g_provisionalSignal &amp;&amp; signalCandidate == SIGNAL_NONE &amp;&amp; !g_spikeActive)
+</code></pre>
+<p>When a spike fires on the live bar while a provisional MA signal is active, <code>signalCandidate != SIGNAL_NONE</code> (it's the spike signal), so the revert block is skipped entirely. The old provisional's buffer arrows and object arrow persist alongside the new spike signal's arrows — both LONG and SHORT on the same bar.</p>
+<hr />
+<p><strong>Bug 3: Historical spike arrow placement (Image 1)</strong></p>
+<p>For a LONG signal, the object arrow repositioning at lines 2124–2128 does:</p>
+<pre><code class="language-cpp">double reference = MathMin(BufferKCLower[iIX], triggerLine);
+reference = MathMin(reference, low[iIX]);
+arrowPrice = reference - arrowOffsetPrice;
+</code></pre>
+<p>For a spike-triggered LONG signal, the KC Lower can be far below the actual price action. With <code>InpObjectArrowOffset = 3</code> in price units, the arrow lands at roughly KC Lower − 3.0, which in your Image 1 is ~5194 — far below the EMA crossing zone around 5205–5206. The repositioning logic doesn't account for spike signals needing placement relative to the trigger area rather than the KC envelope extremes.</p>
+<hr />
+<p><strong>Summary of fixes needed</strong> (plain language, no code yet):</p>
+<ol>
+<li>
+<p><strong>Don't clear buffer arrows on the just-confirmed provisional bar.</strong> Either skip the clear for <code>g_lastSignalBar</code>, or advance <code>signalStart</code> past the confirmed bar so it isn't re-processed at all.</p>
+</li>
+<li>
+<p><strong>Block the backstop from firing on a bar that already has a committed signal.</strong> The simplest guard: if <code>iIX == g_lastSignalBar</code>, skip backstop generation.</p>
+</li>
+<li>
+<p><strong>Before committing a spike signal, revert any active provisional.</strong> Insert a provisional revert check before the spike signal candidate is set at lines 1733–1743.</p>
+</li>
+<li>
+<p><strong>For spike-triggered signals, use a different arrow placement reference</strong> — e.g., the spike signal price or the trigger line, rather than KC Lower/Upper.</p>
+</li>
+</ol>
+<p>Want me to elaborate on any of these, or shall we discuss the fix approach and then GO?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:17 UTC</span></div><div class="body">Bug 1:
+`isNewBar` wipes confirmed provisional&#x27;s buffer arrows,
+
+That&#x27;s what it should do, right, because the provisional state is limited to the live bar.
+The last round of changes supposedly neutralized the backstop logic even though we left it in there.
+
+Root cause: The arrow-clear at lines 1531–1535 doesn&#x27;t protect the bar that was just confirmed, and the backstop has no awareness that the bar already has a committed signal.
+
+that matches what I&#x27;m seeing.
+
+Bug 2:
+yeah that needs to be fixed.
+
+Bug 3:
+That makes no sense. Is this about the blue bar where the signal was placed near its close? You&#x27;re talking about a bar wheret he arrow lands at roughly KC Lower, far below the EMA crossing zone. Clearly you&#x27;re talking about a different bar. Look again and rethink this one.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:18 UTC</span></div><div class="body"><p>You're right, I was looking at the wrong thing. Let me re-examine Image 1.</p>
+<p>The green arrow on the tall blue bar — the signal price is near the <strong>close</strong> of that bar (top of the candle, ~5208), but it should be just above the aqua EMA line where price crossed it (~5205). That's a ~3 point error on the execution price.</p>
+<p><strong>Bug 3 restated: The backstop wasn't actually neutralized.</strong></p>
+<p>Lines 1885–1890:</p>
+<pre><code class="language-cpp">if(rawCross &amp;&amp; signalCandidate == SIGNAL_NONE &amp;&amp; !g_spikeActive)
+{
+   isBackstopSignal = true;
+   signalCandidate = rawCrossUp ? SIGNAL_LONG : SIGNAL_SHORT;
+}
+</code></pre>
+<p>No guard for aggressive mode. No disable flag. It fires unconditionally whenever there's a raw cross with no signal candidate. That bar has a raw cross up (TEMA crosses above EMA). If the aggressive cocking/trigger logic didn't produce a candidate for whatever reason, the backstop grabs it. And then at lines 2026–2029:</p>
+<pre><code class="language-cpp">if(isProvisional || isBackstopSignal)
+{
+   execPrice = close[iIX];
+}
+</code></pre>
+<p>Backstop signals always use <code>close[iIX]</code> as execution price instead of <code>EMA + sensitivity</code>. So the signal lands at the bar's close (~5208) instead of at the EMA crossing zone (~5205).</p>
+<p>The backstop was supposed to be dead in aggressive mode but it's still fully active and stealing signals from the aggressive trigger path, then pricing them wrong.</p>
+<p>So three bugs confirmed:</p>
+<ol>
+<li><strong>Arrow-clear on confirmed provisional bar + backstop re-fires on it</strong> (live bar chaos)</li>
+<li><strong>Spike signal doesn't revert active provisional</strong> (both-direction arrows)</li>
+<li><strong>Backstop not neutralized in aggressive mode</strong> (wrong execution price on historical bars)</li>
+</ol>
+<p>Ready to discuss fix approach when you are.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:27 UTC</span></div><div class="body">OK, GO on all three</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:28 UTC</span></div><div class="body"><p><strong>Fix 1a</strong>: Protect confirmed provisional bar from arrow wipe.</p>
+<p><strong>Fix 1b + Fix 3</strong>: Disable backstop in aggressive mode; block on committed bar for non-aggressive.</p>
+<p><strong>Fix 2</strong>: Revert active provisional before spike signal commits.</p>
+<p>Verifying all three changes in context:</p>
+<p>Three changes, three lines each or less:</p>
+<p><strong>Line 1531</strong>: Arrow-clear now skips <code>g_lastSignalBar</code>, preserving confirmed provisional arrows.</p>
+<p><strong>Lines 1735–1737</strong>: Spike signal path now reverts any active provisional before taking over.</p>
+<p><strong>Line 1890</strong>: Backstop gated by <code>!isAggressive</code> (kills it in aggressive mode) and <code>iIX != g_lastSignalBar</code> (protects committed bars in non-aggressive mode).</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:41 UTC</span></div><div class="body">I think that worked, but we still have a problem, dunno if we just introduced it or what.
+
+See image. I watched the tall blue bar form from where it crossed the trigger line, where the signal arrow was correctly placed. I watched because it beeped as it crossed it, correctly, but the whole time the bar developed, no buffer arrow appeared, not until AFTER the new bar tick came in. So, visually it looked like it retroactively placed the arrow way lower than where the bar&#x27;s close was at the point the arrow appeared. The beep proves that the signal was detected, but there&#x27;s no reason why the buffer update should lag until the new bar tick comes in. All ended well, but that needs to be fixed and might be related to other problems. this has been a tricky one to get right.<p class="note">[File attached: 1772070049222_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:44 UTC</span></div><div class="body"><p>Looking at this more carefully — the alarm proves the signal fired and HandleSignalEvent ran (setting the buffer arrow). But the arrow was invisible throughout the bar, then appeared on the new bar tick. That means the provisional is being <strong>reverted on the very next tick</strong> after firing, clearing the arrow.</p>
+<p>The culprit is lines 1876–1877:</p>
+<pre><code class="language-cpp">if(useAggressive)
+   invalidated = !conditionMet;
+</code></pre>
+<p><code>conditionMet</code> is re-evaluated every tick using <code>close[iIX]</code> (the current bid). On a volatile bar, the current price oscillates around the EMA+sensitivity threshold. One tick it's above → signal fires, alarm plays, arrow set. Next tick it dips below by a fraction → <code>conditionMet = false</code> → <code>invalidated = true</code> → <code>RevertProvisionalSignal</code> → arrow gone. Price goes back above → new provisional fires, but the duplicate-direction guard at line 1981 kills it because <code>g_currentTrade.direction</code> now matches from the new signal's HandleSignalEvent... actually no, the revert restores the snapshot. So it re-fires. But the arrow flickers faster than the chart renders.</p>
+<p>Then on the new bar tick, if <code>g_provisionalSignal</code> happens to be true at that moment, lines 1464–1474 confirm it and the arrow sticks.</p>
+<p>The fix: aggressive provisionals should not be invalidated by momentary tick-level price fluctuation. The correct invalidation for aggressive mode is the <strong>uncock condition</strong> — price crossing back through <code>g_cockLevel</code> (the OPEN reference that originally armed the trigger). That's the meaningful reversal, not <code>close</code> bobbing around the sensitivity threshold.</p>
+<p>If that reasoning tracks, GO and I'll make the change.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:47 UTC</span></div><div class="body">wrong. You&#x27;re guessing. I watched it. You saw how tall it was. As soon as close rose sufficiently that it STOPPED crossing back over the threshold, that&#x27;s when the arrow should have &quot;stuck&quot; and I&#x27;ve watched the code when it was working, the arrow flashes on and off the screen, very visible. So it&#x27;s not what you said, because there was NEVER a visible arrow at all until AFTER the bar closed.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:50 UTC</span></div><div class="body"><p>You're right, I was guessing. I don't have visibility into <code>HandleSignalEvent</code> — that's in <code>TradeSimulation_MJM.mqh</code>. The alarm proves the signal fires, but I can't confirm from what I see here whether HandleSignalEvent actually sets the buffer arrow for provisional signals, or if there's a condition inside it that skips the buffer write.</p>
+<p>I need to see <code>HandleSignalEvent</code> in the include file. Can you upload <code>TradeSimulation_MJM.mqh</code>?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 01:51 UTC</span></div><div class="body">here it is<p class="note">[File attached: TradeSimulation_MJM.mqh &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 01:58 UTC</span></div><div class="body"><p>OK, I've read it. HandleSignalEvent does set the buffer arrow (lines 554–557) and creates the object arrow + plays the alarm in the same call. The buffer IS being written.</p>
+<p>Here's what happened: <strong>our Fix 3 caused this.</strong></p>
+<p>Before Fix 3, the backstop fired in aggressive mode. When the cocking trigger produced a signal on the live bar, it went provisional. But the backstop ALSO fired on the same bar (raw cross detected, no signal candidate consumed it yet... actually no, the backstop only fires when <code>signalCandidate == SIGNAL_NONE</code>). Let me reconsider.</p>
+<p>The actual sequence on the live bar before Fix 3:</p>
+<ol>
+<li>Cocking trigger fires → <code>signalCandidate = SIGNAL_LONG</code> → signal fires as <strong>provisional</strong> (because <code>!isNewBar</code>). Buffer arrow set. Object arrow created. Alarm plays.</li>
+<li>Next tick: <code>conditionMet</code> flickers false → provisional reverted → arrow gone.</li>
+<li>Next tick: <code>conditionMet</code> true → re-fires as provisional → arrow set → visible flicker.</li>
+</ol>
+<p>That's the flickering you've seen before. It works because the provisional re-fires.</p>
+<p>After Fix 3, the behavior should be identical — the backstop was only reachable when <code>signalCandidate == SIGNAL_NONE</code>, and when <code>conditionMet</code> is true, <code>signalCandidate</code> is already set, so the backstop never had a chance to fire anyway.</p>
+<p>So Fix 3 is NOT the cause. I was wrong.</p>
+<p>The real question: why is the buffer arrow set (alarm proves HandleSignalEvent ran, line 555 executed) but never visible? The value persists (it shows up when the bar closes). Something is clearing it on every subsequent tick and it never re-fires.</p>
+<p>The only thing that clears the buffer arrow on subsequent ticks is <code>RevertProvisionalSignal</code>. For that to run every tick, <code>conditionMet</code> must be false every tick after the first fire. But you watched the price stay above the threshold.</p>
+<p>I need to see what's actually happening tick-by-tick. Can you enable <code>InpEnableDiagPrints</code> and reproduce this? Specifically I need to see whether DIAG#8 (SIGNAL_FIRED) appears more than once during the bar, and whether the provisional management revert is running between fires.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 02:01 UTC</span></div><div class="body">OK, let&#x27;s try something else first, because I established in another chat that there is no use case whatsoever for the &quot;backstop&quot; in aggressive mode. So what do we need to do to make sure it isn&#x27;t involved at all in the agressive modes?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 02:01 UTC</span></div><div class="body"><p>Let me trace every place <code>isBackstopSignal</code> and backstop-related logic touches the flow.</p>
+<p>It's already dead. Line 1892 is the <strong>only</strong> place <code>isBackstopSignal</code> is set to <code>true</code>, and our fix at line 1890 gates it with <code>!isAggressive</code>. In aggressive mode, <code>isBackstopSignal</code> stays <code>false</code> for the entire loop iteration. Every downstream reference (lines 1911, 1930, 1937, 2009, 2030, 2136) just sees <code>false</code> — no effect.</p>
+<p>No other changes needed. The backstop is fully inert in aggressive mode.</p>
+<p>So the disappearing-buffer-arrow problem is something else. Back to that?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 02:02 UTC</span></div><div class="body">yeah</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 02:05 UTC</span></div><div class="body"><p>I've traced the full tick-by-tick flow and I need to narrow down which of two scenarios is happening, because the code path diverges based on one question I can't answer from the code alone.</p>
+<p><strong>After the signal fires provisionally on tick 1</strong>, on every subsequent tick:</p>
+<p><strong>Path A — <code>conditionMet</code> stays true:</strong> <code>signalCandidate = SIGNAL_LONG</code>, duplicate guard kills <code>signal</code> to <code>SIGNAL_NONE</code>, but the provisional management block is skipped (because <code>signalCandidate != SIGNAL_NONE</code>). Buffer arrow persists untouched. Arrow should be visible.</p>
+<p><strong>Path B — <code>conditionMet</code> flickers false:</strong> <code>signalCandidate = SIGNAL_NONE</code>, provisional management runs, <code>invalidated = !conditionMet = true</code>, <code>RevertProvisionalSignal</code> clears both buffer AND object arrows. Next tick if conditionMet is true again, it re-fires (snapshot restores prior state, duplicate guard passes). But the alarm only sounds once due to <code>InpAlarmBlackoutSec</code>. So you'd get cycling with no audible indication after the first beep.</p>
+<p>The question is whether <code>conditionMet</code> is flickering. For AGG_EMA mode:</p>
+<pre><code class="language-cpp">conditionMet = (liveClose &gt; emaVal + effectiveTriggerSensPrice);
+</code></pre>
+<p>On a rapidly rising bar, <code>emaVal</code> (BufferEMAofTEMA) is recalculated every tick from the live close. As price surges, EMA chases it. If the gap between close and EMA oscillates around the sensitivity threshold tick-to-tick, the provisional fires and reverts every other tick — invisible because it never survives two consecutive redraws.</p>
+<p>I can't confirm this without tick data. Can you enable <code>InpEnableDiagPrints</code> and reproduce? I specifically need to see whether the DIAG#8 SIGNAL_FIRED line appears more than once during a single bar, interleaved with provisional reverts.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-02-26 02:08 UTC</span></div><div class="body">I&#x27;m going to let this go for now. It&#x27;s cosmetic, doesn&#x27;t change firing, as long as you&#x27;re sure the buffer is updated when the object arrow appears and the alarm beeps, all is good. I have an EA that watches only the buy and sell buffers, so if a value comes through, it will fire a trade like it should. It doesn&#x27;t care if you can see the arrow on the chart when the indy is run standalone. Right now that&#x27;s what matters most.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-02-26 02:08 UTC</span></div><div class="body"><p>Confirmed. In <code>HandleSignalEvent</code>, <code>OpenTrade</code> creates the object arrow and plays the alarm (lines 416–419), then control returns and the buffer is written immediately after (lines 554–557). All three — object arrow, alarm, buffer write — happen in the same function call on the same tick. The buffer has the value the instant the alarm sounds.</p>
+<p>One thing to be aware of: if the provisional flickers (reverts then re-fires on subsequent ticks), the buffer value flickers with it. If your EA polls the buffer on a tick where the revert happened to clear it, it would see <code>EMPTY_VALUE</code>. Once the bar closes, Fix 1a guarantees the confirmed arrow stays in the buffer permanently. So the EA is safe if it reads on the confirming new-bar tick or later.</p>
+</div></div>
+<nav class="pager"><a href="676-2026-02-25-untitled.html">&larr; Untitled</a><a href="../index.html">All chats</a><a href="678-2026-02-26-fix-opposite-arrows-and-signal-timing-in-mq5-indicator.html">Fix opposite arrows and signal timing in MQ5 indicator &rarr;</a></nav></div></body></html>

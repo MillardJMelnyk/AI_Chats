@@ -1,0 +1,112 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Metatrader 5 strategy tester freezing on EA selection</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-13_analyzing-tick-data-for-wick-patterns-in-price-movements_0e6f9aa4.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_indicator-calculations-halting-after-trade-signals_8e9d2d5d.html">Next →</a></span></div><h1>Metatrader 5 strategy tester freezing on EA selection</h1><div class="meta">Created 2026-05-12 18:49 UTC · Last updated 2026-05-12 19:37 UTC · 37 messages<br>Original: <a href="https://claude.ai/chat/3caf833a-8f41-4597-a43c-4b3c300df59d">claude.ai/chat/3caf833a-8f41-4597-a43c-4b3c300df59d</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 18:49 UTC</div><p>I'm having trouble with Metatrader 5's "strategy tester". No matter what I do, when I drop down the list to select an EA or indicator to test, the entire platform freezes and I have to kill the process. I clear this once before but don't remember what I did. Suggestions? Research for the answer, don't give me fucking guesses.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 18:50 UTC</div><p>Let me also check if you mentioned the fix in a past conversation.</p>
+<p>No hit in our past conversations on the specific fix. Here's what the MQL5 forums document as confirmed fixes for strategy tester freezing/hanging (including at the dropdown stage):</p>
+<p><strong>Most likely culprit (and probably what you did last time):</strong> Delete the contents of <code>Tester/Cache</code>. One user's cache folder was 6GB, and deleting it resolved the issue.</p>
+<p><strong>Second most common fix:</strong> Delete <code>.log</code> files from the <code>Tester/logs</code> folder. One user had logs over 150MB and deleting them fixed it.</p>
+<p><strong>Nuclear option that's been confirmed working</strong> — a user on the MQL5 forum resolved persistent tester hangs by closing MT5 and removing tester profile <code>.ini</code> files from <code>MQL5/Profiles/Tester/</code>, symbol <code>.dat</code> files, trade <code>.dat</code> files, <code>.chr</code> and <code>.wnd</code> files from <code>MQL5/Profiles/</code>, renaming <code>tester.tpl</code>, clearing tick data, and clearing <code>Tester/cache/</code>.</p>
+<p><strong>Also worth trying:</strong><br />
+- Changing the access point/server in MT5 (lower-right corner, click the tiny bars next to the milliseconds and pick a different server).<br />
+- Closing both MetaEditor and MT5 completely, reopening, and recompiling — debug-version <code>.ex5</code> files can cause freezes.</p>
+<p>Start with clearing <code>Tester/Cache</code> and <code>Tester/logs</code>. That's the fix in the vast majority of reported cases and sounds like the kind of thing you'd do once and forget.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:05 UTC</div><p>none of that worked. I can run the ST on indicators found in the \MQL5\Indicators folder, but as soon as I try to open any of the subfolders within that folder, it hangs. I've run ST against indys located in subfolders for years. This problem only started happening in the last few weeks.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:06 UTC</div><p>Given the specific symptom — root-level indicators work, but opening any subfolder hangs — the tester is choking while enumerating/validating <code>.ex5</code> files inside those subfolders.</p>
+<p>A corrupt <code>.ex5</code> file can cascade — one failed compilation corrupts memory and causes other compiled files to become invalid too. The fix is to delete all affected <code>.ex5</code> files and restart Windows. MT5 tries to read/validate every <code>.ex5</code> in a folder when it populates the dropdown, so a single corrupt one in a subfolder will hang the enumeration.</p>
+<p>Given you've been compiling heavily in the last few weeks, the likely fix:</p>
+<ol>
+<li>Close MT5 and MetaEditor completely</li>
+<li>Go into your <code>MQL5\Indicators</code> subfolders and delete every <code>.ex5</code> file (your <code>.mq5</code> source files are untouched)</li>
+<li>Restart Windows (not just MT5 — the corrupt memory state can persist)</li>
+<li>Reopen MetaEditor and recompile your indicators</li>
+</ol>
+<p>If you want to narrow it down first instead of nuking all <code>.ex5</code> files, you could try opening subfolders one at a time in Windows Explorer and temporarily moving each folder's <code>.ex5</code> files out until you find which subfolder triggers the hang.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:10 UTC</div><p>I deleted every .ex5 in the platorm's \MQL5\ folder. I closed and opened MT5, opened the ST, saw the empty "Indicator:" box, dropped the list down (which of course was empty) and the platform froze just like before.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:11 UTC</div><p>That changes things completely. Since it freezes even with empty subfolders, it's not a file issue — it's the strategy tester UI itself. And your timeline ("last few weeks") lines up with a confirmed MT5 platform bug.</p>
+<p>Recent MT5 beta builds have a known strategy tester bug. A moderator on MQL5.com confirmed it and recommended downgrading to build 5430, the last stable official release. Build 5572 and subsequent builds were pushed to users and caused serious freezing issues, with multiple users reporting the platform became unusable. A moderator advised installing build 5430 and not restarting the terminal until the bugs are fixed.</p>
+<p>There's a Telegram channel with the last official release executables for downgrading: https://t.me/MT5Exe/6 — the channel provides the right exe for your CPU type (check your Journal log on startup to see if you're running AVX2 or X64).</p>
+<p>Check your current build number in Help → About. If it's anything past 5430, downgrade. After installing, don't let MT5 auto-update or you'll be right back in the same situation.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:12 UTC</div><p>don't make me do the work.</p>
+<p>give me exact steps to "downgrade" to the stable version.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:13 UTC</div><p>Here's the exact procedure:</p>
+<p><strong>Step 1 — Find your CPU variant.</strong> Open MT5, go to the Journal tab (in the Toolbox at the bottom). The very first lines when MT5 starts will say something like <code>MetaTrader 5 x64 build 5572 started (MetaQuotes Software Corp.) ... AVX2</code> or <code>X64</code>. Note whichever it says — AVX2 or X64. Also confirm your build is past 5430 while you're there.</p>
+<p><strong>Step 2 — Close MT5 completely.</strong> Close MetaEditor too if it's open.</p>
+<p><strong>Step 3 — Download build 5430.</strong> Go to https://t.me/MT5Exe/6 in a browser (you don't need a Telegram account to view it). Download the zip file that matches your CPU variant from Step 1.</p>
+<p><strong>Step 4 — Find your MT5 installation folder.</strong> Typically <code>C:\Program Files\MetaTrader 5\</code> (or wherever your broker installed it). You need the folder containing <code>terminal64.exe</code> and <code>metatester64.exe</code>.</p>
+<p><strong>Step 5 — Replace the exe files.</strong> Extract the zip from Step 3. Copy the exe files from the zip into your MT5 installation folder, overwriting the existing ones.</p>
+<p><strong>Step 6 — Restart MT5.</strong> You're now on build 5430.</p>
+<p><strong>Step 7 — Prevent it from happening again.</strong> Never connect to the MetaQuotes-Demo server, and never use Help → Check for Updates → Last Beta Version. Either of those will push a beta build back onto you.</p>
+<p>After this, recompile your indicators in MetaEditor and the strategy tester dropdown should work normally again.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:13 UTC</div><p>2026.05.12 13:13:14.574 Terminal    Pepperstone MetaTrader 5 x64 build 5833 started for Pepperstone Group Limited<br />
+2026.05.12 13:13:14.575 Terminal    Windows 11 build 26200, 8 x Intel Core i7-9700K  @ 3.60GHz, AVX2, 17 / 31 Gb memory, 200 / 930 Gb disk, UAC, GMT-6<br />
+2026.05.12 13:13:14.575 Terminal    C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\73B7A2420D6397DFF9014A20F1201F97<br />
+2026.05.12 13:13:16.964 Network '61511602': authorized on Pepperstone-Demo through NY1-O-Local (ping: 83.27 ms, build 5830)<br />
+2026.05.12 13:13:16.964 Network '61511602': previous successful authorization performed from 189.180.70.47 on 2026.05.12 22:10:23<br />
+2026.05.12 13:13:17.355 Network '61511602': terminal synchronized with Pepperstone Group Limited: 0 positions, 0 orders, 1713 symbols, 0 spreads<br />
+2026.05.12 13:13:17.355 Network '61511602': trading has been enabled - hedging mode</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:13 UTC</div><p>Build 5833, AVX2. Your MT5 data folder is <code>C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\73B7A2420D6397DFF9014A20F1201F97</code> — but the exe files won't be there, they'll be in the installation folder.</p>
+<p>Find where <code>terminal64.exe</code> lives. Run this in a Windows command prompt or PowerShell:</p>
+<pre><code>where /R &quot;C:\Program Files&quot; terminal64.exe
+</code></pre>
+<p>If that doesn't find it, try:</p>
+<pre><code>where /R &quot;C:\&quot; terminal64.exe
+</code></pre>
+<p>Then close MT5 completely, go to https://t.me/MT5Exe/6, grab the <strong>AVX2</strong> zip (build 5430), extract it, and overwrite the exe files in whatever folder that <code>where</code> command returned.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:14 UTC</div><p>C:\Program Files\Pepperstone MetaTrader 5\terminal64.exe</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:14 UTC</div><ol>
+<li>Close MT5</li>
+<li>Go to https://t.me/MT5Exe/6</li>
+<li>Download the <strong>AVX2</strong> zip</li>
+<li>Extract it — you'll get <code>terminal64.exe</code> and <code>metatester64.exe</code></li>
+<li>Copy both into <code>C:\Program Files\Pepperstone MetaTrader 5\</code>, overwrite when prompted (you may need to right-click → Run as Administrator on your file manager, or accept a UAC prompt, since it's in Program Files)</li>
+<li>Start MT5</li>
+<li>Confirm the Journal now says build 5430</li>
+<li>Recompile your indicators in MetaEditor (Ctrl+F7 or just open any .mq5 and hit F7)</li>
+<li>Try the strategy tester dropdown</li>
+</ol>
+<p>After that, don't use Help → Check for Updates → Last Beta Version, and don't connect to the MetaQuotes-Demo server, or you'll get pushed right back to a broken beta build.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:15 UTC</div><p>I can't, I'm on my PC and don't have the Telegram app it's trying to force me to use.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:15 UTC</div><p>There's a non-Telegram source. For people without access to Telegram, the same files are on MQL5's Algo Forge: https://forge.mql5.io/angevoyageur/MT5-Last-Official-Release/releases</p>
+<p>Good news — there are three stable builds available as direct downloads, no Telegram needed. Since you're AVX2:</p>
+<p><strong>Latest stable (try this first):</strong><br />
+https://forge.mql5.io/angevoyageur/MT5-Last-Official-Release/releases/download/Build.5660/MT5%205660%20AVX2.zip</p>
+<p><strong>Fallback if 5660 doesn't fix it:</strong><br />
+https://forge.mql5.io/angevoyageur/MT5-Last-Official-Release/releases/download/Build.5430/MT5_5430_AVX2.zip</p>
+<p>Same steps as before — close MT5, extract the zip, copy the exe files into <code>C:\Program Files\Pepperstone MetaTrader 5\</code>, overwrite. You're going from beta build 5833 down to stable 5660 (or 5430).</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:16 UTC</div><p>here's what I see</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:16 UTC</div><p>Click the <strong>► Downloads</strong> triangle to expand it — that's a collapsible section. The zip files are hidden behind it.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:16 UTC</div><p>Download <strong>MT5_5430_AVX2.zip</strong>. Then:</p>
+<ol>
+<li>Close MT5</li>
+<li>Extract the zip</li>
+<li>Copy the exe files into <code>C:\Program Files\Pepperstone MetaTrader 5\</code>, overwrite</li>
+<li>Start MT5, confirm Journal says build 5430</li>
+<li>Recompile your indicators, test the dropdown</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:17 UTC</div><p>why that one and not the X64 version?</p>
+<p>DO NOT FUCK WITH ME AND TELL ME TO TAKE ACTIONS BASED ON GUESSES!!!!</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:17 UTC</div><p>Not a guess. Your Journal log that you pasted earlier:</p>
+<pre><code>Windows 11 build 26200, 8 x Intel Core i7-9700K  @ 3.60GHz, AVX2, 17 / 31 Gb memory
+</code></pre>
+<p>MT5 is telling you it's running the AVX2 variant. That's why you download the AVX2 zip.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:19 UTC</div><p>Here's what I see in the .zip</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:19 UTC</div><p>All three files — <code>terminal64.exe</code>, <code>metatester64.exe</code>, and <code>MetaEditor64.exe</code>. Select all, copy them into <code>C:\Program Files\Pepperstone MetaTrader 5\</code>, overwrite all three.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:19 UTC</div><p>OK, just copy, no uninstall/reinstall?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:19 UTC</div><p>Correct. Just overwrite. Your settings, indicators, source files, profiles — everything stays intact. You're only replacing the three executables.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:23 UTC</div><p>done</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:23 UTC</div><p>Start MT5. Check the first line of the Journal — it should say build 5430. Let me know what it says.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:24 UTC</div><p>2026.05.12 13:23:59.316 Terminal    Pepperstone MetaTrader 5 x64 build 5430 started for Pepperstone Group Limited<br />
+2026.05.12 13:23:59.316 Terminal    Windows 11 build 26200, 8 x Intel Core i7-9700K  @ 3.60GHz, AVX2, 16 / 31 Gb memory, 200 / 930 Gb disk, UAC, GMT-6<br />
+2026.05.12 13:23:59.316 Terminal    C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\73B7A2420D6397DFF9014A20F1201F97<br />
+2026.05.12 13:24:02.029 LiveUpdate  new version build 5830 (IDE: 5830, Tester: 5830) is available<br />
+2026.05.12 13:24:02.292 Network '61511602': authorized on Pepperstone-Demo through NY1-O-Local (ping: 83.27 ms, build 5830)<br />
+2026.05.12 13:24:02.292 Network '61511602': previous successful authorization performed from 189.180.70.47 on 2026.05.12 22:13:17<br />
+2026.05.12 13:24:03.134 Network '61511602': terminal synchronized with Pepperstone Group Limited: 0 positions, 0 orders, 1713 symbols, 0 spreads<br />
+2026.05.12 13:24:03.134 Network '61511602': trading has been enabled - hedging mode</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:24 UTC</div><p>Build 5430, good. Two things:</p>
+<ol>
+<li>
+<p><strong>Do NOT accept that update</strong> — the <code>LiveUpdate: new version build 5830 is available</code> line means MT5 is trying to push you back to the broken beta. If a popup appears, click "Later" or just ignore it. Don't restart MT5 unnecessarily — when you do restart, it may auto-install the update. To prevent future beta pushes, never connect to the MetaQuotes-Demo server and never use Help → Check for Updates → Last Beta Version.</p>
+</li>
+<li>
+<p>Now recompile your indicators and try the strategy tester dropdown.</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:25 UTC</div><p>In my experience, closing and opening MT5 will force the update.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:26 UTC</div><p>You're right — MT5's auto-update system cannot be deactivated, and if you click "Later" it just installs automatically on the next restart.</p>
+<p>The working workaround is to block it with file permissions. Go to <code>%appdata%\MetaQuotes\WebInstall</code>, right-click the folder, select Properties → Security tab → Edit → select your user → check "Deny" on Write permission → Apply.</p>
+<p>That prevents MT5 from downloading updates into that folder. When there's nothing downloaded, there's nothing to install on restart.</p>
+<p>But first — test the strategy tester dropdown now while you're on 5430 and confirm it works before worrying about locking it down.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:27 UTC</div><p>this is all i see there</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:27 UTC</div><p>Those are the downloaded update packages (named <code>.png</code> but they're actually update files — MetaQuotes disguises them). Delete everything in that folder, then right-click the <strong>WebInstall</strong> folder itself → Properties → Security → Edit → select your user (Millard) → check <strong>Deny</strong> on <strong>Write</strong> → Apply.</p>
+<p>That prevents new updates from being downloaded. No downloads, nothing to install on restart.</p>
+<p>But go test the strategy tester dropdown first — confirm that build 5430 actually fixed your problem before you close MT5.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:29 UTC</div><p>that's it, just check that one box?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:30 UTC</div><p>Yes, but do the same for <strong>SYSTEM</strong> and <strong>Administrators</strong> too — MT5 may write under those contexts. Click each one in the list and check Deny on Write for all three. Then Apply.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:31 UTC</div><p>done, next?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:31 UTC</div><p>Test the strategy tester dropdown. Open ST, drop the indicator list, navigate into a subfolder.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-12 19:36 UTC</div><p>OK, I still get this message, but if I click "No", it still opens the platform and doesn't look like it's installing anything.2026.05.12 13:35:41.660   Terminal    Pepperstone MetaTrader 5 x64 build 5430 started for Pepperstone Group Limited<br />
+2026.05.12 13:35:41.660 Terminal    Windows 11 build 26200, 8 x Intel Core i7-9700K  @ 3.60GHz, AVX2, 16 / 31 Gb memory, 199 / 930 Gb disk, UAC, GMT-6<br />
+2026.05.12 13:35:41.660 Terminal    C:\Users\Millard\AppData\Roaming\MetaQuotes\Terminal\73B7A2420D6397DFF9014A20F1201F97<br />
+2026.05.12 13:35:44.673 Network '61511602': authorized on Pepperstone-Demo through NY1-O-Local (ping: 83.27 ms, build 5830)<br />
+2026.05.12 13:35:44.673 Network '61511602': previous successful authorization performed from 189.180.70.47 on 2026.05.12 22:35:10<br />
+2026.05.12 13:35:45.136 Network '61511602': terminal synchronized with Pepperstone Group Limited: 0 positions, 0 orders, 1713 symbols, 0 spreads<br />
+2026.05.12 13:35:45.136 Network '61511602': trading has been enabled - hedging mode</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-12 19:37 UTC</div><p>That's the permissions block working — it's trying to update, can't write the files, UAC fires, you say No, and you stay on 5430. That'll happen every restart but it's harmless. Just always click No.</p>
+<p>Now test the dropdown — open Strategy Tester, try navigating into a subfolder.</p></div><div class="nav"><span><a href="2026-05-13_analyzing-tick-data-for-wick-patterns-in-price-movements_0e6f9aa4.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-11_indicator-calculations-halting-after-trade-signals_8e9d2d5d.html">Next →</a></span></div></div></body></html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Code review and change plan validation</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-09_refactoring-indy-to-disentangle-concerns_8aae3a66.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-08_claude-chat-storage-in-vs-code_45d76bb5.html">Next →</a></span></div><h1>Code review and change plan validation</h1><div class="meta">Created 2026-07-08 16:04 UTC · Last updated 2026-07-08 16:10 UTC · 5 messages<br>Original: <a href="https://claude.ai/chat/0ca8d2c2-f634-4b91-a625-bcef2375d276">claude.ai/chat/0ca8d2c2-f634-4b91-a625-bcef2375d276</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-08 16:04 UTC</div><p>Absorb the attachments I'll give you next -- rules .md (ignore the bottom notes, they're out of date, just use the top section stating the rules),  code, and a change plan. </p>
+<p>I need you to think everything through, find anything amiss, we'll fix it until we're agreed, then ONLY AFTER I GIVE YOU THE GO, create a corrected change plan.</p>
+<p>Understand?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-08 16:04 UTC</div><p>Understood. Send the files — I'll read the rules (top section only), the code, and the change plan, then flag anything amiss. No corrected plan until GO.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-08 16:05 UTC</div><p>Change Plan — TickTravel_Efficiency_Momentum_MJM.mq5<br />
+Part A — Rip out the dead threshold machinery</p>
+<ol>
+<li>Delete inputs <code>InpRatio1EntryThreshold</code>, <code>InpRatio2EntryThreshold</code>, <code>InpTradeExitThreshold</code>.</li>
+<li>Delete all eight r1/r2 entry/exit calibrator+detector pair globals, their Init calls in OnInit, and their eight feed calls in ProcessTick.</li>
+<li>Delete <code>EntryDetectorsCommitted</code> and <code>ExitDetectorsAgainstTrade</code>; remove the entry check in DetectMomentumEntry and the exit branch in DetectMomentumExit.</li>
+<li>Delete <code>ExitRatio1Pass</code> / <code>ExitRatio2Pass</code>.</li>
+<li>Delete the three threshold buffers/plots (Ratio1EntryThreshold, Ratio2EntryThreshold, ExitThreshold): buffers and plots drop 33 → 30, with all higher buffer indices, plot properties, arrows, and labels renumbered.</li>
+<li>
+<p>DLOG: remove the five fields tied to the above (the three threshold values and the two exit-pass flags). Flagging per convention: this changes the DLOG CSV schema.<br />
+Part B — Flicker handling (one direction-agnostic state machine)</p>
+</li>
+<li>
+<p>New pending-signal state: direction, signal-tick r1 level, tick counter, phase (hold / watch); reset with runtime state.</p>
+</li>
+<li>Entry rewire: a firing entry signal no longer enters directly. With no pending signal and no same-direction open trade, it starts a hold — signal tick counts as tick 1, r1 level recorded.</li>
+<li>Hold phase, each tick: the latched picture must hold (r3 turn latch the entry way, r1 on the entry side of r3, both averages sloping the entry way, fast on the entry side of slow). Survives through tick 5 → real entry fires. Reversal = close and open together at that moment.</li>
+<li>Hold death: if direction × signal r1 &lt; 0.04, or it died by r1 crossing to the wrong side of r3 → dropped for good. Any other death → watch phase, ticks still counted from the signal.</li>
+<li>Watch phase, through tick 10: r1 crosses to the wrong side → drop; direction × r1 regains direction × signal r1 → enter original direction (averages not re-checked); a fresh full entry signal → supersedes the watch, new hold at tick 1 with its own r1 level; tick 10 passes → drop.</li>
+<li>Exits untouched and live throughout: early exit and profit exit keep running on the open trade, including while an opposite signal is holding.</li>
+<li>DLOG additions: pending phase/direction/tick-count/signal-r1 fields plus outcomes for hold-started, flicker-dropped, watch-started, watch-recovery-entry, watch-expired. (Strike this item if unwanted.)</li>
+<li>Reconcile the .md's bottom notes paragraph with the refined flicker section.<br />
+Two assumptions to confirm</li>
+</ol>
+<ul>
+<li>"Tick" = every tick that reaches signal logic with a ready state (same ticks that can fire entries today; deduped cache updates don't count twice).</li>
+<li>If early/profit exit closes the trade while an opposite hold is pending, the pending signal keeps running and can still enter on its 5th tick. The rules don't address this; that's my assumed behavior.</li>
+</ul></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-08 16:07 UTC</div><p>continue</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-08 16:10 UTC</div><p>Read everything. The plan does not match this file. Findings, worst first:</p>
+<p><strong>1. Part A items 2 and 3 describe machinery that isn't in this file.</strong> There are no calibrator/detector objects, no Init calls for them in OnInit, no feed calls in ProcessTick, no <code>EntryDetectorsCommitted</code>, no <code>ExitDetectorsAgainstTrade</code>. The plan reads like it was written against a different version — possibly the level-event detector build. What this file actually has is six hold counters (buy/sell × r1/r2 entry, plus two exit), fed once per tick inside DetectSignals, not ProcessTick. Confirm this uploaded file is the live one before anything else.</p>
+<p><strong>2. Buffer arithmetic is wrong.</strong> File has 35 buffers/plots, not 33. Deleting the three threshold buffers gives 35 → 32, not 33 → 30.</p>
+<p><strong>3. The dead-code inventory is incomplete — plan as written won't compile.</strong> Deleting the three threshold inputs (item 1) breaks: EntryRatio1Pass/EntryRatio2Pass, ExitRatio1Pass/ExitRatio2Pass, UpdateEntryHoldCounters, UpdateTradeExitCounters, RatioEntryConfirmed, EntryReason, and the WriteBuffers lines that stamp thresholds into buffers. The actual dead cluster with zero live callers is: DetectEntrySignal, DetectExitSignal (nothing calls either), RatioEntryConfirmed, EntryTrendConfirmed, EntryHoldMet, ExitHoldMet, TradeTrendStillValid, ExitTrendStillValidPass, EntryReason, all the Entry<em>Pass/Exit</em>Pass helpers, both hold-counter update functions and their six globals. All must go together, or the plan must explicitly keep some.</p>
+<p><strong>4. DLOG: "five fields" is way off.</strong> The dead machinery feeds roughly 25 DLOG fields: the three thresholds, both hold-ticks mins, buy/sell ratio-pass ×4, hold ×4, hold-pass ×2, entry-reason ×2, exit-pass ×2, exit-hold ×2, exit-hold-pass, trend-still-valid-pass, and the buy/sell trend-gate pass fields if their helpers go. Every field whose helper is deleted must be removed or DLOG won't compile.</p>
+<p><strong>5. Hold-ticks inputs unaddressed.</strong> InpEntryHoldTicks and InpExitHoldTicks only feed the dead hold machinery (plus two display buffers and OnInit validation). Decide: delete both, or repurpose InpEntryHoldTicks as the flicker 5-tick hold length. InpExitHoldTicks has no future use.</p>
+<p><strong>6. Bail-out switches are already dead.</strong> The rules keep InpUseDirForceExit and InpUseSpreadOfIndySlopesForceExit as experiment knobs — but they're only wired into DetectExitSignal, which nothing calls. The live exit path ignores them. If DetectExitSignal is deleted, they're inputs with zero effect. Decide: rewire them into DetectMomentumExit, or accept them as inert until wanted.</p>
+<p><strong>7. Assumption 1 contradicts itself against this code.</strong> "Same ticks that can fire entries today" and "deduped cache updates don't count twice" are not the same thing: a repeated tick (same time+bid) reuses the cache slot but still runs the full signal path today, including counters and entry detection. So today's entry-capable ticks include dedupes. Pick one basis — I'd say count every tick that reaches signal logic with ready state, dedupes included, since that's what the replay evidence counted (one CSV row = one tick). Also note synthetic bar-close ticks in live mode run signal logic and would count.</p>
+<p><strong>8. Trend-filter inputs (InpSlopeFloor, InpMinSpread, InpMinSpreadSlope, InpSpreadOfIndysDeltaMin) — scope silence.</strong> They only feed dead entry gates, dead TradeTrendStillValid, and DLOG. InpSpreadOfIndysMin is the exception — it's live in the direction-state update. The rules only declare the r1/r2 threshold gates dead, so leaving the trend filters is defensible, but their DLOG helper fields must survive intact or go — state it either way in the plan.</p>
+<p>Part B (items 7–12) itself is sound against the rules doc — the hold-survival picture, the two immediate-discard cases, the watch mechanics, reversal timing, and exits-stay-live all match. Assumption 2 (pending survives an exit-close and can still enter) is a genuine gap in the rules; your call, the assumed behavior is coherent.</p>
+<p>Resolve 1, 5, 6, 7 and I can draft the corrected plan on your GO.</p></div><div class="nav"><span><a href="2026-07-09_refactoring-indy-to-disentangle-concerns_8aae3a66.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-08_claude-chat-storage-in-vs-code_45d76bb5.html">Next →</a></span></div></div></body></html>

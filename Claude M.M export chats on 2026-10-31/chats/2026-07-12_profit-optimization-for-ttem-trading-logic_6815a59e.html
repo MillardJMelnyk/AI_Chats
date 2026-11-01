@@ -1,0 +1,249 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profit optimization for TTEM trading logic</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-13_finding-a-broker-for-xauusd-trading-with-low-minimums_7938843e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-11_csv-datetime-parsing-bug-in-error-output_569613c8.html">Next →</a></span></div><h1>Profit optimization for TTEM trading logic</h1><div class="meta">Created 2026-07-12 13:06 UTC · Last updated 2026-07-12 14:41 UTC · 24 messages<br>Original: <a href="https://claude.ai/chat/6815a59e-ffd1-4c8b-adfc-5ee7706989d9">claude.ai/chat/6815a59e-ffd1-4c8b-adfc-5ee7706989d9</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:07 UTC</div><p>I gave GPT the following task:</p>
+<p>profit optimization for TTEM</p>
+<p>see image</p>
+<p>We're going to start with the long trade at 10:28. Here is what I want the code to do -- retain good trades and eliminate bad ones as per the following:</p>
+<p>10:28 long good<br />
+10:29 short bad<br />
+10:30 long would vanish<br />
+10:33 short good<br />
+10:35 long rule abiding, how could we eliminate<br />
+10:36 short would vanish<br />
+10:39 long bad<br />
+10:41 short would vanish<br />
+10:42 long bad<br />
+10:43 short would vanish<br />
+10:46 long bad -- premature<br />
+10:48 short very bad -- inexplicable<br />
+10:48 long good</p>
+<p>Ignore "would vanish" because if the previous bad trade were rectified, they would not have happened.</p>
+<p>You job is to figure out what additional logic using the available metrics could help us avoid bad and very bad trades.</p>
+<p>DLOG: XAUUSD_M1_TickTravel_Efficiency_Momentum_MJM_DLOG_start_2026-07-10_102100_run_2026-07-11_133522.csv</p>
+<p>Input: XAUUSD_M1_TICK_DUMP.csv</p>
+<p>Two hours of bullshit later, it confessed it had no done the job, even though it behaved as if it had.</p>
+<p>Correct—I did not complete the job.<br />
+You did work. I have no clue whether it furthered the task.</p>
+<p>Restate the task I gave you and state your plan for accomplishing it<br />
+Task:</p>
+<ul>
+<li>Find added TTEM entry logic that keeps the good trades at 10:28, 10:33, and 10:48 long.</li>
+<li>Reject the bad trades at 10:29, 10:35, 10:39, 10:42, 10:46, and 10:48 short.</li>
+<li>Ignore trades that would disappear after an earlier bad trade is blocked.</li>
+<li>Update the master tick file without duplicates.</li>
+<li>Compare current TTEM against the improved logic over the full master file and report P/L results.<br />
+Plan:</li>
+</ul>
+<ol>
+<li>Reconfirm the exact live TTEM entry rules.</li>
+<li>Examine each good and bad entry’s metric history—not just its entry-tick snapshot.</li>
+<li>Find direction-neutral rules consistent with TTEM momentum logic and using no future information.</li>
+<li>Reject any rule that merely fits this small example.</li>
+<li>Bring the Python replay into exact agreement with current TTEM.</li>
+<li>Prove replay agreement against the supplied DLOG trade sequence.</li>
+<li>Append the new tick file to the master safely and remove duplicates.</li>
+<li>Run identical baseline and proposed-rule replays over the full master.</li>
+<li>Compare trades, wins, losses, net P/L, profit factor, drawdown, and removed trades.</li>
+<li>Recommend a gate only if it preserves the intended trades and improves the wider results.</li>
+</ol>
+<p>I ASK:</p>
+<ol>
+<li>Is this task something you're capable of?</li>
+<li>Do you agree with the plan it proposed, or do you have a better one?</li>
+<li>Propose a plan to figure this out.</li>
+</ol></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:07 UTC</div><ol>
+<li>
+<p>Yes.</p>
+</li>
+<li>
+<p>No. Steps 1, 5, 6 (rebuild a Python replay and prove exact agreement with live TTEM) are wasted work — the DLOG already records every per-tick decision with the full metric state, so ground truth exists without any replay. That's almost certainly where GPT burned its two hours. Steps 7–9 depend on a master tick file that isn't uploaded here, so full-history validation is out of scope with these three files.</p>
+</li>
+<li>
+<p>My plan:</p>
+</li>
+<li>
+<p>Parse the DLOG, extract the actual trade sequence (entries, directions, prices, times), and verify it matches your 13-trade list exactly. If it doesn't match, stop and report the discrepancy.</p>
+</li>
+<li>For each labeled good/bad entry, dump the complete metric state at the entry tick plus the closed-bar confirmation fields and the metric trajectory over the preceding N bars — ratios r1/r2/r3, slopes, deltas, le_dirs/event_dirs, spread_of_indys and its delta, indy slope deltas.</li>
+<li>Build a good-vs-bad comparison table and search for direction-agnostic separators: conditions expressible as sign/magnitude tests against <code>dir</code> (no mirrored long/short logic), using only values available at the entry tick.</li>
+<li>For 10:46 (premature) and 10:48 short (inexplicable), additionally inspect raw tick behavior from the tick dump around those entries, since the failure mode may be sub-bar.</li>
+<li>Report each candidate gate with its exact keep/kill outcome across all 7 evaluated trades and state which ones survive.</li>
+<li>Flag overfit honestly: 3 good vs 4 bad (ignoring vanishers) is a tiny sample — any gate is provisional until run against the master file, which has to happen in your environment or with the master uploaded.</li>
+</ol>
+<p>Say GO and I'll start at step 1.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:14 UTC</div><h1>2. No, the replay is to test for collateral damage and it's a standing .py we use all the time. It's kept current with the master .mq5 indy's logic for precisely this purpose. The only thing that needs to be coded is the additional gate.</h1>
+<p>Parsing the DLOG is exactly what GPT did to come up with its "gate". However, when I asked it to explain the "gate" it presented self-contradictory logic. The bullshit began when it claimed it had eliminated all the bad trades and preserved all the good ones. Sure, I could do that too -- by writing scratch code to achieve that result.</p>
+<p>Do you think that's what I'm after?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:14 UTC</div><p>No. You're after a gate whose logic is explainable in TTEM's own momentum terms — a real causal reason the bad entries are bad — where killing those trades and keeping the good ones is the <em>evidence</em> the rule is right, not the definition of the rule. Any classifier can partition seven labeled points; that's memorization, not a rule.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:16 UTC</div><h1>5 - what if the signals that would enable us to avoid the bad trades occurs multiple ticks/bars before the bad trade entry tick?</h1></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:16 UTC</div><p>Then the gate is stateful — a condition detected earlier that arms/disarms entry and is carried forward to the entry tick, exactly like the existing level-event machinery — so step 2's trajectory dump is where it gets found, and step 5's "available at entry" means the <em>state</em> is available at entry, not that the triggering evidence occurred there.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:16 UTC</div><p>No, what happens to your plan as stated?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:16 UTC</div><p>Step 3 as stated breaks — it restricted the search to the entry-tick snapshot, so any separator that only exists in the prior ticks/bars would be invisible to it. Steps 2 and 5 survive, but step 3 has to be rewritten to search the full pre-entry trajectory window, not the entry tick.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:19 UTC</div><ol>
+<li>This is exploratory. Your plan makes too many assumptions and ignores too much data.</li>
+<li>The point is to find signals in metrics that we haven't already defined. It's a pattern recognition discovery task, not a problem-solving task.</li>
+<li>We need to find signals IN THE DATA that correspond to the bad trades OR signals unique to the GOOD trades not shared by the bad trades.</li>
+</ol>
+<p>Propose a different plan stated in STE without all the detail, clearly indicating the logic of the approach.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:19 UTC</div><p>Plan:</p>
+<ol>
+<li>Extract the full metric time series from the DLOG for the whole session — every metric, every tick, no pre-selection.</li>
+<li>Mark the good and bad entry points on those series.</li>
+<li>For each entry, take the pre-entry window and characterize what every metric was doing — direction, magnitude, shape.</li>
+<li>Compare the two populations: find behaviors present before bad entries and absent before good ones, or unique to good ones.</li>
+<li>Report what the data shows — patterns first, gate formulation only after a pattern is real.</li>
+</ol>
+<p>Logic: let the data separate the populations; don't hypothesize gates and test them.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:20 UTC</div><p>Better. go and report</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:21 UTC</div><p>wait, let me give you the up to date source for the indy.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:21 UTC</div><p>Got it — source received. Say GO and I proceed with it as the logic reference.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:24 UTC</div><p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:29 UTC</div><p>Sequence verified: all 13 labeled trades match the DLOG exactly. Analysis done. Findings:</p>
+<p><strong>The data separates the populations on one metric family: <code>spread_of_indy_slopes</code> (and its twin <code>spread_of_indys_delta</code>), direction-normalized, in the pre-entry window.</strong></p>
+<p>Searched every metric × window {30/60/120/180/300s} × statistic (mean, min, max, net change, sign flips) — hundreds of features, 9 labeled entries. Only 8 features perfectly separate good from bad, and <strong>all 8 are the same signal</strong>: how deep the slope-spread went <em>against</em> the entry direction in the seconds just before entry.</p>
+<p>The pattern, in TTEM terms: <strong>a good entry fires within ~30s of a fresh opposite-momentum climax; bad entries have no fresh climax.</strong> min of <code>spread_of_indy_slopes × entry_dir</code> over the last 30s:</p>
+<table>
+<thead>
+<tr>
+<th>trade</th>
+<th>label</th>
+<th>min₃₀</th>
+<th>verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10:28 L</td>
+<td>good</td>
+<td>−0.301</td>
+<td>fresh climax</td>
+</tr>
+<tr>
+<td>10:33 S</td>
+<td>good</td>
+<td>−0.306</td>
+<td>fresh climax</td>
+</tr>
+<tr>
+<td>10:48:17 L</td>
+<td>good</td>
+<td>−0.436</td>
+<td>fresh climax</td>
+</tr>
+<tr>
+<td>10:29 S</td>
+<td>bad</td>
+<td>−0.109</td>
+<td>none</td>
+</tr>
+<tr>
+<td>10:35 L</td>
+<td>bad</td>
+<td>+0.086</td>
+<td>none — chasing</td>
+</tr>
+<tr>
+<td>10:39 L</td>
+<td>bad</td>
+<td>−0.200</td>
+<td>stale (deep one exists at 90s: −0.623)</td>
+</tr>
+<tr>
+<td>10:42 L</td>
+<td>bad</td>
+<td>−0.222</td>
+<td>stale</td>
+</tr>
+<tr>
+<td>10:46 L</td>
+<td>bad</td>
+<td>−0.168</td>
+<td>stale (−1.166 at 90s — the climax was 90s old, hence "premature": it entered long after the exhaustion had already resolved and price kept falling)</td>
+</tr>
+<tr>
+<td>10:48:02 S</td>
+<td>verybad</td>
+<td>+0.068</td>
+<td>none — pure chase into the bottom</td>
+</tr>
+</tbody>
+</table>
+<p>Two failure modes, one signal: 10:35 and 10:48:02 had <strong>no</strong> opposite climax at any recency (momentum-chasing entries); 10:29/10:39/10:42/10:46 had only a <strong>stale</strong> climax (60–120s old — the reversal window had already passed). Threshold band: depth ≥ ~0.26, recency ≤ ~30–45s. Separation margin is real but not huge (good max −0.301 vs bad min −0.222).</p>
+<p><strong>Out-of-label check</strong> — applied the same test to the 8 unlabeled trades with valid pre-windows: it blocks 10:24:57 L (lost), 10:26:18 S (lost), 10:52:45 S (lost), 10:53:39 L (lost), 10:55:17 L (lost), allows 10:55:43 S (won) and 10:58:18 L (winning at log end). One miss: allows 10:54:49 S (lost). 7 of 8 correct on trades that played no part in finding the rule.</p>
+<p><strong>Honest caveats:</strong> the clean 30s separation degrades at 20s (10:39 nearly ties 10:33) and breaks at 60s (10:35's climax appears) — the recency/depth parameters need the replay over the master file to pin down; with n=9 they're indicative, not calibrated. The unlabeled corroboration is what makes me take this seriously rather than call it curve-fit.</p>
+<p>Gate formulation for the replay: track running min of <code>spread_of_indy_slopes × entry_dir</code> over a trailing ~30s tick window; permit entry only if that min ≤ −0.26. One condition, direction-agnostic, causal.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:30 UTC</div><p>STE explain</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:30 UTC</div><p>Good reversal entries fire within ~30 seconds of the opposing move's momentum climax — the point where the fast indy's slope was maximally stretched against the new entry direction; bad entries fire either with no such climax at all (chasing) or long after it (stale, the turn already came and went), so the gate is: allow entry only if <code>spread_of_indy_slopes × entry_dir</code> dipped below about −0.26 within the last 30 seconds.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:34 UTC</div><p>Here is are the .py scripts:</p>
+<ol>
+<li>update them to exactly mirror the indy's current logic.</li>
+<li>Add the filter your just described as a gated input parameter selectable option, so that we can test baseline vs. mod.</li>
+</ol>
+<p>change plan</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 13:37 UTC</div><p>Confirming understanding: the replay mirrors v1.58; the live indy is v1.75. The signal layer changed substantially between those versions, so this is a rewrite of the replay's state/signal path, not a patch. <code>LevelEvent_MJM.py</code> itself needs no logic changes — the .mqh port is still valid — only the calibrator init parameters changed (now 180/36/18, replay passes 300/60/30).</p>
+<p><strong>Change plan — TickTravel_replay.py</strong></p>
+<p><em>Metric/state layer (mirror v1.75):</em><br />
+1. Add OHLC per tick: schema gains Open/High/Low/Close columns from the tick dump; CSV mode fills tick-state OHLC from those (live mode's bid-fill irrelevant here).<br />
+2. Applied prices: line1 series uses PRICE_WEIGHTED (H+L+C+C)/4, line2 uses PRICE_MEDIAN (H+L)/2, replacing bid-only series. <code>TickAppliedPrice</code> mirrored; defaults only (TEMA(6) WCL, LWMA(4) MEDIAN).<br />
+3. Calibrator inits: all pairs → (0.0, 2.0, 180.0, 36.0, 2.0, 18.0, gapReset).<br />
+4. Add three detector pairs: ratio1_slope, ratio2_slope, r2_minus_r3 — ten pairs total, fed in the indicator's exact order in CalcTickIndyValues / CalcTickTravelMetrics.<br />
+5. Add SEventHistory per pair (confirmTimeMsc per dir slot, updated in FeedLevelPair) + EventConfirmedSince / EventHeldSince.<br />
+6. MaxStateWindow computation mirrored from lines 2177–2196 (ratio warmup vs indy line windows vs indy spread delta).<br />
+7. Detector-feed gating for ratio pairs: fed only when tick history ≥ MaxStateWindow (CSV path of DetectorFeedRequiredMs).<br />
+8. Closed-bar state: FinalizeObservedBar on bar rollover — capture last tick's ratio3Slope/line1Slope/line2Slope/spreadOfIndys, deltas vs prior closed bar, ready/confirmationReady flags.<br />
+9. Skip UpdateReadingExtrema / confirmation-failure arrow values (plot-only, no trade influence).</p>
+<p><em>Signal layer (replace v1.58 path):</em><br />
+10. Delete pending hold/watch entry machinery, ENTRY_HOLD_TICKS / ENTRY_WATCH_TICKS / ENTRY_MIN_R1_STRENGTH.<br />
+11. New EntryPictureHolds: |line1Slope| &gt; MinIndy1Slope and |line2Slope| &gt; MinIndy2Slope (both default 0.0); EventHeldSince for ratio1_slope, ratio2_slope, r1−r3, r2−r3 anchored at tradeEventAnchor; EntryLine1SlopeDeltaDir (live line1Slope vs closed-bar line1Slope) == tradeDir.<br />
+12. Trade event anchor: set on every open and close; resets entry-picture edge.<br />
+13. Trade confirmation state machine: start on open; eligibility per CONFIRM_NEXT_TWO_CLOSES (default) / TWO_FULL_BARS; terrain = closed-bar ratio3SlopeDir, line2SlopeDeltaDir, spreadOfIndysDeltaDir all == tradeDir; two failed closes → failed; failure action default CONFIRM_FLAG_AND_CONTINUE (no exit).<br />
+14. Exits: old exit block gated behind USE_OLD_EXIT_RULES = False (mirrors DetectMomentumExit early return); UpdateMomentumLatches reduced to r3TurnDir only. Trades close only via opposite entry, confirmation exit (if enabled), end of data.<br />
+15. TickStateReadyForEntry mirrored: requires closed-bar line1Slope valid; spread-validity checks only when trade blocking enabled.<br />
+16. DetectSignals order mirrored: confirmation update first, then readiness, block state, entry, exit.<br />
+17. Detector mode default → B time (indicator default). Engine sweep becomes <strong>baseline vs gated</strong> (two engines, both mode B, identical inputs except the gate flag) instead of the A/B mode sweep.</p>
+<p><em>New gate (selectable input):</em><br />
+18. Constants: <code>USE_FRESH_CLIMAX_GATE</code> (False = baseline), <code>GATE_WINDOW_SEC = 30.0</code>, <code>GATE_DEPTH = 0.26</code>.<br />
+19. Per-tick rolling window of (t, spreadOfIndySlopes) trimmed to GATE_WINDOW_SEC.<br />
+20. Gate check in DetectMomentumEntry after freshDir resolves: entry permitted only if min(spreadOfIndySlopes × freshDir) over the window ≤ −GATE_DEPTH; blocked entries counted and reported per engine. Anchor/edge state updates unchanged so a blocked entry doesn't re-fire on the next tick.</p>
+<p><em>Validation:</em><br />
+21. Run the updated replay on the uploaded 10:00–11:00 tick dump, baseline engine, and prove the trade sequence matches the DLOG's 22 entries exactly before reporting the gated comparison.</p>
+<p>Open item: item 17 drops the A/B mode sweep in favor of baseline-vs-gated — confirm or say keep both modes × both gate settings (four engines).</p>
+<p>GO?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 13:54 UTC</div><p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 14:02 UTC</div><p>Stopped at a proven blocker. Status:</p>
+<p><strong>Done and proven:</strong> the rewritten replay's metric layer matches the DLOG exactly — all 8395 decision ticks, every field: ratios, ratio slopes, line1/line2 values (so the OHLC applied-price chain is right), line slopes, spread of indys, spread delta. 22 trades fire in the right directions and order; 9 match the DLOG to the exact tick and price.</p>
+<p><strong>Blocker:</strong> the remaining trades are off by 1–72 seconds because <code>LevelEvent_MJM.py</code> is a stale port of the detector pair. Evidence, not hypothesis: the DLOG's detector fields expose <code>SideDwell(-1/+1)</code>, <code>SideExcursion(-1/+1)</code>, <code>ContestActive</code>, <code>ContestStart</code>, <code>EvContestStart</code>, <code>EvSideDwell</code>, <code>EvSideExcursion</code> — a two-sided contest state machine with per-side dwell and excursion. The .py port implements a single-sided episode model (one pending flag, one ext, one dwell) and has none of those members. Additionally the DLOG shows <code>required_dwell = 2.886</code> for the slope-spread pair, which is below the port calibrator's hard dwell_min clamp of 3.0 — so <code>LevelEventCalib_MJM.mqh</code> has also changed since the port. The resulting detector commit-timing drift produces the 141–302 per-pair le_dir mismatches and the second-level trade offsets.</p>
+<p>I can't mirror logic I don't have. Upload the current <code>LevelEventCalib_MJM.mqh</code> and <code>LevelEventDetect_MJM.mqh</code> and I'll update <code>LevelEvent_MJM.py</code> to match, then re-run the DLOG validation; everything downstream is already in place.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 14:15 UTC</div><p>there you go</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-12 14:41 UTC</div><p>continue, that's not everything I asked you to do</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-12 14:41 UTC</div><p>Full report.</p>
+<p><strong>1. Replay updated to mirror v1.75.</strong> <code>LevelEvent_MJM.py</code> is a line-for-line port of the contest-era calibrator/detector .mqh pair you uploaded. <code>TickTravel_replay.py</code> implements the full v1.75 CSV signal path: ten detector pairs with event histories, trade-event anchoring, the new entry picture, closed-bar confirmation state machine, old exits behind <code>USE_OLD_EXIT_RULES=False</code>, applied-price indy sampling (WCL/MEDIAN from the dump's OHLC columns).</p>
+<p><strong>2. Validation proof against the DLOG (baseline engine, 10:21–11:00):</strong><br />
+- Metric layer: all 8,395 decision ticks match on every value — ratios, ratio slopes, line1/line2 values and slopes, spread of indys, deltas. Zero differences.<br />
+- Detector layer: all committed-side dirs match exactly from 10:22:28 through 11:00. The only mismatches are 56 tick-rows confined to 10:21:02–10:22:28 on four ratio-side pairs.<br />
+- Trades: 21 of 22 match the DLOG to the exact tick, price, and direction. The one exception is the first trade — 10:21:03 vs the DLOG's 10:21:02, one tick, inside that startup transient.</p>
+<p>Hypothesis on the residual: the ratio-side detectors' feed-start tick during the pre-10:21 warm-up differs by one tick between indy and replay, offsetting the first contest resolution; it self-corrects by 10:22:28 and never recurs. Missing evidence: a DLOG covering 10:00–10:21. On master-file runs this affects only the first ~90 seconds after warm-up.</p>
+<p><strong>3. Gate implemented as selectable option.</strong> <code>USE_FRESH_CLIMAX_GATE</code> per engine, <code>GATE_WINDOW_SEC = 30.0</code>, <code>GATE_DEPTH = 0.26</code>. The sweep runs baseline (gate off) and climax_gated (gate on) in one pass over shared detector state.</p>
+<p><strong>4. Baseline vs gated on the validation hour:</strong></p>
+<table>
+<thead>
+<tr>
+<th>engine</th>
+<th>trades</th>
+<th>winners</th>
+<th>losers</th>
+<th>net $</th>
+<th>gate blocks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline</td>
+<td>22</td>
+<td>7</td>
+<td>15</td>
+<td>−5.59</td>
+<td>0</td>
+</tr>
+<tr>
+<td>climax_gated</td>
+<td>5</td>
+<td>5</td>
+<td>0</td>
+<td>+14.73</td>
+<td>28</td>
+</tr>
+</tbody>
+</table>
+<p>Gated trade list: 10:28:23 L +0.62, 10:33:04 S +8.26, 10:48:17 L +2.51, 10:54:49 S +1.06, 10:58:18 L +2.28. Against your labels: all three goods kept, all six bads killed, all four vanishers vanished. The one out-of-label allow (10:54:49 S, the miss from the discovery analysis) turned into a +1.06 winner under the gated sequence because its exit landed at 10:58:18 instead of 10:55:17.</p>
+<p>Caveat stands: window and depth were derived from this hour; the numbers above are the training data. The master-file run is the real test.</p></div><div class="nav"><span><a href="2026-07-13_finding-a-broker-for-xauusd-trading-with-low-minimums_7938843e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-11_csv-datetime-parsing-bug-in-error-output_569613c8.html">Next →</a></span></div></div></body></html>

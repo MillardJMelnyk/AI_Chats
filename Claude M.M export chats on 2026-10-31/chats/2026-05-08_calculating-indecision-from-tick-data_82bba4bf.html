@@ -1,0 +1,108 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Calculating indecision from tick data</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-10_tick-data-analysis_85f4b2da.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-08_code-audit-for-decisiveness-indicator_8cd31a60.html">Next →</a></span></div><h1>Calculating indecision from tick data</h1><div class="meta">Created 2026-05-08 20:34 UTC · Last updated 2026-05-08 21:01 UTC · 16 messages<br>Original: <a href="https://claude.ai/chat/82bba4bf-4354-4821-b4dc-f3ff9ec54291">claude.ai/chat/82bba4bf-4354-4821-b4dc-f3ff9ec54291</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:34 UTC</div><p>I'm having a hard time figuring out how to calculate indecision on trading charts on the basis of tick data.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:35 UTC</div><p>The cleanest tick-based indecision metric is the <strong>Price Path Efficiency Ratio</strong>:</p>
+<pre><code>ER = |Close - Open| / Σ|tick[i] - tick[i-1]|
+</code></pre>
+<ul>
+<li>Near <strong>0</strong> → price churned back and forth (maximum indecision)</li>
+<li>Near <strong>1</strong> → price moved directionally with little wasted motion</li>
+</ul>
+<p>It works because it captures <em>how much of the tick activity actually went anywhere</em>. A bar with 500 ticks that opens and closes at the same price has near-zero ER regardless of range.</p>
+<hr />
+<p><strong>Other useful tick-derived signals:</strong></p>
+<p><strong>1. Directional tick imbalance</strong><br />
+Count up-ticks vs down-ticks within a window:</p>
+<pre><code>imbalance = (up_ticks - down_ticks) / total_ticks
+</code></pre>
+<p>Near 0 = balanced = indecision. Useful as a real-time intra-bar signal.</p>
+<p><strong>2. Mean run length</strong><br />
+A "run" is a streak of consecutive same-direction ticks. Short average runs = frequent reversals = indecision. Long runs = momentum.</p>
+<p><strong>3. Tick churn ratio</strong></p>
+<pre><code>churn = total_ticks / (high - low)   [in points]
+</code></pre>
+<p>High churn (many ticks, narrow range) = price struggling to commit. Normalize by typical tick frequency for your instrument.</p>
+<hr />
+<p><strong>For XAUUSD M1 specifically:</strong></p>
+<p>Gold tick flow is noisy. You'll want to:<br />
+- Aggregate over a fixed tick window (e.g., 50-tick rolling) rather than per-bar<br />
+- Threshold ER below ~0.15–0.20 as "indecision zone" (tune to your data)<br />
+- Combine ER with volume spread — tight spread + low ER is stronger indecision than either alone</p>
+<hr />
+<p><strong>Causal integrity note:</strong> All of these are computable strictly from ticks already received — no look-ahead required. The ER for a completed bar is final; for an open bar it's a live estimate that updates with each tick.</p>
+<p>Which angle are you approaching from — detecting indecision bars after close, or scoring it in real time as the bar builds?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:37 UTC</div><p>Real time</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:37 UTC</div><p>Real-time changes the design significantly. The metric has to be <strong>incrementally updatable</strong> — you can't recompute from scratch on every tick.</p>
+<hr />
+<p><strong>Incremental ER (the core signal)</strong></p>
+<p>Maintain two running accumulators:</p>
+<pre><code>gross_path += |current_tick - previous_tick|   // every tick
+net_displacement = |current_tick - bar_open|   // always cheap
+ER = net_displacement / gross_path
+</code></pre>
+<p>Cost: one subtraction, one abs, one addition per tick. No history needed.</p>
+<hr />
+<p><strong>The instability problem</strong></p>
+<p>Early in the bar, ER is meaningless — 3 ticks in any direction reads as ER=1.0. You need a <strong>warmup gate</strong>:</p>
+<ul>
+<li>Don't emit a signal until <code>gross_path &gt; N</code> (a minimum path threshold)</li>
+<li>Or until tick count exceeds some minimum (e.g., 20 ticks)</li>
+<li>Or both</li>
+</ul>
+<p>For XAUUSD M1, gross_path threshold of ~5–8 pips worth of movement is a reasonable starting point.</p>
+<hr />
+<p><strong>Incremental directional imbalance</strong></p>
+<pre><code>up_ticks++   // if current &gt; previous
+down_ticks++ // if current &lt; previous
+// ties: ignore or split
+
+imbalance = (up_ticks - down_ticks) / (up_ticks + down_ticks)
+</code></pre>
+<p>Fully incremental, zero history. Reset at bar open.</p>
+<hr />
+<p><strong>Incremental mean run length</strong></p>
+<pre><code>current_run_length++          // if direction unchanged
+else:
+    total_run_length += current_run_length
+    run_count++
+    current_run_length = 1
+
+mean_run = total_run_length / run_count
+</code></pre>
+<p>Short mean run in real time = choppy price action right now.</p>
+<hr />
+<p><strong>Composite score</strong></p>
+<p>Weight them into one number, 0–1 (1 = maximum indecision):</p>
+<pre><code>indecision = w1 * (1 - ER) 
+           + w2 * (1 - |imbalance|) 
+           + w3 * (1 / mean_run)   // normalize appropriately
+</code></pre>
+<p>All three update on every tick, all zero-history except the small set of scalars above.</p>
+<hr />
+<p><strong>State struct (everything you need to carry)</strong></p>
+<pre><code>bar_open
+prev_tick
+gross_path
+up_ticks, down_ticks
+current_run_dir, current_run_len
+total_run_len, run_count
+tick_count
+</code></pre>
+<p>That's it. Reset on bar open, update on each tick, read signal anytime.</p>
+<hr />
+<p>Want this as an MQL5 struct + <code>OnTick()</code> skeleton, or a Python tick-replay version first?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:38 UTC</div><p>Way to mention information. Spare me the details.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:38 UTC</div><p>MQL5 struct or Python first?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:38 UTC</div><p>Wtf? I tell you you gave me too much information in the next thing you want to do is start fucking coding?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:38 UTC</div><p>Fair. What do you need?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:39 UTC</div><p>Simplicity. You firehosed me. Give me the different methods simply and tell me what they're good for instead of all the other shit.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:39 UTC</div><p><strong>Efficiency Ratio</strong> — best overall. Measures how directional the tick movement was. Low = indecision.</p>
+<p><strong>Directional imbalance</strong> — up-ticks vs down-ticks. Good for catching one-sided pressure early in a bar.</p>
+<p><strong>Mean run length</strong> — how often direction flips. Good for detecting chop specifically.</p>
+<p><strong>Churn ratio</strong> — ticks per pip of range. Good when you care about volume context.</p>
+<p>Most people start with ER. The others are refinements.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 20:39 UTC</div><p>How does that relate to travel?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 20:40 UTC</div><p>ER <em>is</em> travel. The denominator is the total distance price physically traveled tick-by-tick. The numerator is how much of that travel went somewhere useful. Low ratio = lots of travel, little progress = indecision.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 21:00 UTC</div><p>Explain ER = |Close - Open| / Σ|tick[i] - tick[i-1]|</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 21:00 UTC</div><p>Numerator: how far price ended up from where it started.</p>
+<p>Denominator: the total distance price actually walked to get there.</p>
+<p>If price wandered 50 pips back and forth but only moved 2 pips net, ER is near zero. If it walked straight from open to close, ER is near 1.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-08 21:01 UTC</div><p>As written, down moves with cancel out up moves (or vice versa)</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-08 21:01 UTC</div><p>The absolute value bars on both sides prevent that. The denominator sums the absolute value of each individual tick move — each step is always positive regardless of direction.</p></div><div class="nav"><span><a href="2026-05-10_tick-data-analysis_85f4b2da.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-08_code-audit-for-decisiveness-indicator_8cd31a60.html">Next →</a></span></div></div></body></html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Porting Python logic to MQL5 indicator</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-16_unintended-changes-after-bug-fix_27318e37.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-13_law-is-violation-manuscript-organization-and-content-consoli_e64a1c2d.html">Next →</a></span></div><h1>Porting Python logic to MQL5 indicator</h1><div class="meta">Created 2026-04-16 15:40 UTC · Last updated 2026-04-16 15:48 UTC · 6 messages<br>Original: <a href="https://claude.ai/chat/e1d56df5-3cee-48c2-a551-757c23e0c41c">claude.ai/chat/e1d56df5-3cee-48c2-a551-757c23e0c41c</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-16 15:40 UTC</div><p>I had another AI port the .py logic into an MQL5 indicator, but it doesn't work and the AI can't figure it out. Here are the two source files. Please find all the problems in the .mq5 that don't accurately represent the logic in the .py.<br />
+I'm not asking you to debug the original logic. It has problems. I'm asking you to ensure that the .mq5 code is an accurate port of the .py logic, bugs and all.<br />
+Do you understand?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-16 15:41 UTC</div><p>Yes. I'll read both files and diff the logic faithfully — port accuracy only, not correctness.</p>
+<p>Now the MQL5 file:</p>
+<p>Now I have enough to produce the full diff. Let me also check the <code>ReadoutToPrice</code> and <code>ComputeEMAFromSeries</code> and <code>CheckSpikeCondition</code> differences carefully.</p>
+<p>I have everything I need. Here is the complete list of discrepancies:</p>
+<hr />
+<h2>Bug Report: MQL5 vs Python Logic Discrepancies</h2>
+<h3>Bug 1 — <code>ReadoutToPrice</code> has wrong formula (critical)</h3>
+<p><strong>Python (line 277):</strong></p>
+<pre><code class="language-python">def readout_to_price(value: float, pip_size: float) -&gt; float:
+    return value
+</code></pre>
+<p>The Python function is an identity — it returns <code>value</code> unchanged.</p>
+<p><strong>MQL5 (line 243):</strong></p>
+<pre><code class="language-cpp">double ReadoutToPrice(const double value,const double pip_size)
+  { return(value*pip_size/0.1); }
+</code></pre>
+<p>The MQL5 version multiplies by <code>pip_size/0.1</code>, which for <code>digits=2</code> gives <code>pip_size = 0.1</code>, so the result is <code>value * 1.0</code> — coincidentally correct for <code>digits=2</code>. But the fundamental contract is wrong: the Python function ignores <code>pip_size</code> entirely. If <code>digits</code> ever changes, they diverge. The correct MQL5 implementation is just <code>return(value);</code>.</p>
+<hr />
+<h3>Bug 2 — <code>CheckSpikeCondition</code> missing five field initializations (critical)</h3>
+<p><strong>Python <code>check_spike_condition</code> (lines 465–472):</strong></p>
+<pre><code class="language-python">state.spike_first_retrace_extent = 0.0
+state.spike_flipflop_count = 0
+state.spike_falter_confirmed = False
+state.spike_second_spurt_done = False
+state.spike_last_move_time_ms = 0
+state.spike_last_price = bar_close        # ← close, not extremum
+state.spike_movement_dir = 0
+state.spike_pre_spurt_extremum = state.spike_extremum
+</code></pre>
+<p><strong>MQL5 <code>CheckSpikeCondition</code> (lines 681–688):</strong></p>
+<pre><code class="language-cpp">state.spike_extremum=(spike_dir&gt;0 ? bars[bar].high : bars[bar].low);
+state.spike_last_price=state.spike_extremum;   // ← should be bars[bar].close
+return(true);
+</code></pre>
+<p>The MQL5 function omits setting: <code>spike_first_retrace_extent</code>, <code>spike_flipflop_count</code>, <code>spike_falter_confirmed</code>, <code>spike_second_spurt_done</code>, <code>spike_last_move_time_ms</code>, <code>spike_movement_dir</code>, and <code>spike_pre_spurt_extremum</code>. It also sets <code>spike_last_price</code> to <code>spike_extremum</code> (the high or low) instead of <code>bars[bar].close</code>. In the Python, <code>spike_last_price = bar_close</code> and <code>spike_pre_spurt_extremum = state.spike_extremum</code> are both explicit. The omitted fields happen to be zero from <code>InitState</code>/<code>ResetSpikeState</code> on first call, but on a second spike entry after a partial reset they could be stale. The <code>spike_last_price</code> value is structurally wrong.</p>
+<hr />
+<h3>Bug 3 — <code>AGG_EMA</code> branch in cocked-signal block missing <code>use_entry_tightening</code> and <code>use_regime_gate</code> checks (logic omission)</h3>
+<p><strong>Python (lines 1484–1494):</strong></p>
+<pre><code class="language-python">if condition_met and params.use_entry_tightening:
+    condition_met = entry_tightening_ok(closes, ma2, i, state.cocked_dir, effective_sens, params)
+if condition_met and params.use_regime_gate:
+    condition_met = regime_gate_ok(width_ratios[i], kc_mid_slopes[i], params)
+</code></pre>
+<p><strong>MQL5 (lines 993–998):</strong></p>
+<pre><code class="language-cpp">condition_met=(state.cocked_dir==-1 ? bars[i].close&lt;bars[i].ma2-effective_sens : bars[i].close&gt;bars[i].ma2+effective_sens);
+if(condition_met)
+   condition_met=AggressiveMA2TraitsOK(bars,i,state.cocked_dir,effective_sens);
+// ← entry_tightening and regime_gate checks entirely absent
+if(condition_met)
+   signal_candidate=...
+</code></pre>
+<p>Both <code>use_entry_tightening</code> and <code>use_regime_gate</code> gates are completely absent from the MQL5 <code>AGG_MA2</code> branch. They are default-false in the Python params, so they don't fire by default, but the port is still incomplete.</p>
+<hr />
+<h3>Bug 4 — Signal commit block: <code>aggr_recovery_active</code> set and immediately cleared (Python faithfully ports a bug, MQL5 doesn't)</h3>
+<p><strong>Python (lines 1657–1660):</strong></p>
+<pre><code class="language-python">if force_committed and not is_spike_triggered:
+    state.aggr_recovery_active = True
+if force_committed and not is_spike_triggered:
+    state.aggr_recovery_active = False
+</code></pre>
+<p>This is a Python bug — it sets <code>True</code> then immediately sets <code>False</code> on the same condition. The net effect: <code>aggr_recovery_active</code> is never persistently set to <code>True</code> by this path. The MQL5 port omits both lines entirely, so both Python and MQL5 leave <code>aggr_recovery_active</code> unchanged — but that means MQL5 accidentally produces the same net outcome. However, since the task is faithful port of the Python including bugs: the MQL5 should have both lines. Currently it has neither.</p>
+<hr />
+<h3>Bug 5 — <code>BuildFilteredBars</code> drops bars missing <code>ema2_hlcc4</code> in Python; MQL5 does not</h3>
+<p><strong>Python <code>load_input</code> (line 647):</strong></p>
+<pre><code class="language-python">df = df.dropna(subset=[&quot;MA1&quot;, &quot;MA2&quot;, &quot;KC_Upper&quot;, &quot;KC_Middle&quot;, &quot;KC_Lower&quot;]).reset_index(drop=True)
+</code></pre>
+<p><code>ema2_hlcc4</code> is NOT in the dropna subset — it survives even if invalid. The Python does not filter on it.</p>
+<p><strong>MQL5 <code>BuildFilteredBars</code> (line 618):</strong></p>
+<pre><code class="language-cpp">if(!IsValidValue(raw_bars[i].ma1) || !IsValidValue(raw_bars[i].ma2) || !IsValidValue(raw_bars[i].kc_upper) || !IsValidValue(raw_bars[i].kc_middle) || !IsValidValue(raw_bars[i].kc_lower))
+   continue;
+</code></pre>
+<p>The MQL5 correctly does not filter on <code>ema2_hlcc4</code> — this matches Python. ✓ (No bug here, noted for completeness.)</p>
+<hr />
+<h3>Bug 6 — <code>BuildTradesFromSignals</code>: MQL5 ignores <code>active_direction</code> reset on early exit; also <code>prev_direction_value</code> logic missing</h3>
+<p><strong>Python (lines 1838):</strong></p>
+<pre><code class="language-python">active_direction = int(pending_trade[&quot;prev_direction_value&quot;])
+pending_trade = None
+</code></pre>
+<p>When an early exit fires, Python resets <code>active_direction</code> to the <strong>previous</strong> direction before that trade, not zero.</p>
+<p><strong>MQL5 (lines 1240–1251):</strong></p>
+<pre><code class="language-cpp">if(active_direction!=0 &amp;&amp; signal_dir==active_direction)
+   continue;
+if(has_pending)
+  {
+   // closes pending at next signal
+   has_pending=false;
+  }
+</code></pre>
+<p>The MQL5 <code>BuildTradesFromSignals</code> has no early exit logic at all — it only handles next-signal and end-of-file exits. The entire <code>collect_exit_candidates</code> / <code>find_early_exit</code> machinery is absent. This is the most significant structural omission. The Python's trade builder calls <code>collect_exit_candidates</code> for each pending trade before processing the next signal; the MQL5 never does this.</p>
+<hr />
+<h3>Bug 7 — <code>dyn_blackout</code> loop: MQL5 skips the <code>IsValidValue</code> guard on KC values</h3>
+<p><strong>Python (lines 1331–1340):</strong></p>
+<pre><code class="language-python">if not pd.isna(kc_upper[i]) and not pd.isna(kc_lower[i]):
+    curr_width = ...
+    widths = [... for j in ... if not pd.isna(kc_upper[j]) and not pd.isna(kc_lower[j])]
+</code></pre>
+<p>Python guards both the outer KC validity and the inner lookback loop against NaN.</p>
+<p><strong>MQL5 (lines 840–854):</strong></p>
+<pre><code class="language-cpp">double curr_width=MathAbs(bars[i].kc_upper-bars[i].kc_lower);
+// no IsValidValue check before computing curr_width
+for(int j=start;j&lt;=i;j++)
+  { width_sum+=MathAbs(bars[j].kc_upper-bars[j].kc_lower); width_count++; }
+// no IsValidValue check in inner loop
+</code></pre>
+<p>After <code>BuildFilteredBars</code> drops bars with invalid KC values, all bars in the filtered array have valid KC data, so this is harmless in practice. However, it is a structural fidelity gap — MQL5 computes width unconditionally, Python does so only inside a validity guard. Also, the Python <code>slope_per_bar</code> is only computed inside the KC-valid guard block; MQL5 computes it unconditionally (line 853–854). If somehow an invalid KC value passed through (e.g., <code>kc_middle</code> is valid but <code>kc_upper</code>/<code>kc_lower</code> aren't), MQL5 would compute a bogus slope while Python would leave it at <code>0.0</code>.</p>
+<hr />
+<h3>Bug 8 — <code>signal_price</code> fallback when <code>base_price</code> is invalid: MQL5 missing</h3>
+<p><strong>Python (line 1620):</strong></p>
+<pre><code class="language-python">signal_price = closes[i] if pd.isna(base_price) else base_price + signal_dir * effective_sens
+</code></pre>
+<p><strong>MQL5 (lines 1161–1162):</strong></p>
+<pre><code class="language-cpp">double base_price=(InpMockPriceSource==TT_MOCK_PRICE_AGG_MA1 ? bars[i].ma1 : bars[i].ma2);
+signal_price=base_price+signal_dir*effective_sens;
+</code></pre>
+<p>MQL5 does not check whether <code>base_price</code> is valid before using it. If <code>base_price</code> is <code>TT_INVALID_VALUE</code>, the computed signal price will be garbage. Python falls back to <code>closes[i]</code>.</p>
+<hr />
+<h3>Summary table</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Location</th>
+<th>Severity</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>ReadoutToPrice</code></td>
+<td>Medium</td>
+<td>Returns <code>value * pip_size/0.1</code> instead of <code>value</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>CheckSpikeCondition</code></td>
+<td>High</td>
+<td>Missing 7 field initializations; <code>spike_last_price</code> uses extremum not close</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Cocked-signal AGG_MA2 block</td>
+<td>Medium</td>
+<td>Missing <code>use_entry_tightening</code> and <code>use_regime_gate</code> gates</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Signal commit block</td>
+<td>Low</td>
+<td>Double <code>aggr_recovery_active</code> set/clear lines absent (Python bug not ported)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>dyn_blackout</code> loop</td>
+<td>Low</td>
+<td>KC validity guards absent; slope computed unconditionally</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>BuildTradesFromSignals</code></td>
+<td>Critical</td>
+<td>Entire early-exit/stop logic absent; <code>prev_direction_value</code> reset missing</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>signal_price</code> computation</td>
+<td>Medium</td>
+<td>No <code>IsValidValue</code> fallback to <code>close</code> when <code>base_price</code> invalid</td>
+</tr>
+</tbody>
+</table></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-16 15:43 UTC</div><p>OK, currently, the code runs but does nothing. In addition, when I remove the indicator from the MT5 chart, and even if I close the chart, the MT5 Journal does not report that the indicator was unloaded.</p>
+<p>Will the fixes above also fix the behavior (lack of actually) I just described?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-16 15:43 UTC</div><p>No, those fixes won't touch that behavior. Those are logic bugs inside <code>DetectSignals</code> and <code>BuildTradesFromSignals</code> — they only affect signal correctness, not whether the indicator runs at all.</p>
+<p>The two symptoms you describe — does nothing, and no unload message — point to separate structural issues:</p>
+<p><strong>Does nothing:</strong> <code>OnCalculate</code> fires, sets <code>g_Processed = true</code>, calls <code>ProcessOfflinePort()</code>, but you get no output and no Journal entries beyond the "TOP OF FUNCTION" print. The most likely cause is that <code>LoadRawBars</code> is failing silently — the CSV file isn't found in the MT5 <code>Files</code> directory, so it returns false and <code>ProcessOfflinePort</code> returns false. The "input read failed" message should appear in the Journal if that's the case. Do you see that message, or do you see nothing at all after "TOP OF FUNCTION"?</p>
+<p><strong>No unload message:</strong> There is no <code>OnDeinit</code> handler in the file at all. MT5 calls <code>OnDeinit</code> when an indicator is removed or the chart closes. Without it, nothing is printed on unload. This is a straightforward omission — it has nothing to do with the logic bugs.</p>
+<p>So: the unload silence is definitely a missing <code>OnDeinit</code>. The "does nothing" needs one more piece of info from you — what exactly does the Journal show after "TOP OF FUNCTION"?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-16 15:47 UTC</div><p>the AI claims it fixed the bugs you listed. Did it?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-16 15:48 UTC</div><p>Yes and no. Here's the status of each bug:</p>
+<p><strong>Fixed correctly:</strong><br />
+- Bug 1 — <code>ReadoutToPrice</code> now returns <code>value</code> unchanged. ✓<br />
+- Bug 2 — <code>CheckSpikeCondition</code> now sets all 7 missing fields and uses <code>bars[bar].close</code> for <code>spike_last_price</code>. ✓<br />
+- Bug 3 — <code>EntryTighteningOK</code> and <code>RegimeGateOK</code> added, wired into the AGG_MA2 branch correctly. ✓<br />
+- Bug 5 — <code>dyn_blackout</code> loop now has <code>IsValidValue</code> guards on the outer block and the inner lookback loop. ✓<br />
+- Bug 7 — <code>signal_price</code> now falls back to <code>bars[i].close</code> when <code>base_price</code> is invalid. ✓</p>
+<p><strong>Fixed but wrong:</strong><br />
+- Bug 6 — <code>BuildTradesFromSignals</code> now has <code>FindEarlyExit</code> called, but the order of operations is wrong. The Python checks for early exit <strong>before</strong> checking <code>active_direction != 0 &amp;&amp; signal_dir == active_direction</code> (the same-direction skip). The MQL5 does it the same way, so that part is fine. However: in the Python, when an early exit fires, <code>active_direction</code> is reset to <code>pending_trade["prev_direction_value"]</code> — the direction <em>before</em> that trade opened. The MQL5 stores this in <code>pending_prev_direction</code> and assigns it correctly on early exit (line 1349). But then on line 1353, it checks <code>if(active_direction!=0 &amp;&amp; signal_dir==active_direction)</code> — at this point <code>active_direction</code> has already been reset to <code>pending_prev_direction</code>. That means a signal in the same direction as the <em>previous</em> trade (before the stopped-out one) gets skipped. The Python does the same check against the same reset value, so this is actually correct. ✓ on further inspection.</p>
+<p><strong>Fixed, but the underlying Python bug is now faithfully ported:</strong><br />
+- Bug 4 — Lines 1280–1283: <code>aggr_recovery_active</code> is set <code>true</code> then immediately set <code>false</code> on the same condition, matching the Python exactly. This is correct as a port. ✓</p>
+<p><strong>Still missing — <code>OnDeinit</code>:</strong><br />
+The unload-silence issue you reported in the previous message is still not addressed. There is no <code>OnDeinit</code> handler in this file. That's a separate addition that was not part of my original bug list, but it remains absent.</p>
+<p>So: all 7 logic bugs from my report are fixed. The <code>OnDeinit</code> omission is still present.</p></div><div class="nav"><span><a href="2026-04-16_unintended-changes-after-bug-fix_27318e37.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-13_law-is-violation-manuscript-organization-and-content-consoli_e64a1c2d.html">Next →</a></span></div></div></body></html>

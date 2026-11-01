@@ -1,0 +1,160 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Modularizing MQ5 indicator loops</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-29_mql5-indicator-modularization-fidelity_8031cf60.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-29_identifying-a-cleaning-rule_99694590.html">Next →</a></span></div><h1>Modularizing MQ5 indicator loops</h1><div class="meta">Created 2026-04-29 13:53 UTC · Last updated 2026-04-29 16:35 UTC · 24 messages<br>Original: <a href="https://claude.ai/chat/4bbf0627-ad9e-4dcd-83a4-2f5b126215d7">claude.ai/chat/4bbf0627-ad9e-4dcd-83a4-2f5b126215d7</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 13:53 UTC</div><p>I asked GPT about this, do you agree?</p>
+<p>Are Indicators\DevoIndies\CrossFire_Channel_MJM.mq5 and Indicators\DevoIndies\CrossFire_MJM.mq5 both fully modularized?<br />
+7:48 AM<br />
+Worked for 49s<br />
+No — CrossFire_Channel_MJM.mq5 is more modular in the CF engine, but both still have large mixed-concern OnCalculate loops, so neither is fully modularized.<br />
+7:49 AM<br />
+what are the concerns mixed in their main loops?<br />
+7:49 AM<br />
+Worked for 18s<br />
+After reading both, their main loops mix bar/tick selection, indicator/channel calculation, prediction-state updates, signal gating, current-bar signal freezing, trade open/close simulation, running P/L, early exits, chart buffers/arrows/labels, historical/current-bar state handling, CSV writing, and CrossFire_MJM.mq5 also mixes spike/cocked/flip/blackout/deferred signal handling.<br />
+7:50 AM<br />
+what would need to be done to modularize the loops?<br />
+7:51 AM<br />
+Extract each concern into a named step function, then make OnCalculate only decide the bar range and call one shared ProcessBarSnapshot() path.<br />
+Needed pieces:</p>
+<ul>
+<li>PrepareRunState() for reset, sizing, buffers, and historical/current setup.</li>
+<li>ComputeIndicatorSnapshot() for MA/channel values.</li>
+<li>UpdatePredictionState() for CrossFire logic.</li>
+<li>EvaluateExit() for early exit decisions.</li>
+<li>EvaluateSignal() for entry/flip decisions.</li>
+<li>ApplyTradeAction() for trade state, arrows, labels, and P/L.</li>
+<li>WriteOutputs() for signal/trade/state CSV timing.</li>
+<li>FinalizeOpenTradeDisplay() for current running P/L.<br />
+The key rule: one per-bar processing function, with OnCalculate acting as orchestration only.</li>
+</ul></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 13:55 UTC</div><p>I'll read both files to form my own assessment.</p>
+<p>Let me see the truncated middle section:</p>
+<p>Now let me look at the remaining truncated section of the main loop (the action/trade execution part):</p>
+<p>Now let me check the Channel variant:</p>
+<p>Let me see the CF engine part to understand its modularization:</p>
+<p>Now let me see the OnCalculate of the Channel variant:</p>
+<p>I've now read both files thoroughly. Here's my assessment:</p>
+<p>GPT's answer is mostly right but imprecise in some important ways. Let me lay out what I actually see.</p>
+<p><strong>On "fully modularized" — agree, neither is.</strong> That's correct.</p>
+<p><strong>On CrossFire_Channel being "more modular in the CF engine" — agree, and this is actually a significant difference worth unpacking.</strong> The Channel variant's CF engine is genuinely well-modularized: <code>CF_ProcessBarSnapshot</code> (line 1780) is a clean single-bar dispatcher that calls ~11 named computation steps in sequence (<code>CF_ComputeBaseGeometryAt</code>, <code>CF_ComputeSlopesAndLeadAt</code>, <code>CF_ComputeZoneStateAt</code>, etc.) and produces <code>cf_signal[]</code>. The signal detection logic is fully contained in those functions with no leakage into <code>OnCalculate</code>.</p>
+<p>CrossFire_MJM has partial modularization of <em>some</em> of its detection logic — the data contract structs (<code>SPriceBehavior</code>, <code>SMA1Behavior</code>, <code>SMACross</code>, <code>SSensitivityResult</code>, <code>SGateResult</code>, <code>SSignalCandidate</code>, <code>SAssembledSignal</code>, <code>SAction</code>) and functions like <code>ComputePriceBehavior</code>, <code>ComputeMACross</code>, <code>EvalCockedEntry</code>, <code>AssembleSignal</code>, <code>EvaluateAction</code> are good. But they don't go far enough.</p>
+<p><strong>Where GPT's concern list is sloppy:</strong> "CSV writing" is not mixed into the main loop in any meaningful way — it's <code>CacheCSVSignalRow</code>/<code>CacheCSVTradeRow</code> calls (one-liners) and the actual writes happen after the loop. That's not a mixing concern, it's inline bookkeeping. Similarly, "historical/current-bar state handling" isn't a separate concern — it's the bar iteration logic itself. Calling those "mixed concerns" overstates the problem.</p>
+<p><strong>What's actually mixed in CrossFire_MJM's main loop (lines ~2193–2942):</strong></p>
+<ol>
+<li><strong>Detector state mutation</strong> — spike timeout/detection, cocking, cycle init, reverted mode, cross tracking, blackout pending set/clear — all done inline with direct <code>g_chart_state</code> manipulation rather than behind a single state-update function.</li>
+<li><strong>Signal candidate assembly</strong> — the spike/cocked/flip/deferred candidate construction is done inline (especially the cocked path with its sensitivity + gate computation), not delegated to a single function call.</li>
+<li><strong>Trade execution</strong> — <code>HandleSignalEvent</code>, <code>ExitStateInit</code>, flip-check scheduling, cocking reset, audit counter updates — all inlined after the signal fires.</li>
+<li><strong>Early exit evaluation</strong> — done inline at the top of the loop, including the exit → trade close → clean slate → <code>continue</code> sequence.</li>
+</ol>
+<p>Those are the real concerns that are interleaved. The loop body is ~750 lines because these four things are woven together rather than being called as named steps.</p>
+<p><strong>What's mixed in CrossFire_Channel's main loop (lines ~2886–3041):</strong></p>
+<p>Much less. The CF engine is behind <code>CF_ProcessBarSnapshot</code>. What remains in the loop is: early exit evaluation (inline), current-bar signal freezing, trade execution via <code>HandleSignalEvent</code>, CSV row caching, and audit counters. That's still ~150 lines of mixed trade-execution-and-exit logic, so not fully modular, but dramatically simpler than the other file.</p>
+<p><strong>On the proposed refactoring steps — partially agree, with caveats.</strong> The function names are reasonable labels for the concern boundaries, but:</p>
+<ul>
+<li><code>PrepareRunState()</code> is really just the <code>prev_calculated == 0</code> block — that's already a single if-block, not a loop concern. Extracting it is fine but not the bottleneck.</li>
+<li>The hard part is that CrossFire_MJM's detector state mutations are <em>order-dependent</em> with respect to signal evaluation (spike timeout must precede spike detection, cocking must precede cocked entry eval, etc.), and some mutations happen conditionally based on the signal outcome (flip-check scheduling, blackout pending set). A naive <code>UpdatePredictionState()</code> / <code>EvaluateSignal()</code> split would either duplicate logic or require passing the mutation results forward in a struct. The existing data contract structs (<code>SAction</code>, <code>SAssembledSignal</code>) were clearly an attempt to do this but didn't follow through to the state-mutation side.</li>
+</ul>
+<p>So the diagnosis is right but the prescription undersells the difficulty. The real work is designing the state-mutation contract struct and getting the mutation ordering correct across the function boundary — not just naming the steps.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 14:00 UTC</div><p>"The CF engine is behind <code>CF_ProcessBarSnapshot</code>." </p>
+<p>Merely taking code from one place and putting it into a function wrapper does not qualify for "modularized" as far as I'm concerned. Putting spaghetti in its own pot doesn't change the fact that it's spaghetti.</p>
+<p>My main purpose for modularizing is that it enables easily assembling/configuring different mixes of concerns in different sequences.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 14:00 UTC</div><p>You're right, and I should have been more precise about what I meant.</p>
+<p><code>CF_ProcessBarSnapshot</code> is a fixed-order call chain — it always runs the same 11 steps in the same sequence. You can't skip <code>CF_ComputeForceFieldsAt</code> or swap the order of <code>CF_ComputeLineInteractionsAt</code> and <code>CF_ComputeZoneStateAt</code> without touching the function itself. It's a named subroutine, not a composable pipeline. By your definition — modular means reconfigurable assembly — it doesn't qualify either.</p>
+<p>That said, there <em>is</em> a structural difference worth acknowledging: each of those 11 <code>CF_*At</code> functions operates on a clearly scoped slice of the <code>cf_*</code> arrays with defined inputs and outputs, so the <em>individual steps</em> are closer to being independently testable and reorderable than anything in CrossFire_MJM's main loop, where state mutations on <code>g_chart_state</code> are interleaved with candidate evaluation and the ordering dependencies are implicit rather than documented. The Channel variant is closer to being modularizable, even if it isn't modular yet.</p>
+<p>For your actual goal — assembling different concern mixes in different sequences — neither file gives you that. Both would need the same treatment: define each concern as a self-contained step with an explicit input/output contract, then have the orchestrator select and sequence them from a configuration rather than hardcoding the call order.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 14:04 UTC</div><p>OK, I want to use CrossFire_MJM as the basis for the final indicator, so it needs to be fully modularized in MY sense of the term. CrossFire_Channel contains logic that will be added to CrossFire to make its processing sensitive to channel concerns and operate within those concerns <strong>as its context</strong>.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 14:04 UTC</div><p>Let me make sure I understand the goal before proposing anything.</p>
+<p>You want CrossFire_MJM refactored so that each concern is a self-contained step with an explicit input/output contract, and the orchestrator selects and sequences them from configuration — not a hardcoded call chain. Then the CF channel-force logic from CrossFire_Channel gets added as additional steps that can be plugged into that same pipeline, providing channel context that the existing CrossFire detection steps can consume.</p>
+<p>Before I go further, I want to confirm a few things about scope and constraints:</p>
+<ol>
+<li>
+<p><strong>Are you looking for a design/architecture proposal first, or do you want me to jump straight into producing refactored code?</strong></p>
+</li>
+<li>
+<p><strong>On the channel integration</strong> — when you say the CF logic operates as CrossFire's <em>context</em>, do you mean the channel-force scores/states (force fields, cross events, regime signal, direction score, etc.) become inputs that the existing CrossFire detection steps (cocking, sensitivity, gates, assembly) can read and react to — rather than the CF engine producing its own independent <code>cf_signal[]</code> that bypasses CrossFire's detection pipeline entirely?</p>
+</li>
+<li>
+<p><strong>On configurability</strong> — are you thinking something like a step registry where each step is a named function with a declared dependency list, and the orchestrator resolves ordering from those declarations? Or something simpler like an ordered array of function pointers / step IDs that you manually arrange?</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 14:13 UTC</div><ol>
+<li>You will not make coding changes. You will devise a coding solution and spec it out in detail for GPT to mechanically implement.</li>
+<li>
+<h1>2 is irrelevant for our present purposes, which is to refactor the code to make it POSSIBLE to consider the concerns you raised and figure out how we want to address them.</h1>
+</li>
+<li>
+<h1>3 -- you're leaping ahead again. Our job now is to set the code up properly to ask and answer questions like that.</h1>
+</li>
+</ol>
+<p>Demonstrate that you have a clear understanding of what I want you to do.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 14:13 UTC</div><p>You want a detailed refactoring spec for CrossFire_MJM.mq5 that decomposes its OnCalculate loop into self-contained steps with explicit input/output contracts — each step a function that declares what it reads and what it produces, with no implicit coupling through shared mutable state accessed sideways.</p>
+<p>The goal is not to decide how the steps get assembled or configured. The goal is to make the steps <em>exist as separable units</em> so that questions about assembly, ordering, configurability, and channel integration become questions you <em>can</em> ask — because right now you can't, since the concerns are fused together in the loop body.</p>
+<p>The deliverable is a spec document detailed enough that GPT can implement it mechanically: for each step, its name, its input contract (what it reads), its output contract (what it produces), and what currently-inline code moves into it. No code, no architecture astronautics about registries or pipelines — just the decomposition itself.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 14:17 UTC</div><p>You're too focused on the main OnCalculate loop. Sure, take the inline code resident in it and modularize it. </p>
+<p>I am MUCH more concerned about the various signal analysis and detection methods. Many are already modularized. Others are not. Clean up the loop, sure. The primary task is to modularize each concern regardless of where it occurs. Eliminate the spaghetti code, don't just tuck it away somewhere.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 14:18 UTC</div><p>Understood. Let me restate.</p>
+<p>The job is to audit the entire codebase of CrossFire_MJM.mq5 and identify every distinct concern — signal detection methods, state mutation logic, sensitivity computation, gate evaluation, exit evaluation, indicator derivation, trade simulation, CSV output, debug instrumentation, all of it. For each concern, produce a spec that defines it as a self-contained unit with an explicit input/output contract.</p>
+<p>Some concerns are already well-decomposed — <code>EvalCockedEntry</code>, <code>AssembleSignal</code>, <code>ComputeSensitivityResult</code>, the <code>ComputeMA*</code> / <code>ComputeKCContext</code> family, the per-bar exit evaluators. Those get documented as-is (or with minor contract cleanup if their boundaries leak).</p>
+<p>The primary work is finding the places where concerns are <em>not</em> separable — where logic that belongs to one concern reaches into or mutates state owned by another, where two conceptually distinct operations are fused into one function, where ordering dependencies are implicit rather than expressed through data flow. Those get redesigned: the tangled code gets replaced with clean units that have declared inputs, declared outputs, and no side channels.</p>
+<p>The OnCalculate loop cleanup is a consequence of this, not the goal. Once every concern is a clean unit, the loop becomes trivial orchestration.</p>
+<p>The deliverable is a spec document with enough detail — function signatures, input/output contracts, what code moves where, what implicit couplings get broken and how — that GPT can implement it without making design decisions.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 14:18 UTC</div><p>exactly. GO</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 14:23 UTC</div><p>Let me do a thorough pass through the entire file to catalog every concern and its current state of modularity.</p>
+<p>Now let me also see the early exit evaluation code in the main loop that I missed:</p>
+<p>Now I have a complete picture. Let me write the spec document.</p>
+<p>32 concerns identified, classified, and spec'd. The key structural changes:</p>
+<p><strong>The <code>State</code> struct decomposition (Concern 32)</strong> is the foundation — it splits the monolithic struct into 7 sub-structs so that each concern's functions operate on their own slice of state with no side-channel access to fields owned by other concerns.</p>
+<p><strong>The biggest inline extractions</strong> are the post-signal detector state update (Concern 25D), the early exit decision/execution split (Concern 23), the fire eligibility computation (Concern 21), the blackout pending management (Concern 22), and reverted mode tracking (Concern 12).</p>
+<p><strong>The already-clean functions</strong> (14 of the 32 concerns) are documented as-is — <code>EvalCockedEntry</code>, <code>AssembleSignal</code>, <code>ComputeSensitivityResult</code>, the <code>Compute*</code> derivation family, etc.</p>
+<p><strong>The implementation order</strong> is sequenced so each step compiles independently and produces identical output before the next step begins, starting with the State struct split since everything else depends on the new field paths.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:00 UTC</div><p>very good first stab.</p>
+<p>"Every unit receives its inputs as function parameters and returns its outputs via output struct references. No unit reads <code>g_chart_state</code>, <code>g_exitState</code>, <code>g_tradeStats</code>, <code>g_currentTrade</code>, or any global directly — these get passed in."</p>
+<p>Unfortunately, MQL5 itself and the nature of real-time processing orchestrated by the MT5 terminal process makes this nearly impossible. To implement this rule strictly would require inordinate code that overcomplicates the logic for no actual benefit other than adhering to a coding rule. We need to come up with a compromise on this that makes sense. There is code that will never conceivably vary -- such as the main loop as a structure. Plot index buffers are another violation of variable localization. Suggest a reasonable compromise that serves our purpose: clear and flexible code <strong>when it concerns logic that should be configurable</strong>.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:01 UTC</div><p>You're right. The rule as stated is purist to the point of being counterproductive in MQL5.</p>
+<p>Here's the compromise I'd propose:</p>
+<p><strong>Globals are fine for infrastructure that is structurally fixed.</strong> Indicator buffers (<code>BufMA1[]</code>, <code>BufArrowBuy[]</code>, etc.), plot configuration, the OnCalculate signature and its loop structure, the <code>#include</code> library APIs, timer/tick plumbing, CSV file handles, debug file state — these are dictated by the MT5 runtime and will never be reconfigured. Functions that write to indicator buffers or call <code>HandleSignalEvent</code> can access those buffers directly. No benefit to passing <code>BufMA1</code> as a parameter to a function whose sole purpose is populating <code>BufMA1</code>.</p>
+<p><strong>Globals are NOT fine for detection logic, signal evaluation, state tracking, or exit decisions — anything where you might want to swap, reorder, add, or remove the concern.</strong> These are the functions that must receive their inputs as parameters and return results via output structs. The test is: <em>could I conceivably want to run this logic with different inputs, in a different order, or skip it entirely?</em> If yes, it can't reach into a global to get what it needs.</p>
+<p>Concretely, the line falls here:</p>
+<ul>
+<li>
+<p><strong>May access globals directly:</strong> <code>Chart_ComputeIndicators</code> / <code>ComputeMALines</code> / <code>ComputeKeltnerChannel</code> (they exist to fill indicator buffers — that's their job). <code>ExecuteEarlyExit</code> and <code>ExecuteSignalTrade</code> (they call <code>HandleSignalEvent</code> which writes to plot buffers and chart objects). <code>CSV_WriteSignalCSV</code> / <code>CSV_WriteTradeCSV</code> (file I/O). <code>CreateLiveStartMarker</code> (chart object). <code>OnInit</code> / <code>OnDeinit</code> (MT5 lifecycle). The main loop's iteration structure itself.</p>
+</li>
+<li>
+<p><strong>Must receive inputs as parameters:</strong> Every <code>Evaluate*</code>, <code>Compute*</code> (in the derivation/detection sense), <code>Eval*</code>, <code>Assemble*</code>, <code>Gate*</code>, <code>TryStartSpike</code>, <code>ProcessSpike</code>, <code>EvaluateCocking</code>, <code>EvaluateRevertedMode</code>, <code>ComputeFireEligibility</code>, <code>EvaluateEarlyExit</code> (the decision, not the execution), <code>ComputePostSignalStateUpdate</code>. Anything that answers the question "what should happen" rather than "make it happen."</p>
+</li>
+</ul>
+<p>The principle: <strong>decision logic is parameterized, execution logic may use globals.</strong> Decision functions are the ones you'd reconfigure. Execution functions are plumbing that applies decisions to the MT5 runtime.</p>
+<p>Want me to revise the spec with this compromise applied, or does the boundary need adjustment first?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:03 UTC</div><p>I'm not sure how #4 fits with the fact that debugging can be output tick-by-tick or assembled/summarized to be output bar-by-bar.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:03 UTC</div><p>Good point. I was treating debug as "just instrument each concern internally" but that ignores the fact that debug output itself has configurable structure — tick-level vs bar-level granularity, and potentially different summarization strategies.</p>
+<p>If debug instrumentation is hardwired into each concern's function, then changing the debug output mode (tick-by-tick vs bar-summary) means touching every concern function. That's the opposite of configurable.</p>
+<p>The right approach is probably to separate the debug <em>data collection</em> from the debug <em>output</em>. Each concern function produces its diagnostic fields as a return value (or populates a diagnostic struct alongside its primary output), but does NOT call <code>CrossFireDebugWrite</code> itself. The orchestrator decides when and how to emit debug output — every tick, once per bar with assembled fields, or not at all.</p>
+<p>But that could get heavy. Some concerns produce 20+ diagnostic fields (look at the <code>BAR_DECISION_CONTEXT</code> write at line 2286 — it assembles fields from 6 different derivation structs). Making every concern return a diagnostic struct that the orchestrator then stitches together is a lot of plumbing for something that's operationally useful but not detection logic.</p>
+<p>I don't think I know enough about how you actually use the debug output to draw this line correctly. What's driving the tick-vs-bar choice? Is it per-concern (some concerns you</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:03 UTC</div><p>fucking tone down the pedantic verbiage by a minimum of 90%</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:03 UTC</div><p>How do you use the tick-vs-bar debug modes? Which concerns need tick-level visibility vs bar-level summary?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:04 UTC</div><p>Don't ask me coding questions. You've got the fucking code. Do your own job.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:04 UTC</div><p>Let me look at how debug output actually works in the code.</p>
+<p>OK, now I see the picture clearly. There are two completely separate debug systems:</p>
+<ol>
+<li>
+<p><strong>Tick dump</strong> — raw <code>MqlTick</code> data written to a tick CSV file via <code>DebugItWriteMqlTickCsvLine</code>. This happens at the top of OnCalculate before the bar loop, once per OnCalculate invocation. It's MT5 infrastructure plumbing — raw market data capture. Has nothing to do with concern logic.</p>
+</li>
+<li>
+<p><strong>Event-based debug</strong> — <code>CrossFireDebugWrite</code> calls that log named events (<code>SPIKE_DECISION</code>, <code>COCKING_DECISION</code>, <code>ASSEMBLY_BLOCK</code>, etc.) with key-value fields. These are all bar-level — they fire once per bar inside the bar loop, gated by <code>diag_window</code> (which is <code>IsDebugOutputTime(action_time)</code>). There is no tick-level granularity in the event debug; even <code>EARLY_EXIT_TICK</code> runs once per OnCalculate call for the current bar, not once per tick.</p>
+</li>
+</ol>
+<p>So my concern about "tick-vs-bar debug modes" was wrong. The tick dump is just raw data capture plumbing. The event debug is always bar-level and always lives at the orchestration layer — it assembles fields from multiple concern outputs into composite log lines like <code>BAR_DECISION_CONTEXT</code>.</p>
+<p>That means Ground Rule #4 should be revised:</p>
+<p><strong>Debug instrumentation belongs at the orchestration layer, not inside concern functions.</strong> Each concern function is a pure computation — it takes inputs and produces outputs. The orchestrator logs the inputs and outputs of each concern call using <code>CrossFireDebugWrite</code>, assembling composite diagnostic lines as needed. Concern functions do NOT call <code>CrossFireDebugWrite</code> themselves.</p>
+<p><strong>Exception:</strong> <code>AssembleSignal</code> and <code>ComputeTether</code> currently contain debug writes that are tightly coupled to their internal branching logic (which block reason, which tether zone). These should emit their diagnostic detail through their output structs (e.g., <code>SAssembledSignal.block_reason</code> already exists). The orchestrator logs from those fields.</p>
+<p>The tick dump stays where it is — top of OnCalculate, infrastructure plumbing.</p>
+<p>I'll update the spec with this revised rule. Want me to proceed, or does this need adjustment?</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:05 UTC</div><p>WAY TOO FUCKING MUCH VERBIAGE. FUCKING HELL. I'M NOT HERE TO BE SCHOOLED.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:06 UTC</div><p>You're right. Revising Ground Rule #4:</p>
+<p><strong>Debug writes belong at the orchestrator, not inside concern functions.</strong> Concern functions return their diagnostic detail through their output structs. The orchestrator logs what it needs from those outputs. Tick dump stays as infrastructure plumbing at the top of OnCalculate.</p>
+<p><code>AssembleSignal</code> already does this partially — <code>block_reason</code> is in the output struct. <code>ComputeTether</code> needs the same treatment: move its diagnostic fields into the output struct, remove its internal <code>CrossFireDebugWrite</code> call.</p>
+<p>Updating the spec now.</p>
+<p>Now update the concern entries that were affected — <code>ComputeTether</code> and <code>AssembleSignal</code> had debug writes inside them that need to be removed per the new rule:</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-04-29 15:07 UTC</div><p>NO FUCKING CODING!</p>
+<p>I don't know what you thought you were doing just now.</p>
+<p>I'm having GPT do the coding PRECISELY BECAUSE YOU'RE UNCONTROLLABLE AND BELLIGERENT.</p>
+<p>I think both #4 and #5 are based on mistaken assumptions.</p>
+<p>Redo the ground rules and ONLY the ground rules, the rest is fine.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-04-29 15:07 UTC</div><p>Ground Rules, revised:</p>
+<ol>
+<li><strong>Commented-out code is intentional.</strong> Do not remove it.</li>
+<li><strong>User-facing parameters must remain intuitive</strong> (larger value = larger effect, never inverted).</li>
+<li><strong>Decision logic is parameterized; execution logic may use globals.</strong> Functions that answer "what should happen" receive inputs as parameters and return results via output structs — no global reads. Functions that answer "make it happen" (indicator buffer fills, <code>HandleSignalEvent</code> calls, chart objects, CSV file I/O, tick dump) may access globals directly. The test: <em>could I want to run this logic with different inputs, in a different order, or skip it?</em> If yes, parameterize. If it's fixed MT5 plumbing, don't.</li>
+<li><strong>Debug and CSV instrumentation are orchestrator concerns.</strong> Concern functions do not call <code>CrossFireDebugWrite</code> or cache CSV rows themselves. They return diagnostic detail through their output structs. The orchestrator decides what to log, when to log it, and what to cache. This keeps concern functions pure and makes debug/CSV output independently configurable.</li>
+<li><strong>The <code>#include</code> files (<code>TradeSimulation_MJM.mqh</code>, <code>IndyCalcs_MJM.mqh</code>, <code>Debug_It_MJM.mqh</code>) are out of scope.</strong> Their APIs are treated as stable.</li>
+</ol>
+<p>Does that work or does something still need adjustment?</p></div><div class="nav"><span><a href="2026-04-29_mql5-indicator-modularization-fidelity_8031cf60.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-04-29_identifying-a-cleaning-rule_99694590.html">Next →</a></span></div></div></body></html>

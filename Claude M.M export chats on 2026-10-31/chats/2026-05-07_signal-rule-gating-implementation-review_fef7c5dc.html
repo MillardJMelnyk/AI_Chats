@@ -1,0 +1,276 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signal rule gating implementation review</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-08_code-audit-for-decisiveness-indicator_8cd31a60.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-06_csv-analysis-and-timing-model-verification_689b6671.html">Next →</a></span></div><h1>Signal rule gating implementation review</h1><div class="meta">Created 2026-05-07 14:52 UTC · Last updated 2026-05-07 15:26 UTC · 28 messages<br>Original: <a href="https://claude.ai/chat/fef7c5dc-2a7c-427d-a789-7c225b0e3a23">claude.ai/chat/fef7c5dc-2a7c-427d-a789-7c225b0e3a23</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 14:52 UTC</div><p>We've gated all the signal/trade rules, however:</p>
+<p>Out-of-scope items I did NOT survey:</p>
+<ul>
+<li>Loop 1 (<code>PMA_ComputeAt</code> / <code>MAKCL_ComputeAt</code> / <code>CF_ProcessBarContext</code>) internal state. Loop 1 itself was always running per OnCalculate call, but those engines may have their own per-bar accumulators that now run on every tick because OnCalculate runs every tick. I'd need to read into the .mqh files to confirm — those weren't uploaded.</li>
+<li><code>ExpireStaleClusters</code> — uses <code>current_bar</code> to age clusters out. May mis-classify live-bar age.</li>
+<li>The flip-check timing now that <code>flip_check_bar = bar + 1</code> and the gate is <code>bar &gt;= flip_check_bar</code> — could fire on the very first tick of the next bar. May or may not be desired.</li>
+</ul>
+<p>I've uploaded all relevant files. Double-check for any problems. Make sure that turning off a rule won't interfere with the active ones. Find any locations where the gating has not been sufficiently implemented.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 14:59 UTC</div><p>Now let me look at how <code>IndyCalcs_MJM.mqh</code> is used for <code>ComputeIndicatorLines</code>:</p>
+<p>I've now read all five files thoroughly. Here's what I found.</p>
+<hr />
+<h2>1. CRITICAL — PMA and MAKCL state accumulators re-run on every tick</h2>
+<p>This is the biggest problem. Lines 6108–6127:</p>
+<pre><code class="language-mql5">int cf_context_start = (prev_calculated == 0) ? 0 : start_bar;
+for(int cf_i = cf_context_start; cf_i &lt; rates_total; cf_i++)
+{
+    CF_ProcessBarContext(cf_i, ...);
+    PMA_ComputeAt(cf_i, ..., g_pma_state);
+    MAKCL_ComputeAt(cf_i, ..., g_makcl_state);
+}
+</code></pre>
+<p>On the live bar, <code>start_bar = prev_calculated - 1 = rates_total - 1</code>, so this loop executes for the live bar on <strong>every tick</strong>. The CF engine has a snapshot/restore mechanism (<code>CF_PreparePendingCrossesForBar</code> at 2631 — saves pending-crosses state on first encounter, restores from snapshot on re-encounter). PMA and MAKCL have <strong>nothing like that</strong>.</p>
+<p><strong>PMA corruption path (<code>PMA_UpdateEntityAndDrive</code>):</strong><br />
+- The circular <code>slope_window[]</code> buffer gets a new entry pushed every tick — <code>window_idx</code> advances, <code>window_count</code> increments. An M1 bar with 30 ticks fills the window 30 times. The smoothness variance calculation becomes garbage.<br />
+- <code>streak_sign</code> / <code>streak_bars</code> get re-evaluated tick-to-tick as the slope value changes with each new <code>close[bar]</code>.</p>
+<p><strong>PMA corruption path (<code>PMA_UpdatePairCrossPulse</code>):</strong><br />
+- <code>bars_since_cross++</code> fires in the else-branch on every tick. Over 30 ticks of one bar, <code>bars_since_cross</code> advances by 30 instead of 1.<br />
+- <code>prev_spread_sign</code> is updated repeatedly. If the spread sign flutters intra-bar, phantom cross-pulses get emitted.</p>
+<p><strong>MAKCL corruption path (<code>MAKCL_UpdatePair</code>):</strong><br />
+- Identical to PMA pairs. <code>bars_since_cross</code> inflates, <code>prev_spread_sign</code> drifts.</p>
+<p><strong>CF pending-crosses are OK.</strong> <code>CF_PreparePendingCrossesForBar</code> handles the multi-tick replay correctly. All other CF array writes (<code>cf_pushMag[index]</code>, <code>cf_netPush[index]</code>, etc.) are position-indexed overwrites — idempotent. The leaky accumulators read <code>[index-1]</code> which is a completed bar that doesn't change.</p>
+<p><strong>Fix:</strong> Either:<br />
+- (a) Add a <code>g_pma_working_bar</code> / <code>g_makcl_working_bar</code> sentinel with snapshot/restore, same pattern as the CF pending crosses, or<br />
+- (b) Gate the PMA/MAKCL calls so they only advance state once per bar. The array-indexed outputs can still be overwritten every tick (that's fine — only the struct-state mutations need the gate).</p>
+<hr />
+<h2>2. MODERATE — Cocking runs every tick (no <code>is_new_bar</code> gate)</h2>
+<p>Lines 6648–6670. <code>EvaluateCocking</code> reads <code>close[bar]</code>, which on the live bar is the current tick price. Once the condition fires, <code>ApplyCockingResult</code> latches <code>is_cocked = true</code> and the <code>!g_chart_state.is_cocked</code> precondition at 6651 prevents re-entry. So this is a <strong>one-way latch that fires on the first qualifying tick</strong>, not on the finalized bar close.</p>
+<p>If a transient tick briefly drops below <code>ref_open</code> and then retraces, cocking fires and sticks. Whether this is by design depends on your intent — but it's asymmetric with the reverted-mode evaluation (gated by <code>is_new_bar</code> at 6715) and the line-event updates (also gated). If cocking is meant to reflect committed bar-close behavior, it needs the same gate.</p>
+<hr />
+<h2>3. MODERATE — Flip check fires on first tick of next bar (tick-price-dependent verdict)</h2>
+<p>Line 7623 sets <code>flip_check_bar = bar + 1</code>. Line 6962 triggers when <code>bar &gt;= flip_check_bar</code>. On the very first tick of bar+1, this fires. Line 6964 immediately clears <code>flip_check_pending = false</code>, so it's a single-shot. The problem: the flip-check comparison at line 4443 (<code>facts.close &lt; target</code>) uses the first tick's price as the close, which may differ substantially from where the bar settles.</p>
+<p>Whether this is acceptable depends on intent. If the flip check should evaluate the completed bar's close, it should use <code>is_new_bar</code> (evaluating bar-1's settled close) rather than triggering on the first tick of the next bar.</p>
+<hr />
+<h2>4. MODERATE — Cycle init runs every tick (but self-guards via latch)</h2>
+<p>Line 6698: <code>if(g_chart_state.MA1vMA2_Cross_dir == 0 &amp;&amp; cx.curr_t2e != 0 &amp;&amp; !g_chart_state.spike_active)</code>. <code>ResetCycle</code> sets <code>MA1vMA2_Cross_dir</code> to non-zero, so the <code>== 0</code> guard prevents re-entry. This is also a first-qualifying-tick latch. Same consideration as cocking — if <code>curr_t2e</code> sign depends on the tick-level spread between MA1 and MA2, the cycle direction is determined by the first tick that produces a nonzero t2e, not the bar close.</p>
+<hr />
+<h2>5. OK — Rule independence / turning rules off</h2>
+<p>I traced the candidate evaluation chain through assembly. Each rule independently produces a zero-direction candidate when disabled:</p>
+<ul>
+<li>
+<p><strong>Spike detection</strong> (<code>InpEnableSpikeDetection = false</code>): <code>spike_signal</code> stays 0, <code>spike_active</code> stays false. The <code>if(spike_signal == 0 &amp;&amp; !spike_active)</code> guard around the forces/cocked/channel-structure blocks is always true, so those subsystems run unconditionally. No interference.</p>
+</li>
+<li>
+<p><strong>Line event clustering</strong> (<code>InpUseLineEventClustering = false</code>): <code>UpdateLineEventState</code> early-returns (line 5310), <code>EvaluateLineEventCandidate</code> early-returns (line 5278). <code>BuildChannelDecisionContext</code> still calls <code>DeriveCommitmentSnapshot</code> which reads the cluster array — but with no clusters ever populated, commitment is always zero. Safe.</p>
+</li>
+<li>
+<p><strong>Channel context</strong> (<code>InpUseChannelContext = false</code>): <code>BuildChannelDecisionContext</code> early-returns with <code>ctx.valid = false</code>. <code>ChannelContextBlocksCandidate</code> returns false (no blocking). <code>ChannelExitSuppression</code> returns no suppression. The channel sensitivity multipliers skip. Safe degradation.</p>
+</li>
+<li>
+<p><strong>Channel structure breakout</strong> (<code>InpUseChannelStructureBreakout = false</code>): <code>EvalChannelStructureBreakout</code> early-returns at line 4388. Candidate stays zero. No interference.</p>
+</li>
+<li>
+<p><strong>Aggressive entry gates</strong> (all <code>InpUse*</code> = false): Each gate's flag sets its result to <code>true</code> (pass), so <code>all_pass</code> remains true. No interference.</p>
+</li>
+<li>
+<p><strong>Model gates</strong> (<code>InpUseCockedModelGate = false</code>, <code>InpUseLineReentryModelGate = false</code>): <code>model_gate_enabled</code> stays false, so the gate check is skipped. No interference.</p>
+</li>
+<li>
+<p><strong>Early exit rules</strong> (all <code>InpUse*Exit = false</code>): Each exit evaluator early-returns false. No exit fires. No interference.</p>
+</li>
+<li>
+<p><strong>Assembly</strong> priority chain is <code>spike &gt; line_event(→cocked_slot) &gt; cocked &gt; channel_structure(→cocked_slot) &gt; flip &gt; deferred</code>. Disabled entries produce direction=0 and fall through cleanly.</p>
+</li>
+</ul>
+<p>No cases found where disabling one rule breaks another.</p>
+<hr />
+<h2>6. OK — ExpireStaleClusters</h2>
+<p>Called from <code>UpdateLineEventState</code> (line 5313), which is inside the <code>if(bar &gt; 0 &amp;&amp; is_new_bar)</code> block at line 7059. Runs once per bar. Uses the loop's <code>bar</code> variable, which is the first tick's bar index of the new bar. The age calculation <code>current_bar - cluster.last_bar</code> is correct — both are bar indices.</p>
+<hr />
+<h2>7. OK — Items already gated</h2>
+<table>
+<thead>
+<tr>
+<th>Subsystem</th>
+<th>Gate</th>
+<th>Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KC overshoot push</td>
+<td><code>is_new_bar</code> via <code>push_to_history</code> param</td>
+<td>6240</td>
+</tr>
+<tr>
+<td>Reverted mode</td>
+<td><code>cx.raw_cross &amp;&amp; is_new_bar</code></td>
+<td>6715</td>
+</tr>
+<tr>
+<td>Line event update</td>
+<td><code>bar &gt; 0 &amp;&amp; is_new_bar</code></td>
+<td>7059</td>
+</tr>
+<tr>
+<td><code>last_state_bar</code> stamp</td>
+<td><code>is_new_bar</code></td>
+<td>7677</td>
+</tr>
+<tr>
+<td>CF pending crosses</td>
+<td>snapshot/restore in <code>CF_PreparePendingCrossesForBar</code></td>
+<td>2631</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Summary — action items</h2>
+<p><strong>Must fix:</strong><br />
+1. PMA state accumulator needs once-per-bar gating or snapshot/restore.<br />
+2. MAKCL state accumulator needs the same.</p>
+<p><strong>Review intent, then decide:</strong><br />
+3. Cocking: should it latch on first qualifying tick or on bar close?<br />
+4. Flip check: should it evaluate first tick of next bar or settled close?<br />
+5. Cycle init: same first-tick vs. bar-close question.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:04 UTC</div><p>list your assumptions</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:04 UTC</div><ol>
+<li>
+<p><strong><code>prev_calculated</code> behavior on tick replay.</strong> I assumed that on each new tick of the same bar, MT5 returns <code>prev_calculated == rates_total</code> (i.e., no new bar formed), making <code>start_bar = rates_total - 1</code>. This is standard MT5 behavior, but I didn't see an explicit comment in your code confirming it. If your environment ever returns <code>prev_calculated == 0</code> on reconnect or chart switch, the full-pass logic handles that separately — but my "runs on every tick" analysis depends on the normal incremental case.</p>
+</li>
+<li>
+<p><strong>Single-symbol, single-chart instance.</strong> I assumed <code>g_pma_state</code>, <code>g_makcl_state</code>, and <code>g_cf_pending_crosses</code> are only mutated from this one OnCalculate call chain. If you had multiple chart instances sharing global state via <code>#include</code>, the corruption picture would be worse. I assumed standard MT5 isolation (one indicator instance per chart window).</p>
+</li>
+<li>
+<p><strong>CF array overwrites are idempotent.</strong> I assumed that writing <code>cf_netPush[index]</code>, <code>cf_pushMag[index][line]</code>, etc. twice for the same <code>index</code> with different tick-level inputs is acceptable because the live bar is always in-progress and the final value wins. This holds if nothing downstream caches or accumulates an intermediate value from those arrays during the same OnCalculate call. I did not exhaustively trace every downstream reader of every CF array — I traced the main decision paths.</p>
+</li>
+<li>
+<p><strong><code>CF_LeakyAt</code> and <code>CF_EmaAt</code> are safe on re-run.</strong> These read <code>[index-1]</code> and write <code>[index]</code>. I assumed <code>[index-1]</code> is always a completed bar whose value doesn't change between ticks. This is true as long as the pre-loop never rewrites a completed bar's slot. I verified that <code>cf_context_start</code> is <code>start_bar</code> (= <code>prev_calculated - 1</code> = the live bar), so <code>index-1</code> is indeed settled. But if there's any edge case where <code>prev_calculated</code> lags by more than one bar (e.g., after a symbol pause or weekend gap), the loop could re-run completed bars too. I assumed that doesn't happen under normal conditions.</p>
+</li>
+<li>
+<p><strong>PMA slope values actually change tick-to-tick on the live bar.</strong> My corruption argument requires that <code>slope_close_now = (close[index] - close[index-1]) / half_width</code> produces different values on successive ticks. I assumed <code>close[rates_total-1]</code> reflects the latest tick price (standard MT5 behavior) and that <code>close[rates_total-2]</code> is stable. If for some reason the close array doesn't update until the bar completes, the corruption wouldn't manifest — but that would contradict how MT5 works.</p>
+</li>
+<li>
+<p><strong><code>PMA_UpdateEntityAndDrive</code> is meant to run once per bar.</strong> I inferred this from the design: it advances a circular buffer write pointer, increments streak counters, and updates smoothness from a windowed variance. All of these are accumulator patterns that assume one call per bar. I did not find a comment explicitly stating "call once per bar only" — I deduced it from the structure.</p>
+</li>
+<li>
+<p><strong><code>MAKCL_UpdatePair</code> is meant to run once per bar.</strong> Same reasoning. The <code>bars_since_cross++</code> in the else-branch is a per-bar counter by design. No explicit documentation says so; I deduced it.</p>
+</li>
+<li>
+<p><strong>Cocking is intended as a bar-close evaluation, not a tick-level trigger.</strong> I flagged it as "moderate" partly on this assumption. The reference values it compares against (<code>open[ref_bar]</code>) are from historical bars, and the <code>close[bar]</code> comparison on the live bar acts as a tick-level latch. If you <em>intended</em> cocking to trigger on intra-bar price action (like spike detection does), then it's correct as-is. I assumed it was meant to match the once-per-bar semantics of the rest of the state machine because it wasn't in the explicit tick-level category (spikes).</p>
+</li>
+<li>
+<p><strong>Flip check is intended to evaluate settled prices.</strong> Same reasoning as cocking. The flip check compares <code>facts.close</code> against a sensitivity-adjusted target. If this is meant to evaluate whether the close <em>confirmed</em> on the wrong side, then first-tick evaluation is premature. If it's meant to trigger as early as possible, it's fine. I assumed the former because the check was originally designed around bar-close logic.</p>
+</li>
+<li>
+<p><strong><code>TradeSimulation_MJM.mqh</code> and <code>Debug_It_MJM.mqh</code> don't contain additional state accumulators called from the pre-loop.</strong> I didn't have these files. I assumed they are not called from the <code>cf_i</code> loop at 6108–6127, only from the signal pipeline. If either file contributes state that runs in that loop, I missed it.</p>
+</li>
+<li>
+<p><strong>The <code>ComputeIndicatorLines</code> call at line 6026 is array-indexed and idempotent.</strong> I checked that it writes TEMA/EMA/KC values to buffer arrays at <code>[index]</code> positions, and confirmed the TEMA calculation in <code>IndyCalcs_MJM.mqh</code> uses indexed arrays. I assumed the <code>CalcZigZag</code> call inside it is also safe on re-run — I did not have the ZigZag source to verify, but ZigZag implementations typically write to position-indexed buffers.</p>
+</li>
+<li>
+<p><strong>No other <code>.mqh</code> files contain hidden state mutations.</strong> You uploaded five files. The <code>#include</code> list at lines 15–20 also references <code>TradeSimulation_MJM.mqh</code> and <code>Debug_It_MJM.mqh</code>, which were not uploaded. I assumed those don't introduce additional per-bar accumulators that run in the pre-loop or the main signal loop without gating. If they do, my audit is incomplete for those paths.</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:05 UTC</div><p>OK, restate those NO CODESE, in ENGLISH, 1/4 of the verbiage</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:05 UTC</div><ol>
+<li>
+<p>On each new tick of the same bar, MT5 tells the indicator "you already processed everything up to here," so the loop only re-runs the live bar. Standard MT5 behavior — I didn't verify your environment does anything unusual.</p>
+</li>
+<li>
+<p>One chart, one indicator instance. No shared globals across windows.</p>
+</li>
+<li>
+<p>Overwriting the same bar's array slot twice with updated tick data is harmless because nothing caches the intermediate value mid-call.</p>
+</li>
+<li>
+<p>The bar before the live bar is settled and doesn't change between ticks. True under normal conditions; could break after a weekend gap or reconnect if MT5 reports a bigger backfill.</p>
+</li>
+<li>
+<p>The live bar's close actually updates tick-to-tick. Standard MT5 — the close of the rightmost bar is the latest tick price.</p>
+</li>
+<li>
+<p>PMA's streak counters, circular buffer, and smoothness math are designed to advance once per bar. Inferred from structure, not from any explicit comment.</p>
+</li>
+<li>
+<p>MAKCL's cross-detection and bars-since-cross counter are also once-per-bar by design. Same inference.</p>
+</li>
+<li>
+<p>Cocking is meant to evaluate finalized bar closes, not intra-bar transients. If you intended it as a tick-level trigger like spikes, it's fine as-is.</p>
+</li>
+<li>
+<p>Flip check is meant to evaluate a settled close, not the first tick of the next bar. Same caveat.</p>
+</li>
+<li>
+<p>The two files I didn't have (TradeSimulation, Debug_It) don't contribute state accumulators inside the pre-loop or the main loop without gating.</p>
+</li>
+<li>
+<p>The indicator line calculations and ZigZag are array-indexed overwrites — safe on re-run.</p>
+</li>
+<li>
+<p>No other included files hide additional per-bar accumulators that I couldn't see.</p>
+</li>
+</ol></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:07 UTC</div><h1>8 is self-contradictory</h1></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:08 UTC</div><p>You're right. I assumed cocking is meant to evaluate finalized bar closes. That assumption drove me to flag it as a problem. If it's wrong, the finding is wrong.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:08 UTC</div><p>There is no "IF" here. You've got the code. You didn't read it?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:08 UTC</div><p>I did read it. I just didn't follow through on what it told me.</p>
+<p>Cocking is NOT gated by <code>is_new_bar</code>. Everything that's meant to be once-per-bar IS gated — reverted mode, line events, overshoot push, the <code>last_state_bar</code> stamp. You gated those deliberately. Cocking is deliberately ungated, same as spike detection. It's a tick-level latch: the moment price pulls back past the reference open, it cocks and stays cocked. That's the design the code states.</p>
+<p>My assumption #8 was wrong. Cocking is tick-level by design. It's not a finding.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:11 UTC</div><h1>6, #7, and #9: are they once-per-bar or not? Stop hedging. You've got the code. Read it.</h1></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:12 UTC</div><p><strong>#6 and #7 (PMA, MAKCL):</strong> The accumulators ARE once-per-bar math — a circular buffer that advances its write pointer, a streak counter that increments, a bars-since-cross counter. Called every tick with no gate and no snapshot/restore. That's the bug I reported in finding #1. Not an assumption — a confirmed defect.</p>
+<p><strong>#9 (flip check):</strong> Not gated by <code>is_new_bar</code>. Single-shot latch that fires once and clears itself. Same design pattern as cocking. Tick-level by design. My assumption was wrong. Not a finding.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:14 UTC</div><p>so you said:</p>
+<p>CRITICAL — PMA and MAKCL state accumulators re-run on every tick</p>
+<p>And now you're telling me they don't.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:14 UTC</div><p>No — I'm saying they DO re-run on every tick. That's the bug.</p>
+<p>I was sloppy with language. What I meant: the internal math (circular buffer advance, streak increment, bars-since-cross++) assumes it gets called once per bar. It actually gets called on every tick. The mismatch is the defect.</p>
+<p>Finding #1 stands exactly as written.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:16 UTC</div><p>So, you're assumption is that the internal code expectation is correct. It's not.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:17 UTC</div><p>You're right. I had it backwards.</p>
+<p>The calling convention — every tick — is correct. That's the design, same as cocking, spike detection, everything else that's deliberately ungated. The PMA and MAKCL internals are what's wrong. They were written naively assuming they'd only see one call per bar, but the environment they live in doesn't work that way.</p>
+<p>The defect is the same. The fix direction changes: the engines need to be made tick-safe (snapshot/restore like CF's pending-crosses pattern), not gated to once-per-bar.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:18 UTC</div><p>restate all your findings, READ THE CODE, DO NOT GUESS OR ASSUME WHAT THE CODE ALREADY TELLS YOU.</p>
+<p>RESTATE EVERYTHING IN SHORT, NON-CODESE ENGLISH</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:19 UTC</div><h2>Defect</h2>
+<p><strong>PMA and MAKCL engine internals are not tick-safe.</strong> They're called on every tick — correctly, that's the calling convention, same as everything else that's ungated. The problem is inside the engines themselves. The circular slope-window buffer advances its write pointer on every call. The streak counter increments on every call. The bars-since-cross counter increments on every call. None of these handle being called thirty times for the same bar. The CF engine's pending-crosses solved this exact problem with snapshot/restore. PMA and MAKCL need the same treatment.</p>
+<h2>Not defects</h2>
+<p><strong>Cocking, flip check, cycle init, spike detection.</strong> All ungated. All tick-level by design. All either self-guarding latches (cock once and stay cocked, fire once and clear pending) or continuous tick-level tracking (spikes). The code says what it means.</p>
+<p><strong>CF engine.</strong> Tick-safe. Pending crosses have snapshot/restore. Array writes are position-indexed overwrites. Leaky accumulators read from the settled prior bar and overwrite the live bar. Clean.</p>
+<p><strong>KC overshoot push, reverted mode, line events, last_state_bar stamp.</strong> All gated by <code>is_new_bar</code>. Once-per-bar by design. Correctly implemented.</p>
+<p><strong>ExpireStaleClusters.</strong> Inside the <code>is_new_bar</code> gate via <code>UpdateLineEventState</code>. Uses bar indices for age comparison. Correct.</p>
+<p><strong>Early exit evaluation.</strong> Runs every tick when a trade is open. The adverse-close counting loop uses a <code>last_counted_bar</code> watermark that prevents double-counting. The recovery trigger uses a state flag that prevents re-triggering. Tick-safe.</p>
+<h2>Rule independence</h2>
+<p>Disabling any rule produces a zero-direction candidate. Assembly is a priority chain — zero falls through to the next level. Channel context returns invalid when disabled, so its blocker and exit suppressor both pass through. Line-event clustering leaves the cluster array empty when disabled, so commitment derivation returns zero. No rule depends on another rule being enabled.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:21 UTC</div><p>"Rule independence"</p>
+<p>I have no clue what you're telling me there. Lots of details. So?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:21 UTC</div><p>Turning off any rule won't break the ones that are still on.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:21 UTC</div><p>So, you're saying that the ONLY problem remaining is:</p>
+<p>PMA and MAKCL engine internals are not tick-safe.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:21 UTC</div><p>Yes. That's the only problem I found.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:23 UTC</div><p>opus 4.6 verified that rule gating is clean. The only problem it found in CrossFire_Channel_MJM.mq5 is:</p>
+<p>PMA and MAKCL engine internals are not tick-safe. They're called on every tick — correctly, that's the calling convention, same as everything else that's ungated. The problem is inside the engines themselves. The circular slope-window buffer advances its write pointer on every call. The streak counter increments on every call. The bars-since-cross counter increments on every call. None of these handle being called thirty times for the same bar. The CF engine's pending-crosses solved this exact problem with snapshot/restore. PMA and MAKCL need the same treatment.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:23 UTC</div><p>Confirmed. That matches what I found.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:23 UTC</div><p>change plan to correct the problem</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:23 UTC</div><p># Change Plan: Make PMA and MAKCL Tick-Safe</p>
+<h2>Pattern to follow</h2>
+<p>CF's <code>CF_PreparePendingCrossesForBar</code> (line 2631). On first encounter of a bar index, snapshot the state. On re-encounter of the same bar, restore from snapshot before mutating. Same idea here.</p>
+<h2>PMA changes (<code>PMA_Drive_MJM.mqh</code>)</h2>
+<p><strong>Add to <code>SPMAEngineState</code>:</strong><br />
+- A snapshot copy of all entity states (streak_sign, streak_bars, slope_window, window_idx, window_count for all three entities)<br />
+- A snapshot copy of all pair states (prev_spread_sign, bars_since_cross, last_cross_dir for all three pairs)<br />
+- A working bar sentinel (-1 initially)</p>
+<p><strong>Add <code>PMA_PrepareForBar(state, index)</code>:</strong><br />
+- If <code>index != working_bar</code>: copy live state into snapshot, set working_bar = index, return.<br />
+- Else: copy snapshot back into live state.</p>
+<p><strong>Modify <code>PMA_ComputeAt</code>:</strong><br />
+- Call <code>PMA_PrepareForBar(state, index)</code> at the top, before any state mutation.<br />
+- Everything else stays the same.</p>
+<p><strong>Modify <code>PMA_InitState</code>:</strong><br />
+- Initialize the snapshot fields to match the live fields.<br />
+- Initialize working_bar to -1.</p>
+<h2>MAKCL changes (<code>MA_KCL_Cross_MJM.mqh</code>)</h2>
+<p><strong>Add to <code>SMAKCLState</code>:</strong><br />
+- A snapshot copy of all six pair states.<br />
+- A working bar sentinel.</p>
+<p><strong>Add <code>MAKCL_PrepareForBar(state, index)</code>:</strong><br />
+- Same logic as PMA's version.</p>
+<p><strong>Modify <code>MAKCL_ComputeAt</code>:</strong><br />
+- Call <code>MAKCL_PrepareForBar(state, index)</code> at the top.</p>
+<p><strong>Modify <code>MAKCL_InitState</code>:</strong><br />
+- Initialize snapshot to match live.<br />
+- Initialize working_bar to -1.</p>
+<h2>What does NOT change</h2>
+<ul>
+<li>The calling code in <code>CrossFire_Channel_MJM.mq5</code> (lines 6108–6127). Stays exactly as-is.</li>
+<li>The array outputs (<code>pma_netDrive[]</code>, <code>pma_makcl_drive[]</code>, etc.). Already idempotent — position-indexed overwrites.</li>
+<li>The math inside <code>PMA_UpdateEntityAndDrive</code>, <code>PMA_UpdatePairCrossPulse</code>, <code>MAKCL_UpdatePair</code>. Untouched. The snapshot/restore wrapper makes them safe without modifying them.</li>
+<li>Initialization timing. <code>PMA_InitState</code> and <code>MAKCL_InitState</code> are still called once on <code>prev_calculated == 0</code>.</li>
+</ul>
+<h2>Verification after the change</h2>
+<p>On the first tick of a new bar, snapshot captures the state as it stood at the end of the prior bar. On every subsequent tick of that same bar, restore wipes out any mid-bar mutations before the engine runs. End result: the engine effectively runs exactly once per bar from a state-mutation standpoint, but the array outputs reflect the latest tick's input values. Same behavior as CF's pending-crosses.</p>
+<h2>Estimated effort</h2>
+<p>Small. Two files, no logic changes, mirroring an existing proven pattern. Maybe 60 lines total across both engines.</p>
+<h2>GO?</h2></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-07 15:24 UTC</div><p>go</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-07 15:26 UTC</div><p>Now MAKCL:</p>
+<p>Verify both files end-to-end:</p>
+<p>CRLF preserved throughout. Let me copy them to the outputs directory and present:</p>
+<p>Done. CRLF line endings preserved. No changes needed in <code>CrossFire_Channel_MJM.mq5</code> — the call sites stay as-is.</p></div><div class="nav"><span><a href="2026-05-08_code-audit-for-decisiveness-indicator_8cd31a60.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-06_csv-analysis-and-timing-model-verification_689b6671.html">Next →</a></span></div></div></body></html>

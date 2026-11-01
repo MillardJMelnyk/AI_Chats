@@ -1,0 +1,108 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CSV datetime parsing bug in error output</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-07-12_profit-optimization-for-ttem-trading-logic_6815a59e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-11_code-review-and-problem-identification_21b6f451.html">Next →</a></span></div><h1>CSV datetime parsing bug in error output</h1><div class="meta">Created 2026-07-11 17:45 UTC · Last updated 2026-07-11 17:58 UTC · 13 messages<br>Original: <a href="https://claude.ai/chat/569613c8-73fb-4e49-a843-35158bc4678d">claude.ai/chat/569613c8-73fb-4e49-a843-35158bc4678d</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:46 UTC</div><p>error print statements are not getting the correct datetimes:</p>
+<p>2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  CSV DATA COVERAGE ERROR<br />
+2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ==================================================<br />
+2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  User-specified start: 2026.07.10 10:21:00<br />
+2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Required: indy warmup must start at: 2026.07.10 10:03:00 -- ratio warmup must start at: 2026.07.10 10:09:00<br />
+2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Available: 1970.01.01 00:00:02 to 1970.01.01 00:00:02<br />
+2026.07.11 11:43:28.819 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Provide CSV data covering the required range.</p>
+<p>"Available: 1970.01.01 00:00:02 to 1970.01.01 00:00:02" should reflect the first and last TickTimeMS values in the CSV file.</p>
+<p>What's the bug?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:47 UTC</div><p><strong>The scanner is parsing the wrong text as TickTimeMS.</strong> Proof is in the timestamp itself: 1970.01.01 00:00:02 = 2 seconds after epoch = 2026/1000. So <code>StringToInteger(fields[3])</code> is returning <strong>2026</strong> — meaning <code>fields[3]</code> begins with the date text "2026.07.10 …", not the millisecond value. Every row yields the same 2, which is why first and last are identical.</p>
+<p>Hypothesis on the cause (the <code>FileOpen</code> for <code>g_csvHandle</code> lives in an include you didn't upload, so I can't prove which): the handle is opened in text/line mode (or with a non-comma delimiter), so each <code>FileReadString</code> returns an entire line rather than one field. The header skip then consumes 15 whole lines, and <code>fields[3]</code> is the 4th data line — which starts with the datetime string. To confirm, check the <code>FileOpen</code> flags in the CsvTickFeed init include: if <code>FILE_CSV</code> with <code>','</code> delimiter is absent, that's it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:51 UTC</div><p>here are the files with the include code</p>
+<p>Can we install a Print() or two to prove your hypothesis? If so, give them to me here in the chat window along with the text of the exact line where to place the new print()s.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:52 UTC</div><p>Yes. One print of the first scanned row's fields proves it — we'll see exactly what lands in <code>fields[3]</code>.</p>
+<p><strong>File:</strong> TickTravel_Efficiency_Momentum_MJM.mq5, inside <code>LoadCsvServerTickCoverage()</code>.</p>
+<p><strong>Place immediately after this exact line:</strong></p>
+<pre><code>      const datetime serverTickTime = (datetime)(StringToInteger(fields[3]) / 1000);
+</code></pre>
+<p><strong>Insert:</strong></p>
+<pre><code>      if(g_csvServerTickAvailableFirst &lt;= 0)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; - ROW1 f0&lt;&quot;,fields[0],&quot;&gt; f1&lt;&quot;,fields[1],&quot;&gt; f2&lt;&quot;,fields[2],&quot;&gt; f3&lt;&quot;,fields[3],
+               &quot;&gt; f4&lt;&quot;,fields[4],&quot;&gt; f5&lt;&quot;,fields[5],&quot;&gt; parsed_sec&lt;&quot;,(long)serverTickTime,&quot;&gt;&quot;);
+</code></pre>
+<p>It fires only on the first data row (before <code>g_csvServerTickAvailableFirst</code> gets set). If <code>f3</code> shows a date string like <code>2026.07.10 ...</code> instead of a 13-digit millisecond number, the misalignment is proven, and <code>f0</code>–<code>f5</code> together show the direction of the shift — note that both neighbors of TickTimeMS (ServerTickTime and ChartBarTime) are datetime columns, so a one-field offset in either direction puts a "2026…" string at index 3, and 2026/1000 = 2 seconds = your 1970.01.01 00:00:02.</p>
+<p>One more worth knowing: the include's <code>CsvOpen()</code> runs an identical scan into <code>g_csvAvailableFirstMs/LastMs</code>. If you want a cross-check in the same run, the same print pattern after its line <code>const long ms = (long)StringToInteger(fields[3]);</code> (guarded by <code>if(g_csvAvailableFirstMs &lt;= 0)</code>) shows whether that scanner sees the same misalignment or a clean read — that tells us whether the fault is in the file layout itself or in how the main-file scanner re-reads it.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:54 UTC</div><p>result: is this correct?</p>
+<pre><code class="language-cpp">      if(!rowRead || fields[0] == &quot;&quot;)
+         break;
+
+      const datetime serverTickTime = (datetime)(StringToInteger(fields[3]) / 1000);
+      if(g_csvServerTickAvailableFirst &lt;= 0)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; - ROW1 f0&lt;&quot;,fields[0],&quot;&gt; f1&lt;&quot;,fields[1],&quot;&gt; f2&lt;&quot;,fields[2],&quot;&gt; f3&lt;&quot;,fields[3],
+               &quot;&gt; f4&lt;&quot;,fields[4],&quot;&gt; f5&lt;&quot;,fields[5],&quot;&gt; parsed_sec&lt;&quot;,(long)serverTickTime,&quot;&gt;&quot;);
+      if(serverTickTime &lt;= 0)
+         continue;
+
+</code></pre></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:54 UTC</div><p>Yes.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:55 UTC</div><p>output:</p>
+<pre><code class="language-cpp">      if(!rowRead || fields[0] == &quot;&quot;)
+         break;
+
+      const datetime serverTickTime = (datetime)(StringToInteger(fields[3]) / 1000);
+      if(g_csvServerTickAvailableFirst &lt;= 0)
+         Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+               &quot; - ROW1 f0&lt;&quot;,fields[0],&quot;&gt; f1&lt;&quot;,fields[1],&quot;&gt; f2&lt;&quot;,fields[2],&quot;&gt; f3&lt;&quot;,fields[3],
+               &quot;&gt; f4&lt;&quot;,fields[4],&quot;&gt; f5&lt;&quot;,fields[5],&quot;&gt; parsed_sec&lt;&quot;,(long)serverTickTime,&quot;&gt;&quot;);
+      if(serverTickTime &lt;= 0)
+         continue;
+
+</code></pre></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:55 UTC</div><p>output:</p>
+<p>2026.07.11 11:55:10.946 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ChartID&lt;133608959982095600&gt;: [CsvTickFeed_Init_MJM.mqh] [CsvOpen] LINE 148 - CSV opened file&lt;XAUUSD_M1_TICK_DUMP.csv&gt; size&lt;1938404&gt; bytes, streaming<br />
+2026.07.11 11:55:10.946 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ChartID&lt;133608959982095600&gt;: [TickTravel_Efficiency_Momentum_MJM.mq5] [LoadCsvServerTickCoverage] LINE 2749 - ROW1 f0&lt;2026.07.10 10:00:00&gt; f1&lt;2026.07.10 10:00:00&gt; f2&lt;2026.07.10 10:00&gt; f3&lt;2026.07.10 10:00&gt; f4&lt;4111.81&gt; f5&lt;4111.81&gt; parsed_sec&lt;2&gt;<br />
+2026.07.11 11:55:10.967 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ChartID&lt;133608959982095600&gt;: [CsvTickFeed_Init_MJM.mqh] [CsvReplayStart] LINE 245 - CSV replay starting file&lt;XAUUSD_M1_TICK_DUMP.csv&gt; (timer-chunked)<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ChartID&lt;133608959982095600&gt;: [CsvTickFeed_Init_MJM.mqh] [CsvReplayChunk] LINE 309 - CSV replay ended file&lt;XAUUSD_M1_TICK_DUMP.csv&gt; rows processed&lt;0&gt; first tick&lt;none&gt; last tick&lt;none&gt; replay seconds&lt;0.1&gt;<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ==================================================<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  CSV DATA COVERAGE ERROR<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ==================================================<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  User-specified start: 2026.07.10 10:21:00<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Required: indy warmup must start at: 2026.07.10 10:03:00 -- ratio warmup must start at: 2026.07.10 10:09:00<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Available: 1970.01.01 00:00:02 to 1970.01.01 00:00:02<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  Provide CSV data covering the required range.<br />
+2026.07.11 11:55:11.097 TickTravel_Efficiency_Momentum_MJM (XAUUSD,M1)  ==================================================</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:56 UTC</div><p>Hypothesis confirmed — and the fault is in the file, not the reader. The reader's field alignment is correct (f0/f1 are the two leading datetimes, exactly per the expected header), but the file's 4th column contains a datetime string <code>2026.07.10 10:00</code>, not a millisecond number. <code>StringToInteger("2026...")</code> = 2026 → 2 seconds. Same cause kills the replay: <code>ReadCsvTick</code> parses the same column as ms, every row lands outside the window, 0 rows processed.</p>
+<p>Note f2 and f3 are both <code>2026.07.10 10:00</code> — minutes-only format, which is what <code>TimeToString</code> produces without the seconds flag. So the dump writer is emitting TickTimeMS (and possibly ServerTickTime) as formatted datetime text instead of the raw millisecond value. Next evidence to check: the CSV's header line and first data line, and the writer code that produces XAUUSD_M1_TICK_DUMP.csv.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:57 UTC</div><p>the raw ms time is in TickTimeMS. That's the column to read.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:57 UTC</div><p>Then TickTimeMS is not at index 3 in this file — the print proved field 4 contains <code>2026.07.10 10:00</code>, a formatted datetime. Either the file has a different column order/count than the assumed 15-column header, or the writer put datetime text in that slot. One more print settles it: dump the header row itself.</p>
+<p><strong>File:</strong> TickTravel_Efficiency_Momentum_MJM.mq5, <code>LoadCsvServerTickCoverage()</code>.</p>
+<p><strong>Replace this exact block:</strong></p>
+<pre><code>   for(int column = 0; column &lt; 15; column++)
+      FileReadString(g_csvHandle);
+</code></pre>
+<p><strong>With:</strong></p>
+<pre><code>   for(int column = 0; column &lt; 15; column++)
+   {
+      const string headerField = FileReadString(g_csvHandle);
+      Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+            &quot; - HEADER col&lt;&quot;,column,&quot;&gt; name&lt;&quot;,headerField,&quot;&gt;&quot;);
+   }
+</code></pre>
+<p>That shows the file's real column names and positions. If the header names more than 15 columns, the skip is also under-consuming and every "row" read afterward is shifted.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-07-11 17:57 UTC</div><p>Here is the header and a few rows:</p>
+<p>ServerTime,LocalTime,ServerTickTime,TickTimeMS,ChartBarTime,Open,High,Low,Close,TickVolume,Volume,Spread,Bid,Ask,Flags<br />
+2026.07.10 10:00:00,2026.07.10 10:00:00,2026.07.10 10:00:00.006,1783677600006,2026.07.10 10:00,4111.81,4111.81,4111.81,4111.81,1,0,8,4111.81,4111.90,134<br />
+2026.07.10 10:00:00,2026.07.10 10:00:00,2026.07.10 10:00:00.086,1783677600086,2026.07.10 10:00,4111.81,4111.81,4111.78,4111.78,2,0,8,4111.78,4111.87,134<br />
+2026.07.10 10:00:00,2026.07.10 10:00:00,2026.07.10 10:00:00.169,1783677600169,2026.07.10 10:00,4111.81,4111.81,4111.75,4111.75,3,0,8,4111.75,4111.84,134</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-07-11 17:58 UTC</div><p>The file is correct — TickTimeMS is at column 4 with a proper 13-digit ms value. So the reader is mangling the row. The row1 print shows f2 and f3 both came back as <code>2026.07.10 10:00</code> — datetime-formatted text — even though the file has <code>2026.07.10 10:00:00.006</code> and <code>1783677600006</code> there. Two candidate mechanisms fit the evidence so far, and this row can't distinguish them because every datetime in it is 10:00:</p>
+<p>Hypothesis A: MQL5's FILE_CSV mode auto-converts fields it recognizes as datetimes and hands back reformatted text (a known CSV-mode mangling), so f3 is the real TickTimeMS field destroyed in transit. Hypothesis B: the read is shifted one field starting around column 3, so f3 is actually ChartBarTime.</p>
+<p>One print distinguishes them — dump all 15 fields of row 1.</p>
+<p><strong>File:</strong> TickTravel_Efficiency_Momentum_MJM.mq5, <code>LoadCsvServerTickCoverage()</code>. <strong>Replace the existing ROW1 print</strong> (keep its guard line) <strong>with:</strong></p>
+<pre><code>         for(int column = 0; column &lt; 15; column++)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; - ROW1 f&lt;&quot;,column,&quot;&gt; value&lt;&quot;,fields[column],&quot;&gt;&quot;);
+</code></pre>
+<p>and change the guard to a block:</p>
+<pre><code>      if(g_csvServerTickAvailableFirst &lt;= 0)
+      {
+         for(int column = 0; column &lt; 15; column++)
+            Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;,__FILE__,&quot;] [&quot;,__FUNCTION__,&quot;] LINE &quot;,__LINE__,
+                  &quot; - ROW1 f&lt;&quot;,column,&quot;&gt; value&lt;&quot;,fields[column],&quot;&gt;&quot;);
+      }
+</code></pre>
+<p>Read the tail: if f14 = <code>134</code> (Flags), the row is aligned and it's conversion-mangling (A). If f14 = <code>2026.07.10 10:00:00</code> (start of the next row), it's a shift (B).</p></div><div class="nav"><span><a href="2026-07-12_profit-optimization-for-ttem-trading-logic_6815a59e.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-07-11_code-review-and-problem-identification_21b6f451.html">Next →</a></span></div></div></body></html>

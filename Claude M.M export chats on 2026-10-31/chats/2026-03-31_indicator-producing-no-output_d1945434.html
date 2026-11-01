@@ -1,0 +1,103 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Indicator producing no output</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-04-01_ai-struggles-with-trading-chart-pattern-recognition_db4deff6.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-03-31_unified-zigzag-indicator-logic-for-mql5_a65bbd59.html">Next →</a></span></div><h1>Indicator producing no output</h1><div class="meta">Created 2026-03-31 17:06 UTC · Last updated 2026-03-31 18:44 UTC · 8 messages<br>Original: <a href="https://claude.ai/chat/d1945434-b32e-4916-8c31-25e36758ed5d">claude.ai/chat/d1945434-b32e-4916-8c31-25e36758ed5d</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-31 17:06 UTC</div><p>I'm getting no output of any kind from this indicator. Where are the bugs?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-31 17:06 UTC</div><p>Three bugs:</p>
+<hr />
+<p><strong>Bug 1 — Full reinitialize on every tick (lines 79–81)</strong></p>
+<pre><code class="language-mql5">ArrayInitialize(ZZ, EMPTY_VALUE);
+ArrayInitialize(HighMap, 0.0);
+ArrayInitialize(LowMap, 0.0);
+</code></pre>
+<p>This wipes all buffers on every call to <code>OnCalculate</code>, including on live ticks. That alone would cause flickering/no output in some builds, but it's also just wasteful. Move these into <code>OnInit</code>, or guard them with <code>if(prev_calculated==0)</code>.</p>
+<hr />
+<p><strong>Bug 2 — Reversal check fires too early, before the leg spread is confirmed (lines 111–129)</strong></p>
+<p>The candidate update and the anchor-commit happen inside the same loop iteration with no gap. The moment <code>candidateNow</code> is a new extreme, you immediately commit it as a pivot and flip direction. That means a leg is "confirmed" on the very bar that extended it, with no subsequent bar to validate. On the next tick, <code>ArrayInitialize</code> (Bug 1) wipes it. Combined with Bug 1 this produces zero visible output.</p>
+<p>The fix: only commit and flip when a <em>reversal</em> is detected — i.e., the opposite direction move from <code>candidateBar</code> exceeds <code>InpMinSpread</code> and satisfies <code>InpMinBars</code>. Until then, just keep extending the candidate.</p>
+<hr />
+<p><strong>Bug 3 — <code>dir==0</code> branch can permanently stall (lines 95–109)</strong></p>
+<p>After the first anchor, <code>dir</code> is set. But <code>anchorPrice</code> is initialized to <code>close[0]</code>. If bar 0's close is exactly between a symmetric up/down move, the tie-breaker on line 108 works. But if neither <code>upMove</code> nor <code>downMove</code> reaches <code>InpMinSpread</code> before <code>periodsFromAnchor &gt;= InpMinBars</code>, the loop keeps <code>continue</code>-ing with <code>dir</code> still 0 and <code>anchorBar</code> stuck at 0 forever. Once <code>dir</code> is finally set, Bug 2 immediately commits a pivot and flips — but the next iteration restarts with a new <code>anchorBar</code> at a potentially far-back bar with stale price context.</p>
+<p>Minor but real: initialize <code>anchorPrice</code> to <code>low[0]</code> (or <code>high[0]</code>) depending on your intended first leg direction, or use <code>(high[0]+low[0])/2.0</code> to be neutral.</p>
+<hr />
+<p><strong>Summary of fixes needed:</strong></p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Location</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Lines 79–81</td>
+<td>Move <code>ArrayInitialize</code> calls into <code>OnInit</code> or guard with <code>prev_calculated==0</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Lines 111–129</td>
+<td>Don't commit pivot on the same bar that extends it; require a confirmed reversal from a subsequent bar</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Line 84</td>
+<td>Use midpoint or appropriate extreme for <code>anchorPrice</code> at bar 0</td>
+</tr>
+</tbody>
+</table>
+<p>Bug 2 is the primary cause of no output. Bug 1 would destroy any output that survived Bug 2.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-31 17:08 UTC</div><h1>2 violates the intended design</h1></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-31 17:08 UTC</div><p>Understood. The design intent is to keep the pivot at the running extreme and move it forward as the leg extends — that's correct ZigZag behavior.</p>
+<p>So Bug 2 withdrawn.</p>
+<p>That leaves <strong>Bug 1</strong> as the primary cause of no output — wiping all buffers on every tick destroys whatever was plotted on the previous call. With the full recalc loop running from bar 0 each time, the pivots are rewritten correctly, but then on a live tick they get wiped before anything renders.</p>
+<p><strong>Bug 3</strong> is still real but would only cause a stall on the very first leg under specific price conditions, not a total blackout.</p>
+<p><strong>The one fix that restores output:</strong> guard the <code>ArrayInitialize</code> calls:</p>
+<pre><code class="language-mql5">if(prev_calculated == 0)
+  {
+   ArrayInitialize(ZZ, EMPTY_VALUE);
+   ArrayInitialize(HighMap, 0.0);
+   ArrayInitialize(LowMap, 0.0);
+  }
+</code></pre>
+<p>However — since you're doing a full recalc from bar 0 every call anyway (no incremental logic), you actually need those initializes on full recalc but not on tick updates. The cleaner fix is to also add incremental logic so you're not re-scanning all bars on every tick, but that's a separate matter. The guard above will at minimum make the indicator produce visible output.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-31 18:37 UTC</div><p>OK, indicator renders line correctly, but it's supposed to calculate P/L stats to mirror mimic a .py code file, and nothing is getting printed. Here are the .mq5 (not printing) and .py (printing correctly) files. Where the bug in the .mq5 file?</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-31 18:38 UTC</div><p>One bug causing the silence.</p>
+<p><strong>Line 343:</strong></p>
+<pre><code class="language-mql5">if(time[rates_total-1] &lt;= g_PLStatsEndTime)
+</code></pre>
+<p>This condition fires on <strong>every tick</strong> during the date range — <code>PrintLegTradeSummary</code> is called hundreds of times per session, but more critically it fires on every incremental tick update, not just on a full recalc. That's not the silence bug though.</p>
+<p><strong>The actual bug:</strong> <code>PrintLegTradeSummary</code> scans <code>HighMap</code> and <code>LowMap</code> from bar 0, but those buffers are only written starting from <code>startBar</code> (line 249). Bars before <code>startBar</code> were <code>ArrayInitialize</code>'d to <code>0.0</code>. That part is fine.</p>
+<p>The real silence: <strong><code>startBar</code> is often <code>rates_total - 1</code> or very close to it.</strong> Look at line 233:</p>
+<pre><code class="language-mql5">while(startBar &lt; rates_total &amp;&amp; time[startBar] &lt; g_PLStatsStartTime)
+   startBar++;
+</code></pre>
+<p><code>g_PLStatsStartTime</code> is <code>D'2024.11.01 01:01:00'</code>. If the chart's loaded history doesn't reach back that far, <code>startBar</code> walks all the way to <code>rates_total</code> and you hit the early return on line 237 — <strong>no pivots are ever written, and nothing prints.</strong></p>
+<p>But even if history is sufficient: the <code>PrintLegTradeSummary</code> loop at line 105 checks <code>time[i] &lt; g_PLStatsStartTime</code> with <code>continue</code>, so it skips pre-start bars. That's correct. The pivots should be there if <code>startBar</code> landed properly.</p>
+<p><strong>Check this first:</strong> Add a <code>Print</code> immediately after line 236:</p>
+<pre><code class="language-mql5">Print(&quot;startBar=&quot;, startBar, &quot; rates_total=&quot;, rates_total, &quot; time[startBar]=&quot;, TimeToString(time[startBar]));
+</code></pre>
+<p>My bet is <code>startBar &gt;= rates_total</code> and you're hitting the early return. The fix is either loading more history on the chart, or adjusting <code>g_PLStatsStartTime</code> to match what's actually loaded.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-03-31 18:43 UTC</div><p>OK, I'm getting that fixed.</p>
+<p>Separate problem aside from P/L stuff. </p>
+<p>The ZZ line paints properly when added to the chart, right to the current bar. And then...</p>
+<p>see image</p>
+<p>find the bug.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-03-31 18:44 UTC</div><p>The last pivot bar is being stored in <code>ZZ[]</code>, and <code>DRAW_SECTION</code> draws a line from the previous pivot to it — but then it also draws a line <strong>from that pivot down to bar 0</strong> (price 0.0), because <code>DRAW_SECTION</code> connects every non-<code>EMPTY_VALUE</code> point.</p>
+<p>The dangling vertical line is the ZZ connecting the last confirmed pivot to an uninitialized or zero-valued buffer cell near the right edge.</p>
+<p><strong>The bug:</strong> On the reversal commit (lines 335–339), <code>pivotBar</code> is set to <code>i</code> and stored. But the <em>previous</em> <code>pivotBar</code> was <code>ClearPivot</code>'d (line 318) only when the <em>same-direction</em> extreme moved. When a reversal triggers, the old <code>pivotBar</code> is <strong>never cleared</strong> before the new one is written. So you can briefly have two non-<code>EMPTY_VALUE</code> cells — the old pivot and the new reversal bar — with a spurious segment between them.</p>
+<p>That's not the vertical though. The vertical drop to the bottom is <code>DRAW_SECTION</code> drawing from the last pivot to a buffer cell that contains <code>0.0</code> instead of <code>EMPTY_VALUE</code>. </p>
+<p><strong>Root cause:</strong> <code>ArrayInitialize(ZZ, EMPTY_VALUE)</code> only runs on full reset. On incremental ticks, <code>ClearRecordedPivots</code> clears touched bars to <code>EMPTY_VALUE</code> — but <code>pivotBar</code> on the final iteration (the still-forming leg tip) gets written to <code>ZZ[]</code> and tracked, then on the next tick it gets cleared and rewritten. If any bar in that sequence was missed by <code>TrackTouchedBar</code>, it stays as <code>0.0</code>, not <code>EMPTY_VALUE</code>, and <code>DRAW_SECTION</code> draws to it.</p>
+<p><strong>Fix:</strong> In <code>ClearPivot</code>, initialize to <code>EMPTY_VALUE</code>, which you already do. Verify that every <code>StorePivot</code> call is paired with a <code>TrackTouchedBar</code> call — specifically check the reversal block at lines 335–340. <code>pivotBar</code> there is set to <code>i</code> and stored, but the <strong>previous</strong> <code>pivotBar</code> is never cleared or re-tracked before being abandoned. Add:</p>
+<pre><code class="language-mql5">ClearPivot(ZZ, HighMap, LowMap, pivotBar);  // clear old pivot tip before reassigning
+TrackTouchedBar(pivotBar);                   // track the clear
+pivotBar = i;
+pivotPrice = oppositePrice;
+pivotDir = searchDir;
+StorePivot(ZZ, HighMap, LowMap, pivotBar, pivotPrice, pivotDir);
+TrackTouchedBar(pivotBar);
+</code></pre></div><div class="nav"><span><a href="2026-04-01_ai-struggles-with-trading-chart-pattern-recognition_db4deff6.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-03-31_unified-zigzag-indicator-logic-for-mql5_a65bbd59.html">Next →</a></span></div></div></body></html>

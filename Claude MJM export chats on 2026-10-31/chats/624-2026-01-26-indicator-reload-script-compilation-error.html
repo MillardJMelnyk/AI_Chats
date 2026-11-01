@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Indicator reload script compilation error</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="623-2026-01-26-percentilizing-terminology.html">&larr; Percentilizing terminology</a><a href="../index.html">All chats</a><a href="625-2026-01-27-mql5-object-subwindow-placement.html">MQL5 object subwindow placement &rarr;</a></nav>
+<header class="top">
+<h1>Indicator reload script compilation error</h1>
+<div class="meta">Created 2026-01-26 19:21 UTC &middot; Last updated 2026-01-26 21:40 UTC &middot; 60 messages<br>Original: <a href="https://claude.ai/chat/ac899074-9b27-4e51-a923-e23f5f00bec4">claude.ai/chat/ac899074-9b27-4e51-a923-e23f5f00bec4</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:21 UTC</span></div><div class="body">this script is supposed to trigger a refresh of the indicator in the subwindow the script was run in. It won&#x27;t compile.
+
+//+------------------------------------------------------------------+
+//|                                    IndicatorReloadButton_MJM.mq5 |
+//|                              Copyright 2026, Millard J Melnyk    |
+//|                                                                  |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J Melnyk&quot;
+#define PROGRAM_VERSION &quot;2.0&quot;
+#property version PROGRAM_VERSION
+#property script_show_inputs
+#property strict
+//+------------------------------------------------------------------+
+input string IndicatorName = &quot;&quot;; // Leave empty to reload first indicator in subwindow
+void OnStart()
+{
+   long chartID = ChartID();
+   int  subwindow = (int)ChartWindowFind(chartID, MQL5InfoString(MQL5_PROGRAM_NAME));
+   if(subwindow &lt; 0) subwindow = 0;
+   string indName = IndicatorName;
+   if(StringLen(indName) == 0)
+   {
+      int total = ChartIndicatorsTotal(chartID, subwindow);
+      if(total == 0)
+      {
+         MessageBox(&quot;No indicator found in this subwindow.&quot;, &quot;Error&quot;, MB_ICONERROR);
+         return;
+      }
+      indName = ChartIndicatorName(chartID, subwindow, 0);
+   }
+   int handle = ChartIndicatorGet(chartID, subwindow, indName);
+   if(handle == INVALID_HANDLE)
+   {
+      MessageBox(&quot;Cannot get indicator handle.&quot;, &quot;Error&quot;, MB_ICONERROR);
+      return;
+   }
+   // Get parameters
+   MqlParam params[];
+   ENUM_INDICATOR indType;
+   int paramCount = IndicatorParameters(handle, indType, params);
+   if(paramCount &lt; 0)
+   {
+      MessageBox(&quot;Failed to get indicator parameters.&quot;, &quot;Error&quot;, MB_ICONERROR);
+      return;
+   }
+   // Delete old indicator
+   if(!ChartIndicatorDelete(chartID, subwindow, indName))
+   {
+      MessageBox(&quot;Failed to delete indicator.&quot;, &quot;Error&quot;, MB_ICONERROR);
+      return;
+   }
+   // Recreate indicator
+   int newHandle = IndicatorCreate(_Symbol, _Period, indType, paramCount, params);
+   if(newHandle == INVALID_HANDLE)
+   {
+      MessageBox(&quot;Failed to create new indicator. Error: &quot; + IntegerToString(GetLastError()), &quot;Error&quot;, MB_ICONERROR);
+      return;
+   }
+   // Attach to same subwindow
+   if(!ChartIndicatorAdd(chartID, subwindow, newHandle))
+   {
+      IndicatorRelease(newHandle);
+      MessageBox(&quot;Failed to attach indicator to chart.&quot;, &quot;Error&quot;, MB_ICONERROR);
+      return;
+   }
+   // Create reload button
+   CreateReloadButton(subwindow, indName);
+}
+void CreateReloadButton(int subwindow, string indName)
+{
+   long chartID = ChartID();
+   string btnName = &quot;ReloadBtn_&quot; + IntegerToString(chartID) + &quot;_&quot; + IntegerToString(subwindow);
+   if(!ObjectCreate(chartID, btnName, OBJ_BUTTON, subwindow, 0, 0))
+      return;
+   ObjectSetInteger(chartID, btnName, OBJPROP_XDISTANCE, 10);
+   ObjectSetInteger(chartID, btnName, OBJPROP_YDISTANCE, 10);
+   ObjectSetInteger(chartID, btnName, OBJPROP_XSIZE, 80);
+   ObjectSetInteger(chartID, btnName, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(chartID, btnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(chartID, btnName, OBJPROP_BGCOLOR, clrDodgerBlue);
+   ObjectSetInteger(chartID, btnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetInteger(chartID, btnName, OBJPROP_WINDOW, subwindow);
+   ObjectSetString(chartID, btnName, OBJPROP_TEXT, &quot;Reload&quot;);
+   ObjectSetString(chartID, btnName, OBJPROP_FONT, &quot;Arial&quot;);
+   ObjectSetInteger(chartID, btnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(chartID, btnName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(chartID, btnName, OBJPROP_ZORDER, 0);
+   ObjectSetString(chartID, btnName, OBJPROP_TOOLTIP, indName);
+   ChartRedraw(chartID);
+}</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:21 UTC</span></div><div class="body"><p>Monday, January 27, 2026, 12:14 AM CST</p>
+<p>Two compilation errors:</p>
+<ol>
+<li>
+<p><strong><code>#property strict</code></strong> — MQL4 directive, invalid in MQL5. Remove it.</p>
+</li>
+<li>
+<p><strong><code>OBJPROP_WINDOW</code></strong> — Does not exist in MQL5. The subwindow is already specified in <code>ObjectCreate()</code>'s 4th parameter. Remove this line:</p>
+</li>
+</ol>
+<pre><code class="language-cpp">ObjectSetInteger(chartID, btnName, OBJPROP_WINDOW, subwindow);
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:41 UTC</span></div><div class="body">I got this when I tried to run it<p class="note">[File attached: 1769456496924_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:42 UTC</span></div><div class="body"><p>Error 4802 = <code>ERR_INDICATOR_CANNOT_CREATE</code></p>
+<p><strong>Root cause:</strong> <code>IndicatorCreate()</code> with <code>IND_CUSTOM</code> requires the indicator's <strong>filename</strong> as the first element in <code>params[]</code>. However, <code>IndicatorParameters()</code> returns only the input parameters, not the filename.</p>
+<p><code>ChartIndicatorName()</code> returns the indicator's <strong>short name</strong> (display name), which often differs from the filename.</p>
+<p><strong>The fundamental problem:</strong> MQL5 provides no API to retrieve a custom indicator's filename from its handle or chart attachment.</p>
+<p><strong>Workarounds:</strong></p>
+<ol>
+<li>
+<p><strong>Require filename input</strong> — Change your input to require the actual <code>.ex5</code> filename, then use <code>iCustom()</code> instead of <code>IndicatorCreate()</code>.</p>
+</li>
+<li>
+<p><strong>Assume short name = filename</strong> — Works only if the indicator didn't override <code>INDICATOR_SHORTNAME</code>.</p>
+</li>
+</ol>
+<p>Do you want a revised version using one of these approaches?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:43 UTC</span></div><div class="body">You&#x27;re too narrowly focused. Did I tell you what I&#x27;m trying to do?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:43 UTC</span></div><div class="body"><p>No. What's the actual goal?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:43 UTC</span></div><div class="body">it was the FIRST words of this chat. Find them.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:43 UTC</span></div><div class="body"><p>You said: <strong>&quot;trigger a refresh of the indicator in the subwindow the script was run in.&quot;</strong></p>
+<p>The delete-recreate approach is overengineered for a refresh. Simpler methods:</p>
+<ol>
+<li><strong><code>ChartSetSymbolPeriod()</code></strong> — Forces full chart refresh including all indicators</li>
+<li><strong><code>ChartRedraw()</code></strong> — Redraws but doesn't recalculate</li>
+<li><strong>Modify a chart property</strong> — Toggle something trivial to force recalc</li>
+</ol>
+<p>Which behavior do you actually need — visual redraw or full recalculation of indicator buffers?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:44 UTC</span></div><div class="body">OK, so &quot;Refresh&quot; means to trigger a Deinit and a new OnInit.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:44 UTC</span></div><div class="body"><p>Understood. Delete + recreate is the correct approach for that.</p>
+<p>The filename problem remains the blocker. Two paths forward:</p>
+<ol>
+<li>
+<p><strong>Specific indicator</strong> — If you know the filename, hardcode or input it. Script becomes reliable.</p>
+</li>
+<li>
+<p><strong>Generic solution</strong> — Requires either:</p>
+<ul>
+<li>Indicator short name matches filename (unreliable)</li>
+<li>Scanning <code>/Indicators/</code> folder to match short name to <code>.ex5</code> files (hacky, slow)</li>
+</ul>
+</li>
+</ol>
+<p>Which do you need — targeted reload for a known indicator, or generic reload for any indicator?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:45 UTC</span></div><div class="body">In other words, whatever will trigger the indicator to do exactly the same as if I changed its input parameters.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:45 UTC</span></div><div class="body"><p>That behavior requires delete + recreate. MQL5 has no API to trigger reinit on an existing indicator instance.</p>
+<p>The filename problem has no clean workaround. <strong>Requiring the filename as input is the only reliable solution.</strong></p>
+<p>Want me to revise the script to take filename as a required input and use <code>iCustom()</code>?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:45 UTC</span></div><div class="body">explain fully the &quot;filename problem&quot;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:46 UTC</span></div><div class="body"><p><strong>The filename problem:</strong></p>
+<ol>
+<li>
+<p><strong>What <code>ChartIndicatorName()</code> returns:</strong> The indicator's <strong>short name</strong> — the display string shown in the chart's indicator list. This is set by <code>IndicatorSetString(INDICATOR_SHORTNAME, &quot;whatever&quot;)</code> inside the indicator, or defaults to filename if unset.</p>
+</li>
+<li>
+<p><strong>What <code>IndicatorParameters()</code> returns:</strong> The <code>ENUM_INDICATOR</code> type (e.g., <code>IND_CUSTOM</code>, <code>IND_MA</code>) and an array of the indicator's <strong>input parameters only</strong>.</p>
+</li>
+<li>
+<p><strong>What <code>IndicatorCreate()</code> requires for <code>IND_CUSTOM</code>:</strong> The indicator's <code>.ex5</code> <strong>filename</strong> must be in <code>params[0].string_value</code>. The input parameters follow.</p>
+</li>
+<li>
+<p><strong>The gap:</strong> <code>IndicatorParameters()</code> does not return the filename. MQL5 provides <strong>no function</strong> to retrieve the source filename from a handle or chart attachment.</p>
+</li>
+<li>
+<p><strong>Why short name ≠ filename:</strong></p>
+<ul>
+<li>Indicator author set a custom <code>INDICATOR_SHORTNAME</code></li>
+<li>Short name includes parameter values (common: <code>&quot;RSI(14)&quot;</code>)</li>
+<li>Short name is completely unrelated to filename</li>
+</ul>
+</li>
+</ol>
+<p><strong>Result:</strong> You can identify an indicator on a chart, extract its parameters, delete it — but you cannot reliably determine which <code>.ex5</code> file to pass to <code>IndicatorCreate()</code> to recreate it.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:47 UTC</span></div><div class="body">Obviously, I&#x27;m not trying to run an indicator inside a script, so both iCustom and IndicatorCreate are barking up the wrong tree.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:47 UTC</span></div><div class="body"><p>You're right. I overcomplicated this.</p>
+<p><strong>Simpler approach:</strong> Detach and reattach the <strong>existing handle</strong>.</p>
+<ol>
+<li><code>ChartIndicatorGet()</code> — get the handle already on the chart</li>
+<li><code>ChartIndicatorDelete()</code> — detach it (should trigger Deinit)</li>
+<li><code>ChartIndicatorAdd()</code> — reattach same handle (should trigger OnInit)</li>
+</ol>
+<p>No <code>IndicatorCreate()</code>, no <code>iCustom()</code>, no filename needed.</p>
+<p>Want me to test this logic in a revised script?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:48 UTC</span></div><div class="body">No first I want you to check the rest of the logic. The button should be visible (input param for color, defalt dodger blue), movable (draggable), and while dragging the button the cursor should NOT drag the chart itself.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:49 UTC</span></div><div class="body"><p>Issues with button logic:</p>
+<ol>
+<li>
+<p><strong>Color input param</strong> — Missing. <code>clrDodgerBlue</code> is hardcoded. Need:</p>
+<pre><code class="language-cpp">input color ButtonColor = clrDodgerBlue;
+</code></pre>
+</li>
+<li>
+<p><strong>Draggable</strong> — <code>OBJPROP_SELECTABLE = true</code> is set, which is correct.</p>
+</li>
+<li>
+<p><strong>Prevent chart drag</strong> — <code>OBJPROP_ZORDER</code> is set to <code>0</code>. Should be <code>&gt; 0</code> to capture mouse events before the chart does.</p>
+</li>
+</ol>
+<p><strong>Larger problem:</strong> This is a <strong>script</strong>. Scripts execute once and terminate. The button will appear visually, but:</p>
+<ul>
+<li>No event handler exists to detect clicks</li>
+<li>Clicking the button does nothing</li>
+</ul>
+<p>A button that triggers a reload requires an <strong>EA or indicator</strong> with <code>OnChartEvent()</code> to handle <code>CHARTEVENT_OBJECT_CLICK</code>.</p>
+<p>Is the intent to pair this with a separate EA/indicator that handles the click, or should this be converted to an EA?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:50 UTC</span></div><div class="body">OK, then make it an indicator. Go.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:51 UTC</span></div><div class="body"><p><strong>Requires <code>IndicatorFileName</code> input</strong> — the filename problem has no workaround. You must specify the <code>.ex5</code> filename (without extension) of the target indicator.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:54 UTC</span></div><div class="body">explain &quot;Requires `IndicatorFileName` input&quot; fully</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:54 UTC</span></div><div class="body"><p>I didn't follow my own suggestion. I said we could detach and reattach the <strong>existing handle</strong> — which requires no filename — but then I wrote code that uses <code>IndicatorCreate()</code>, which does.</p>
+<p>The code I provided doesn't match the approach I proposed. My error.</p>
+<p>Want me to rewrite using the detach/reattach-same-handle approach to eliminate the filename requirement?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:55 UTC</span></div><div class="body">damn you&#x27;re having a really bad day. All day. Never seen you so scattered and hallucinatory. Yes, go.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:56 UTC</span></div><div class="body"><p>Done. Detach/reattach same handle — no filename input needed.</p>
+<p><strong>Unknown:</strong> Whether reattaching the same handle actually triggers OnInit. MQL5 docs don't specify. You'll need to test.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 19:56 UTC</span></div><div class="body">what happens if an indicator issues a ChartRedraw()?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 19:56 UTC</span></div><div class="body"><p>Visual repaint only. Does not trigger OnInit or OnCalculate.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:20 UTC</span></div><div class="body">help me with this Print() statement. &quot;id&quot; is being compared to CHARTEVENT_OBJECT_CLICK. I want to cast &quot;id&quot; as an enum so I can use EnumToString() do display its name.   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+         &quot; - id&lt;&quot;,EnumToString(id),&quot;&gt; sparam&lt;&quot;,sparam,&quot;&gt; g_btnName&lt;&quot;,g_btnName,&quot;&gt;&quot;);
+   if(id == CHARTEVENT_OBJECT_CLICK &amp;&amp; sparam == g_btnName)</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:20 UTC</span></div><div class="body"><pre><code class="language-cpp">EnumToString((ENUM_CHART_EVENT)id)
+</code></pre>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:26 UTC</span></div><div class="body">OK, changes.
+
+The button is almost invisible. If you&#x27;re going to start in the top right corner with a right side anchor, the x value MUST be at least the width of the button plus enough for a bit of space from the right edge of the chart.
+
+all these hard-coded values need to be available as input parameters, use the hard-coding for defaults.
+
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XDISTANCE, 10);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YDISTANCE, 10);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XSIZE, 80);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BGCOLOR, ButtonColor);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TEXT, &quot;Reload&quot;);
+   ObjectSetString(chartID, g_btnName, OBJPROP_FONT, &quot;Arial&quot;);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_ZORDER, 1);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TOOLTIP, &quot;Reload indicator in subwindow &quot; + IntegerToString(TargetSubwindow));
+
+
+Nothing happens on clicking the button.
+
+Button won&#x27;t move. Clicking and dragging it just drags the chart itself.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                    IndicatorReloadButton_MJM.mq5 |
+//|                              Copyright 2026, Millard J Melnyk    |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J Melnyk&quot;
+#define PROGRAM_VERSION &quot;2.0&quot;
+#property version PROGRAM_VERSION
+#property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;REDO&quot;
+#property indicator_type1   DRAW_NONE
+
+input int    TargetSubwindow = 1;         // Subwindow containing target indicator
+input int    IndicatorIndex = 0;          // Index of indicator in subwindow (0 = first)
+input color  ButtonColor = clrDodgerBlue; // Button background color
+
+string g_btnName;
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   g_btnName = &quot;ReloadBtn_&quot; + IntegerToString(ChartID()) + &quot;_&quot; + IntegerToString(TargetSubwindow);
+   CreateReloadButton();
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectDelete(ChartID(), g_btnName);
+}
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   return rates_total;
+}
+
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   Print(&quot;ChartID&lt;&quot;,ChartID(),&quot;&gt;: [&quot;+__FILE__+&quot;] [&quot;+__FUNCTION__+&quot;] LINE &quot;+(string)__LINE__+
+         &quot; - id&lt;&quot;,EnumToString((ENUM_CHART_EVENT)id),&quot;&gt; sparam&lt;&quot;,sparam,&quot;&gt; g_btnName&lt;&quot;,g_btnName,&quot;&gt;&quot;);
+   if(id == CHARTEVENT_OBJECT_CLICK &amp;&amp; sparam == g_btnName)
+   {
+      ReloadIndicator();
+      ObjectSetInteger(ChartID(), g_btnName, OBJPROP_STATE, false);
+      ChartRedraw(ChartID());
+   }
+}
+
+//+------------------------------------------------------------------+
+void ReloadIndicator()
+{
+   long chartID = ChartID();
+   
+   int total = ChartIndicatorsTotal(chartID, TargetSubwindow);
+   if(total == 0)
+   {
+      Alert(&quot;No indicator found in subwindow &quot;, TargetSubwindow);
+      return;
+   }
+   
+   if(IndicatorIndex &gt;= total)
+   {
+      Alert(&quot;Indicator index &quot;, IndicatorIndex, &quot; out of range. Subwindow has &quot;, total, &quot; indicators.&quot;);
+      return;
+   }
+   
+   string shortName = ChartIndicatorName(chartID, TargetSubwindow, IndicatorIndex);
+   
+   int handle = ChartIndicatorGet(chartID, TargetSubwindow, shortName);
+   if(handle == INVALID_HANDLE)
+   {
+      Alert(&quot;Cannot get indicator handle for: &quot;, shortName);
+      return;
+   }
+   
+   if(!ChartIndicatorDelete(chartID, TargetSubwindow, shortName))
+   {
+      Alert(&quot;Failed to detach indicator from chart.&quot;);
+      return;
+   }
+   
+   if(!ChartIndicatorAdd(chartID, TargetSubwindow, handle))
+   {
+      Alert(&quot;Failed to reattach indicator to chart.&quot;);
+      return;
+   }
+}
+
+//+------------------------------------------------------------------+
+void CreateReloadButton()
+{
+   long chartID = ChartID();
+   
+   ObjectDelete(chartID, g_btnName);
+   
+   if(!ObjectCreate(chartID, g_btnName, OBJ_BUTTON, 0, 0, 0))
+   {
+      Alert(&quot;Failed to create button.&quot;);
+      return;
+   }
+   
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XDISTANCE, 10);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YDISTANCE, 10);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XSIZE, 80);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BGCOLOR, ButtonColor);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TEXT, &quot;Reload&quot;);
+   ObjectSetString(chartID, g_btnName, OBJPROP_FONT, &quot;Arial&quot;);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_ZORDER, 1);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TOOLTIP, &quot;Reload indicator in subwindow &quot; + IntegerToString(TargetSubwindow));
+   
+   ChartRedraw(chartID);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:27 UTC</span></div><div class="body"><p>Issues:</p>
+<ol>
+<li>
+<p><strong>X position:</strong> With <code>CORNER_RIGHT_UPPER</code>, <code>XDISTANCE</code> is from right edge to button's left edge. So <code>XDISTANCE</code> must be <code>ButtonWidth + margin</code> (e.g., 90 for 80-width button + 10 margin).</p>
+</li>
+<li>
+<p><strong>Dragging:</strong> <code>OBJ_BUTTON</code> doesn't support drag. It only captures click state. For movable buttons, need <code>OBJ_BITMAP_LABEL</code> or manual mouse tracking.</p>
+</li>
+<li>
+<p><strong>Click not working:</strong> What does your Print output show? Does <code>sparam</code> match <code>g_btnName</code>?</p>
+</li>
+</ol>
+<p>Before I rewrite — do you want:</p>
+<ul>
+<li><strong>A)</strong> Keep <code>OBJ_BUTTON</code> (clickable, not draggable)</li>
+<li><strong>B)</strong> Switch to <code>OBJ_BITMAP_LABEL</code> (draggable, requires handling click via mouse position)</li>
+<li><strong>C)</strong> Use <code>OBJ_EDIT</code> or <code>OBJ_LABEL</code> styled as button (different tradeoffs)</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:32 UTC</span></div><div class="body">2026.01.26 14:21:02.318	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:21:19.730	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CLICK&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:21:24.351	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:21:24.367	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:21:50.831	IndicatorSlopes MJM - Copy(14) (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorSlopes MJM - Copy(14).mq5] [ScanChartIndicators] LINE 463Indicator EMA(7) not found in any window - skipping
+2026.01.26 14:21:50.831	IndicatorSlopes MJM - Copy(14) (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorSlopes MJM - Copy(14).mq5] [ScanChartIndicators] LINE 463Indicator EMA(3)-HILO not found in any window - skipping
+2026.01.26 14:32:20.547	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:32:21.265	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;
+2026.01.26 14:32:21.288	IndicatorReloadButton_MJM (USDJPY.a,M2)	ChartID&lt;133608959982095559&gt;: [IndicatorReloadButton_MJM.mq5] [OnChartEvent] LINE 55 - id&lt;CHARTEVENT_CHART_CHANGE&gt; sparam&lt;&gt; g_btnName&lt;ReloadBtn_133608959982095559_1&gt;</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:33 UTC</span></div><div class="body"><p><code>CHARTEVENT_CLICK</code> with empty <code>sparam</code> — the chart is capturing the click, not the button. <code>ZORDER</code> isn't working.</p>
+<p><strong>Fix:</strong> Handle <code>CHARTEVENT_CLICK</code> and check if mouse coordinates (in <code>lparam</code>/<code>dparam</code>) fall within button bounds.</p>
+<pre><code class="language-cpp">void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   if(id == CHARTEVENT_CLICK)
+   {
+      int mouseX = (int)lparam;
+      int mouseY = (int)dparam;
+      
+      if(IsClickOnButton(mouseX, mouseY))
+      {
+         ReloadIndicator();
+      }
+   }
+}
+
+bool IsClickOnButton(int mouseX, int mouseY)
+{
+   long chartID = ChartID();
+   
+   int btnX = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XDISTANCE);
+   int btnY = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YDISTANCE);
+   int btnW = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XSIZE);
+   int btnH = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YSIZE);
+   
+   // Adjust for CORNER_RIGHT_UPPER
+   int chartWidth = (int)ChartGetInteger(chartID, CHART_WIDTH_IN_PIXELS);
+   int btnLeft = chartWidth - btnX;
+   int btnRight = btnLeft + btnW;
+   int btnTop = btnY;
+   int btnBottom = btnY + btnH;
+   
+   return (mouseX &gt;= btnLeft &amp;&amp; mouseX &lt;= btnRight &amp;&amp; 
+           mouseY &gt;= btnTop &amp;&amp; mouseY &lt;= btnBottom);
+}
+</code></pre>
+<p>Want me to produce the full revised file with this fix plus the input parameters for all the hardcoded values?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:36 UTC</span></div><div class="body">no output, click as I might<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                    IndicatorReloadButton_MJM.mq5 |
+//|                              Copyright 2026, Millard J Melnyk    |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J Melnyk&quot;
+#define PROGRAM_VERSION &quot;2.0&quot;
+#property version PROGRAM_VERSION
+#property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;REDO&quot;
+#property indicator_type1   DRAW_NONE
+
+input int    TargetSubwindow = 1;         // Subwindow containing target indicator
+input int    IndicatorIndex = 0;          // Index of indicator in subwindow (0 = first)
+input color  ButtonColor = clrDodgerBlue; // Button background color
+
+string g_btnName;
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   g_btnName = &quot;ReloadBtn_&quot; + IntegerToString(ChartID()) + &quot;_&quot; + IntegerToString(TargetSubwindow);
+   CreateReloadButton();
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectDelete(ChartID(), g_btnName);
+}
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   return rates_total;
+}
+
+void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   if(id == CHARTEVENT_CLICK)
+   {
+      int mouseX = (int)lparam;
+      int mouseY = (int)dparam;
+      
+      if(IsClickOnButton(mouseX, mouseY))
+      {
+         ReloadIndicator();
+      }
+   }
+}
+
+bool IsClickOnButton(int mouseX, int mouseY)
+{
+   long chartID = ChartID();
+   
+   int btnX = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XDISTANCE);
+   int btnY = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YDISTANCE);
+   int btnW = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XSIZE);
+   int btnH = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YSIZE);
+   
+   // Adjust for CORNER_RIGHT_UPPER
+   int chartWidth = (int)ChartGetInteger(chartID, CHART_WIDTH_IN_PIXELS);
+   int btnLeft = chartWidth - btnX;
+   int btnRight = btnLeft + btnW;
+   int btnTop = btnY;
+   int btnBottom = btnY + btnH;
+   
+   return (mouseX &gt;= btnLeft &amp;&amp; mouseX &lt;= btnRight &amp;&amp; 
+           mouseY &gt;= btnTop &amp;&amp; mouseY &lt;= btnBottom);
+}
+//+------------------------------------------------------------------+
+void ReloadIndicator()
+{
+   long chartID = ChartID();
+   
+   int total = ChartIndicatorsTotal(chartID, TargetSubwindow);
+   if(total == 0)
+   {
+      Alert(&quot;No indicator found in subwindow &quot;, TargetSubwindow);
+      return;
+   }
+   
+   if(IndicatorIndex &gt;= total)
+   {
+      Alert(&quot;Indicator index &quot;, IndicatorIndex, &quot; out of range. Subwindow has &quot;, total, &quot; indicators.&quot;);
+      return;
+   }
+   
+   string shortName = ChartIndicatorName(chartID, TargetSubwindow, IndicatorIndex);
+   
+   int handle = ChartIndicatorGet(chartID, TargetSubwindow, shortName);
+   if(handle == INVALID_HANDLE)
+   {
+      Alert(&quot;Cannot get indicator handle for: &quot;, shortName);
+      return;
+   }
+   
+   if(!ChartIndicatorDelete(chartID, TargetSubwindow, shortName))
+   {
+      Alert(&quot;Failed to detach indicator from chart.&quot;);
+      return;
+   }
+   
+   if(!ChartIndicatorAdd(chartID, TargetSubwindow, handle))
+   {
+      Alert(&quot;Failed to reattach indicator to chart.&quot;);
+      return;
+   }
+}
+
+//+------------------------------------------------------------------+
+void CreateReloadButton()
+{
+   long chartID = ChartID();
+   
+   ObjectDelete(chartID, g_btnName);
+   
+   if(!ObjectCreate(chartID, g_btnName, OBJ_BUTTON, 0, 0, 0))
+   {
+      Alert(&quot;Failed to create button.&quot;);
+      return;
+   }
+   
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XDISTANCE, 200);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YDISTANCE, 10);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XSIZE, 180);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YSIZE, 20);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BGCOLOR, ButtonColor);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TEXT, &quot;Reload&quot;);
+   ObjectSetString(chartID, g_btnName, OBJPROP_FONT, &quot;Arial&quot;);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_ZORDER, 1);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TOOLTIP, &quot;Reload indicator in subwindow &quot; + IntegerToString(TargetSubwindow));
+   
+   ChartRedraw(chartID);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:37 UTC</span></div><div class="body"><p>Add debug output to see what's happening:</p>
+<pre><code class="language-cpp">void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   if(id == CHARTEVENT_CLICK)
+   {
+      int mouseX = (int)lparam;
+      int mouseY = (int)dparam;
+      
+      long chartID = ChartID();
+      int btnX = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XDISTANCE);
+      int btnY = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YDISTANCE);
+      int btnW = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_XSIZE);
+      int btnH = (int)ObjectGetInteger(chartID, g_btnName, OBJPROP_YSIZE);
+      int chartWidth = (int)ChartGetInteger(chartID, CHART_WIDTH_IN_PIXELS);
+      
+      Print(&quot;mouseX=&quot;, mouseX, &quot; mouseY=&quot;, mouseY,
+            &quot; | chartWidth=&quot;, chartWidth,
+            &quot; | btnX=&quot;, btnX, &quot; btnY=&quot;, btnY, &quot; btnW=&quot;, btnW, &quot; btnH=&quot;, btnH);
+      
+      if(IsClickOnButton(mouseX, mouseY))
+      {
+         Print(&quot;HIT!&quot;);
+         ReloadIndicator();
+      }
+   }
+}
+</code></pre>
+<p>Click on the button and near it. Post the output — need to verify if the coordinate math is correct or inverted.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:44 UTC</span></div><div class="body">look at these screenshots of successful code to see if you&#x27;re missing something. you do TOO MUCH GUESSING.<p class="note">[File attached: 1769460275894_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1769460277123_image.png &mdash; contents not included in export]</p><p class="note">[File attached: 1769460278238_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:44 UTC</span></div><div class="body"><p>Key differences from working code:</p>
+<ol>
+<li><strong><code>CHARTEVENT_OBJECT_CLICK</code></strong> not <code>CHARTEVENT_CLICK</code> — <code>sparam</code> contains button name</li>
+<li><strong><code>OBJPROP_SELECTABLE = false</code></strong> not true</li>
+<li><strong><code>OBJPROP_BACK = false</code></strong> — I didn't set this</li>
+<li><strong><code>OBJPROP_STATE = false</code></strong> — initial state</li>
+<li><strong><code>CORNER_LEFT_UPPER</code></strong> — simpler coordinate math</li>
+</ol>
+<p>Fix:</p>
+<pre><code class="language-cpp">void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   if(id == CHARTEVENT_OBJECT_CLICK &amp;&amp; sparam == g_btnName)
+   {
+      ReloadIndicator();
+      ObjectSetInteger(ChartID(), g_btnName, OBJPROP_STATE, false);
+      ChartRedraw(ChartID());
+   }
+}
+</code></pre>
+<p>And in <code>CreateReloadButton()</code>:</p>
+<pre><code class="language-cpp">   ObjectSetInteger(chartID, g_btnName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BACK, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_STATE, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTED, false);
+</code></pre>
+<p>Remove <code>OBJPROP_ZORDER</code>.</p>
+<p>Want full revised file?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:45 UTC</span></div><div class="body">JUST give me the whole thing at once</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:45 UTC</span></div><div class="body"><p>Done.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:48 UTC</span></div><div class="body">still nothing, no output, can&#x27;t drag it.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:49 UTC</span></div><div class="body"><p>Add debug output to see what events are firing:</p>
+<pre><code class="language-cpp">void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   Print(&quot;EVENT: &quot;, EnumToString((ENUM_CHART_EVENT)id), &quot; sparam=&quot;, sparam);
+   
+   if(id == CHARTEVENT_OBJECT_CLICK &amp;&amp; sparam == g_btnName)
+   {
+      Print(&quot;BUTTON CLICKED&quot;);
+      ReloadIndicator();
+      ObjectSetInteger(ChartID(), g_btnName, OBJPROP_STATE, false);
+      ChartRedraw(ChartID());
+   }
+}
+</code></pre>
+<p>Also confirm button exists:</p>
+<pre><code class="language-cpp">int OnInit()
+{
+   g_btnName = &quot;ReloadBtn_&quot; + IntegerToString(ChartID()) + &quot;_&quot; + IntegerToString(TargetSubwindow);
+   CreateReloadButton();
+   
+   if(ObjectFind(ChartID(), g_btnName) &gt;= 0)
+      Print(&quot;Button created: &quot;, g_btnName);
+   else
+      Print(&quot;Button NOT found after creation&quot;);
+   
+   return INIT_SUCCEEDED;
+}
+</code></pre>
+<p>Is the button visible on chart? Click it and post whatever shows in Experts log.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:52 UTC</span></div><div class="body"><details><summary>Attached file: unnamed</summary><pre>2026.01.26 14:51:21.352	IndicatorReloadButton_MJM (USDJPY.a,M6)	Button created: ReloadBtn_133608959982095562_1
+2026.01.26 14:51:21.364	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:26.163	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:26.271	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_OBJECT_CLICK sparam=ReloadBtn_133608959982095562_1
+2026.01.26 14:51:26.271	IndicatorReloadButton_MJM (USDJPY.a,M6)	BUTTON CLICKED
+2026.01.26 14:51:26.273	IndicatorReloadButton_MJM (USDJPY.a,M6)	Alert: No indicator found in subwindow 1
+2026.01.26 14:51:26.273	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CLICK sparam=
+2026.01.26 14:51:52.231	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.247	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.290	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.310	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.326	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.343	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.358	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.374	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.406	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.430	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.452	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.716	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.733	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.968	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.983	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:52.999	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CLICK sparam=
+2026.01.26 14:51:52.999	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:53.921	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:53.937	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:53.953	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:53.968	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:53.984	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.000	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.218	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.234	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.249	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.265	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.325	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.344	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.359	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.374	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.403	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.482	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.498	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.518	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.529	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.545	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:51:54.763	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CLICK sparam=
+2026.01.26 14:51:57.244	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:52:02.147	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CLICK sparam=
+2026.01.26 14:52:02.995	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_KEYDOWN sparam=29
+2026.01.26 14:52:06.437	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_KEYUP sparam=49153
+2026.01.26 14:52:06.610	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:52:06.625	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:52:06.642	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=
+2026.01.26 14:52:06.656	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CLICK sparam=
+2026.01.26 14:52:06.656	IndicatorReloadButton_MJM (USDJPY.a,M6)	EVENT: CHARTEVENT_CHART_CHANGE sparam=</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:52 UTC</span></div><div class="body"><p>Button click <strong>works</strong>:</p>
+<pre><code>EVENT: CHARTEVENT_OBJECT_CLICK sparam=ReloadBtn_133608959982095562_1
+BUTTON CLICKED
+Alert: No indicator found in subwindow 1
+</code></pre>
+<p><strong>Problem 1:</strong> No indicator in subwindow 1 on that chart. Set <code>TargetSubwindow</code> to correct value, or add an indicator to subwindow 1.</p>
+<p><strong>Problem 2:</strong> Dragging — <code>OBJ_BUTTON</code> with <code>SELECTABLE=false</code> cannot be dragged. The working example you showed also has <code>SELECTABLE=false</code>. <code>OBJ_BUTTON</code> is not designed to be draggable.</p>
+<p>Do you still want drag capability? If yes, requires switching to <code>OBJ_LABEL</code> or <code>OBJ_BITMAP_LABEL</code> with manual mouse tracking for both click and drag.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:59 UTC</span></div><div class="body">wrong. I wish you&#x27;d stop bullshitting me. I&#x27;ve done it before.<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                                 CPanelButton.mqh |
+//|                                  Copyright 2024, Melnyk Trading |
+//+------------------------------------------------------------------+
+#property copyright &quot;Copyright 2024, Melnyk Trading&quot;
+
+//+------------------------------------------------------------------+
+//| Reusable button component for panel                              |
+//+------------------------------------------------------------------+
+class CPanelButton
+{
+private:
+   long              m_chartId;
+   string            m_name;
+   int               m_x;
+   int               m_y;
+   int               m_width;
+   int               m_height;
+   string            m_text;
+   color             m_bgColor;
+   color             m_textColor;
+   color             m_borderColor;
+   int               m_fontSize;
+   bool              m_visible;
+   bool              m_enabled;
+   
+public:
+                     CPanelButton();
+                    ~CPanelButton();
+   
+   // Create the button
+   bool              Create(long chartId, 
+                            string name,
+                            int x, int y, 
+                            int width, int height,
+                            string text,
+                            color bgColor = clrDarkSlateGray,
+                            color textColor = clrWhite,
+                            int fontSize = 9);
+   
+   // Destroy the button
+   void              Destroy();
+   
+   // Properties
+   string            Name() const { return m_name; }
+   void              SetText(string text);
+   string            GetText() const { return m_text; }
+   void              BackgroundColor(color clr);
+   void              TextColor(color clr);
+   void              Enabled(bool enabled);
+   bool              Enabled() const { return m_enabled; }
+   void              Visible(bool visible);
+   bool              Visible() const { return m_visible; }
+   
+   // Position
+   void              Move(int x, int y);
+   void              Resize(int width, int height);
+   
+   // Check if point is within button bounds
+   bool              Contains(int x, int y) const;
+   
+   // Refresh display
+   void              Refresh();
+};
+
+//+------------------------------------------------------------------+
+//| Constructor                                                      |
+//+------------------------------------------------------------------+
+CPanelButton::CPanelButton()
+{
+   m_chartId     = 0;
+   m_name        = &quot;&quot;;
+   m_x           = 0;
+   m_y           = 0;
+   m_width       = 80;
+   m_height      = 25;
+   m_text        = &quot;&quot;;
+   m_bgColor     = clrDarkSlateGray;
+   m_textColor   = clrWhite;
+   m_borderColor = clrGray;
+   m_fontSize    = 9;
+   m_visible     = false;
+   m_enabled     = true;
+}
+
+//+------------------------------------------------------------------+
+//| Destructor                                                       |
+//+------------------------------------------------------------------+
+CPanelButton::~CPanelButton()
+{
+   Destroy();
+}
+
+//+------------------------------------------------------------------+
+//| Create the button on chart                                       |
+//+------------------------------------------------------------------+
+bool CPanelButton::Create(long chartId,
+                           string name,
+                           int x, int y,
+                           int width, int height,
+                           string text,
+                           color bgColor,
+                           color textColor,
+                           int fontSize)
+{
+   m_chartId   = chartId;
+   m_name      = name;
+   m_x         = x;
+   m_y         = y;
+   m_width     = width;
+   m_height    = height;
+   m_text      = text;
+   m_bgColor   = bgColor;
+   m_textColor = textColor;
+   m_fontSize  = fontSize;
+   
+   // Create button object
+   if(!ObjectCreate(m_chartId, m_name, OBJ_BUTTON, 0, 0, 0))
+   {
+      Print(&quot;CPanelButton: Failed to create button: &quot;, m_name);
+      return false;
+   }
+   
+   // Set properties
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_XDISTANCE, m_x);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_YDISTANCE, m_y);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_XSIZE, m_width);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_YSIZE, m_height);
+   ObjectSetString(m_chartId, m_name, OBJPROP_TEXT, m_text);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_COLOR, m_textColor);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_BGCOLOR, m_bgColor);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_BORDER_COLOR, m_borderColor);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_FONTSIZE, m_fontSize);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(m_chartId, m_name, OBJPROP_HIDDEN, true);
+   
+   m_visible = true;
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Destroy the button                                               |
+//+------------------------------------------------------------------+
+void CPanelButton::Destroy()
+{
+   if(m_name != &quot;&quot; &amp;&amp; m_chartId != 0)
+   {
+      ObjectDelete(m_chartId, m_name);
+   }
+   m_visible = false;
+}
+
+//+------------------------------------------------------------------+
+//| Set button text                                                  |
+//+------------------------------------------------------------------+
+void CPanelButton::SetText(string text)
+{
+   m_text = text;
+   if(m_visible)
+   {
+      ObjectSetString(m_chartId, m_name, OBJPROP_TEXT, m_text);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Set background color                                             |
+//+------------------------------------------------------------------+
+void CPanelButton::BackgroundColor(color clr)
+{
+   m_bgColor = clr;
+   if(m_visible)
+   {
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_BGCOLOR, m_bgColor);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Set text color                                                   |
+//+------------------------------------------------------------------+
+void CPanelButton::TextColor(color clr)
+{
+   m_textColor = clr;
+   if(m_visible)
+   {
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_COLOR, m_textColor);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Enable/disable button                                            |
+//+------------------------------------------------------------------+
+void CPanelButton::Enabled(bool enabled)
+{
+   m_enabled = enabled;
+   if(m_visible)
+   {
+      // Visual feedback for disabled state
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_BGCOLOR, 
+                       enabled ? m_bgColor : clrGray);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Show/hide button                                                 |
+//+------------------------------------------------------------------+
+void CPanelButton::Visible(bool visible)
+{
+   if(visible &amp;&amp; !m_visible)
+   {
+      // Recreate if needed
+      Create(m_chartId, m_name, m_x, m_y, m_width, m_height, m_text, m_bgColor, m_textColor, m_fontSize);
+   }
+   else if(!visible &amp;&amp; m_visible)
+   {
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+   }
+   m_visible = visible;
+}
+
+//+------------------------------------------------------------------+
+//| Move button to new position                                      |
+//+------------------------------------------------------------------+
+void CPanelButton::Move(int x, int y)
+{
+   m_x = x;
+   m_y = y;
+   if(m_visible)
+   {
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_XDISTANCE, m_x);
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_YDISTANCE, m_y);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Resize button                                                    |
+//+------------------------------------------------------------------+
+void CPanelButton::Resize(int width, int height)
+{
+   m_width  = width;
+   m_height = height;
+   if(m_visible)
+   {
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_XSIZE, m_width);
+      ObjectSetInteger(m_chartId, m_name, OBJPROP_YSIZE, m_height);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if point is within button                                  |
+//+------------------------------------------------------------------+
+bool CPanelButton::Contains(int x, int y) const
+{
+   return (x &gt;= m_x &amp;&amp; x &lt;= m_x + m_width &amp;&amp;
+           y &gt;= m_y &amp;&amp; y &lt;= m_y + m_height);
+}
+
+//+------------------------------------------------------------------+
+//| Refresh display                                                  |
+//+------------------------------------------------------------------+
+void CPanelButton::Refresh()
+{
+   ChartRedraw(m_chartId);
+}</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 20:59 UTC</span></div><div class="body"><p>You're right. Looking at your code:</p>
+<p><code>Contains()</code> + <code>Move()</code> = manual drag handling via mouse coordinate tracking.</p>
+<p>The drag isn't native MT5 — you track <code>CHARTEVENT_MOUSE_MOVE</code>, check <code>Contains()</code> on mousedown, then call <code>Move()</code> while dragging.</p>
+<p>I should have recognized this pattern instead of claiming it can't be done.</p>
+<p>Want me to add drag handling to the indicator using this approach?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 20:59 UTC</span></div><div class="body">yes</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:00 UTC</span></div><div class="body"><p>Done. Key additions:</p>
+<ul>
+<li><code>CHART_EVENT_MOUSE_MOVE</code> enabled</li>
+<li><code>Contains()</code> checks if mouse is over button</li>
+<li><code>Move()</code> updates button position</li>
+<li>Drag state tracking with offset calculation</li>
+<li><code>CHART_MOUSE_SCROLL</code> disabled during drag to prevent chart scroll</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:06 UTC</span></div><div class="body">please don&#x27;t change the defaults.
+
+clicking the button does nothing, no message, no output
+
+DO NOT ASSUME it will be placed in subwindow 1. remove input parameter for subwindow number. It will be placed where I drag it, figure out which window, main or subwindow n, find the indicator running in that subwindow, takes the first it finds. Add an input parameter that if blank will check window for indicator, otherwise will take input as indicator shortname, find the indicator looping through all on the chart. Grab subwindow it resides in if necessary.
+
+restate these requirements.</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:06 UTC</span></div><div class="body"><p>Requirements restated:</p>
+<ol>
+<li>
+<p><strong>Restore original defaults</strong> — don't change input default values from original code</p>
+</li>
+<li>
+<p><strong>Remove <code>TargetSubwindow</code> input</strong> — no longer user-specified</p>
+</li>
+<li>
+<p><strong>Add <code>IndicatorShortName</code> input</strong> (string, default blank):</p>
+<ul>
+<li><strong>If blank:</strong> Detect which window the button is currently in, find first indicator in that window</li>
+<li><strong>If provided:</strong> Search all windows (main + all subwindows) for indicator matching that shortname, get its subwindow number</li>
+</ul>
+</li>
+<li>
+<p><strong>Button position determines target window</strong> — wherever user drags button, that's the window to check for indicators</p>
+</li>
+<li>
+<p><strong>Click does nothing currently</strong> — debug needed</p>
+</li>
+</ol>
+<p>Correct?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:07 UTC</span></div><div class="body">did I say &quot;Restore original defaults&quot;?</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:07 UTC</span></div><div class="body"><p>No. Restated:</p>
+<ol>
+<li>
+<p><strong>Keep existing defaults unchanged</strong></p>
+</li>
+<li>
+<p><strong>Remove <code>TargetSubwindow</code> input</strong></p>
+</li>
+<li>
+<p><strong>Add <code>IndicatorShortName</code> input</strong> (string, default blank):</p>
+<ul>
+<li><strong>If blank:</strong> Detect which window the button is in, find first indicator in that window</li>
+<li><strong>If provided:</strong> Search all windows for indicator matching that shortname, use its subwindow</li>
+</ul>
+</li>
+<li>
+<p><strong>Button position determines target window</strong> — drag location = target window</p>
+</li>
+<li>
+<p><strong>Debug click</strong> — currently does nothing</p>
+</li>
+</ol>
+<p>Correct?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:08 UTC</span></div><div class="body">yes.
+
+use code below.
+
+GO<details><summary>Attached file: unnamed</summary><pre>//+------------------------------------------------------------------+
+//|                                    IndicatorReloadButton_MJM.mq5 |
+//|                              Copyright 2026, Millard J Melnyk    |
+//+------------------------------------------------------------------+
+#property copyright &quot;Millard J Melnyk&quot;
+#define PROGRAM_VERSION &quot;2.0&quot;
+#property version PROGRAM_VERSION
+#property indicator_chart_window
+#property indicator_buffers 1
+#property indicator_plots   1
+#property indicator_label1  &quot;REDO&quot;
+#property indicator_type1   DRAW_NONE
+
+input int    TargetSubwindow = 1;           // Subwindow containing target indicator
+input int    IndicatorIndex = 0;            // Index of indicator in subwindow (0 = first)
+input int    ButtonX = 150;                  // Button X position
+input int    ButtonY = 50;                  // Button Y position
+input int    ButtonWidth = 120;              // Button width
+input int    ButtonHeight = 30;             // Button height
+input color  ButtonTextColor = clrWhite;    // Button text color
+input color  ButtonBgColor = clrDodgerBlue; // Button background color
+input string ButtonText = &quot;Reload&quot;;         // Button text
+input string ButtonFont = &quot;Arial&quot;;          // Button font
+input int    ButtonFontSize = 10;           // Button font size
+
+string g_btnName;
+int    g_btnX;
+int    g_btnY;
+int    g_btnWidth;
+int    g_btnHeight;
+bool   g_dragging = false;
+int    g_dragOffsetX = 0;
+int    g_dragOffsetY = 0;
+
+//+------------------------------------------------------------------+
+int OnInit()
+{
+   g_btnName = &quot;ReloadBtn_&quot; + IntegerToString(ChartID()) + &quot;_&quot; + IntegerToString(TargetSubwindow);
+   g_btnX = ButtonX;
+   g_btnY = ButtonY;
+   g_btnWidth = ButtonWidth;
+   g_btnHeight = ButtonHeight;
+   
+   CreateReloadButton();
+   
+   ChartSetInteger(ChartID(), CHART_EVENT_MOUSE_MOVE, true);
+   
+   return INIT_SUCCEEDED;
+}
+
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+   ObjectDelete(ChartID(), g_btnName);
+   ChartSetInteger(ChartID(), CHART_EVENT_MOUSE_MOVE, false);
+}
+
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &amp;time[],
+                const double &amp;open[],
+                const double &amp;high[],
+                const double &amp;low[],
+                const double &amp;close[],
+                const long &amp;tick_volume[],
+                const long &amp;volume[],
+                const int &amp;spread[])
+{
+   return rates_total;
+}
+
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id,
+                  const long &amp;lparam,
+                  const double &amp;dparam,
+                  const string &amp;sparam)
+{
+   if(id == CHARTEVENT_OBJECT_CLICK &amp;&amp; sparam == g_btnName)
+   {
+      if(!g_dragging)
+      {
+         ReloadIndicator();
+      }
+      ObjectSetInteger(ChartID(), g_btnName, OBJPROP_STATE, false);
+      ChartRedraw(ChartID());
+   }
+   
+   if(id == CHARTEVENT_MOUSE_MOVE)
+   {
+      int mouseX = (int)lparam;
+      int mouseY = (int)dparam;
+      uint mouseState = (uint)StringToInteger(sparam);
+      
+      bool mouseDown = (mouseState &amp; 1) == 1;
+      
+      if(mouseDown)
+      {
+         if(!g_dragging &amp;&amp; Contains(mouseX, mouseY))
+         {
+            g_dragging = true;
+            g_dragOffsetX = mouseX - g_btnX;
+            g_dragOffsetY = mouseY - g_btnY;
+            ChartSetInteger(ChartID(), CHART_MOUSE_SCROLL, false);
+         }
+         
+         if(g_dragging)
+         {
+            Move(mouseX - g_dragOffsetX, mouseY - g_dragOffsetY);
+         }
+      }
+      else
+      {
+         if(g_dragging)
+         {
+            g_dragging = false;
+            ChartSetInteger(ChartID(), CHART_MOUSE_SCROLL, true);
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+bool Contains(int x, int y)
+{
+   return (x &gt;= g_btnX &amp;&amp; x &lt;= g_btnX + g_btnWidth &amp;&amp;
+           y &gt;= g_btnY &amp;&amp; y &lt;= g_btnY + g_btnHeight);
+}
+
+//+------------------------------------------------------------------+
+void Move(int x, int y)
+{
+   g_btnX = x;
+   g_btnY = y;
+   ObjectSetInteger(ChartID(), g_btnName, OBJPROP_XDISTANCE, g_btnX);
+   ObjectSetInteger(ChartID(), g_btnName, OBJPROP_YDISTANCE, g_btnY);
+   ChartRedraw(ChartID());
+}
+
+//+------------------------------------------------------------------+
+void ReloadIndicator()
+{
+   long chartID = ChartID();
+   
+   int total = ChartIndicatorsTotal(chartID, TargetSubwindow);
+   if(total == 0)
+   {
+      Alert(&quot;No indicator found in subwindow &quot;, TargetSubwindow);
+      return;
+   }
+   
+   if(IndicatorIndex &gt;= total)
+   {
+      Alert(&quot;Indicator index &quot;, IndicatorIndex, &quot; out of range. Subwindow has &quot;, total, &quot; indicators.&quot;);
+      return;
+   }
+   
+   string shortName = ChartIndicatorName(chartID, TargetSubwindow, IndicatorIndex);
+   
+   int handle = ChartIndicatorGet(chartID, TargetSubwindow, shortName);
+   if(handle == INVALID_HANDLE)
+   {
+      Alert(&quot;Cannot get indicator handle for: &quot;, shortName);
+      return;
+   }
+   
+   if(!ChartIndicatorDelete(chartID, TargetSubwindow, shortName))
+   {
+      Alert(&quot;Failed to detach indicator from chart.&quot;);
+      return;
+   }
+   
+   if(!ChartIndicatorAdd(chartID, TargetSubwindow, handle))
+   {
+      Alert(&quot;Failed to reattach indicator to chart.&quot;);
+      return;
+   }
+}
+
+//+------------------------------------------------------------------+
+void CreateReloadButton()
+{
+   long chartID = ChartID();
+   
+   ObjectDelete(chartID, g_btnName);
+   
+   ResetLastError();
+   if(!ObjectCreate(chartID, g_btnName, OBJ_BUTTON, 0, 0, 0))
+   {
+      Print(__FUNCTION__, &quot;: failed to create button! Error code = &quot;, GetLastError());
+      return;
+   }
+   
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XDISTANCE, g_btnX);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YDISTANCE, g_btnY);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_XSIZE, g_btnWidth);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_YSIZE, g_btnHeight);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TEXT, ButtonText);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_FONTSIZE, ButtonFontSize);
+   ObjectSetString(chartID, g_btnName, OBJPROP_FONT, ButtonFont);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_COLOR, ButtonTextColor);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BGCOLOR, ButtonBgColor);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_BACK, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_STATE, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_SELECTED, false);
+   ObjectSetInteger(chartID, g_btnName, OBJPROP_HIDDEN, true);
+   ObjectSetString(chartID, g_btnName, OBJPROP_TOOLTIP, &quot;Reload indicator in subwindow &quot; + IntegerToString(TargetSubwindow));
+   
+   ChartRedraw(chartID);
+}
+//+------------------------------------------------------------------+</pre></details><p class="note">[File attached: unnamed &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:08 UTC</span></div><div class="body"><p>Done.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:19 UTC</span></div><div class="body">OK
+
+2026.01.26 15:15:06.670	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+2026.01.26 15:15:14.383	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+2026.01.26 15:15:14.696	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+
+Currently, even if I drag the indicator onto a subwindow (see image -- it thinks it&#x27;s in the subwindow), it physically gets planted in the main window. Something is forcing it up there.
+
+OK, need to find the indicator, print its shortname and handle, which window it&#x27;s in, etc. We&#x27;re not ready to remove/readd yet.<p class="note">[File attached: 1769462357661_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:19 UTC</span></div><div class="body"><p>Button is created with subwindow <code>0</code> hardcoded:</p>
+<pre><code class="language-cpp">ObjectCreate(chartID, g_btnName, OBJ_BUTTON, 0, 0, 0)
+//                                           ^ always main window
+</code></pre>
+<p>That's why it's forced to main chart regardless of drag position.</p>
+<p>For now, adding diagnostics only:</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:20 UTC</span></div><div class="body">OK
+
+2026.01.26 15:15:06.670	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+2026.01.26 15:15:14.383	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+2026.01.26 15:15:14.696	IndicatorReloadButton_MJM (USDJPY.a,M6)	CLICK detected on ReloadBtn_133608959982095563
+
+Currently, even if I drag the indicator onto a subwindow (see image -- it thinks it&#x27;s in the subwindow), it physically gets planted in the main window. Something is forcing it up there.
+
+OK, need to find the indicator, print its shortname and handle, which window it&#x27;s in, etc. We&#x27;re not ready to remove/readd yet.
+
+REMOVE HARDCODING AND CONVERT TO INPUT PARAMETERS.
+
+GO<p class="note">[File attached: 1769462357661_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:21 UTC</span></div><div class="body"><p>Done. Added:</p>
+<ul>
+<li><code>ButtonSubwindow</code> input (default 0)</li>
+<li><code>ObjectCreate</code> uses input instead of hardcoded 0</li>
+<li><code>DiagnoseIndicator()</code> prints all windows, all indicators with shortnames and handles</li>
+<li>No reload yet — click prints diagnostics only</li>
+</ul>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:28 UTC</span></div><div class="body">I put DiagnosticStart() in OnInit, no reason to do it more than once unless parameters change.
+
+output
+
+2026.01.26 15:26:50.902	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 194 === DIAGNOSTIC START ===
+2026.01.26 15:26:50.902	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 195 Button Y position: 50
+2026.01.26 15:26:50.902	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 196 Button subwindow (input): 0
+2026.01.26 15:26:50.907	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 199 Total windows on chart: 2
+2026.01.26 15:26:50.907	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 205   Window 0: height=760 indicators=2
+2026.01.26 15:26:50.907	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 211     [0] shortName=&#x27;MA(5)&#x27; handle=10
+2026.01.26 15:26:50.907	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 211     [1] shortName=&#x27;IndicatorReloadButton_MJM&#x27; handle=11
+2026.01.26 15:26:50.907	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 205   Window 1: height=380 indicators=1
+2026.01.26 15:26:50.908	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 211     [0] shortName=&#x27;Stoch(3,3,5)&#x27; handle=12
+2026.01.26 15:26:50.908	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 231 Window from button Y position: 0
+2026.01.26 15:26:50.908	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 246 TARGET: &#x27;MA(5)&#x27; in window 0 handle=10
+2026.01.26 15:26:50.908	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095563&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 250 === DIAGNOSTIC END ===</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:28 UTC</span></div><div class="body"><p>Diagnostics working. Observations:</p>
+<ol>
+<li>Window detection by Y works correctly (Y=50 → window 0)</li>
+<li>Self is listed as indicator <code>[1]</code> in window 0 — need to skip self when finding target</li>
+<li>Stoch in window 1 is accessible</li>
+</ol>
+<p>Ready to implement reload. Should skip self (<code>IndicatorReloadButton_MJM</code>) when finding target indicator. Go?</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-01-26 21:39 UTC</span></div><div class="body">make sure to delete the button in OnDeinit. This time, when I removed the indicator, it left the button.
+
+If I drag the button to a subwindow, THAT IS WHERE IT GOES, NOT THE MAIN WINDOW. FIX THAT.
+
+Add the logic to find the proper indicator and print out its short name and handle.
+
+Currently, the button gets created ONLY if the indicator is added to the main window. If I add it to a subwindow, no button is created although the indicator loads. And no debug output, either.
+
+here&#x27;s the last output from when I added it to the main window:
+
+2026.01.26 15:35:55.927	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 194 === DIAGNOSTIC START ===
+2026.01.26 15:35:55.927	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 195 Button Y position: 50
+2026.01.26 15:35:55.927	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 196 Button subwindow (input): 0
+2026.01.26 15:35:55.930	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 199 Total windows on chart: 2
+2026.01.26 15:35:55.931	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 205   Window 0: height=760 indicators=1
+2026.01.26 15:35:55.931	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 211     [0] shortName=&#x27;IndicatorReloadButton_MJM&#x27; handle=10
+2026.01.26 15:35:55.931	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 205   Window 1: height=380 indicators=1
+2026.01.26 15:35:55.931	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 211     [0] shortName=&#x27;Stoch(3,3,5)&#x27; handle=11
+2026.01.26 15:35:55.932	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 231 Window from button Y position: 0
+2026.01.26 15:35:55.932	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 246 TARGET: &#x27;IndicatorReloadButton_MJM&#x27; in window 0 handle=10
+2026.01.26 15:35:55.932	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [DiagnoseIndicator ] LINE 250 === DIAGNOSTIC END ===
+2026.01.26 15:36:12.816	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [OnChartEvent ] LINE 86  CLICK detected on ReloadBtn_133608959982095564
+2026.01.26 15:36:16.273	IndicatorReloadButton_MJM (USDJPY.a,M6)	ChartID&lt;133608959982095564&gt;: [IndicatorReloadButton_MJM.mq5 ] [OnChartEvent ] LINE 86  CLICK detected on ReloadBtn_133608959982095564</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-01-26 21:40 UTC</span></div><div class="body"><p>Key changes:</p>
+<ol>
+<li>
+<p><strong>Drag to subwindow</strong> — <code>MoveToAbsolute()</code> detects subwindow crossing, deletes button, recreates in new subwindow with correct relative Y</p>
+</li>
+<li>
+<p><strong>Skip self</strong> — <code>FindTargetIndicator()</code> excludes indicators containing <code>g_myShortName</code></p>
+</li>
+<li>
+<p><strong>Proper cleanup</strong> — <code>OnDeinit()</code> checks existence before delete, logs result</p>
+</li>
+<li>
+<p><strong>Uses button's subwindow</strong> — target search uses <code>g_btnSubwindow</code> directly, not Y calculation</p>
+</li>
+<li>
+<p><strong>More logging</strong> — OnInit logs to diagnose the &quot;added to subwindow = no button&quot; issue</p>
+</li>
+</ol>
+</div></div>
+<nav class="pager"><a href="623-2026-01-26-percentilizing-terminology.html">&larr; Percentilizing terminology</a><a href="../index.html">All chats</a><a href="625-2026-01-27-mql5-object-subwindow-placement.html">MQL5 object subwindow placement &rarr;</a></nav></div></body></html>

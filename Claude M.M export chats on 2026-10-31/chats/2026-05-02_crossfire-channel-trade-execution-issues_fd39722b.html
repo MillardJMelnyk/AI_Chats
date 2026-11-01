@@ -1,0 +1,88 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CrossFire_Channel trade execution issues</title><style>body{background:#f7f5f1;color:#1f1f1f;font-family:Georgia,'Times New Roman',serif;margin:0}
+.w{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+a{color:#9a4a17;text-decoration:none}a:hover{text-decoration:underline}
+.nav{display:flex;justify-content:space-between;font-family:'Segoe UI',Arial,sans-serif;font-size:17px;margin:4px 0 20px}
+.nav span{min-width:120px}.nav .c{text-align:center}.nav .r{text-align:right}
+h1{font-size:38px;margin:0 0 14px;line-height:1.2}
+.meta{font-family:'Segoe UI',Arial,sans-serif;color:#666;font-size:16px;line-height:1.6;padding-bottom:18px;border-bottom:1px solid #ddd;margin-bottom:26px}
+.meta a{color:#555;text-decoration:underline}
+.msg{border:1px solid #e3e0da;border-radius:10px;padding:16px 22px;margin:0 0 18px;background:#fff;font-size:17px;line-height:1.6;overflow-wrap:anywhere}
+.msg.h{background:#edf1f9}
+.who{font-family:'Segoe UI',Arial,sans-serif;font-size:15px;color:#666;margin-bottom:6px}
+.who b{color:#8a4416;letter-spacing:.04em;margin-right:8px}
+pre{background:#f2efe9;padding:10px;overflow-x:auto;font-size:14px}code{font-size:14px}
+table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}
+.idx li{list-style:none;margin:0 0 8px;font-size:17px}.idx{padding:0}.idx .d{font-family:'Segoe UI',Arial,sans-serif;color:#777;font-size:14px;margin-right:12px}</style></head><body><div class="w"><div class="nav"><span><a href="2026-05-02_signal-and-trade-csv-logging-for-live-bars_20232078.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-01_improving-mql5-trading-strategy-without-lookahead-bias_82ca1f9c.html">Next →</a></span></div><h1>CrossFire_Channel trade execution issues</h1><div class="meta">Created 2026-05-02 19:08 UTC · Last updated 2026-05-02 19:11 UTC · 4 messages<br>Original: <a href="https://claude.ai/chat/fd39722b-c4f9-4c97-8f8c-fb05939a0152">claude.ai/chat/fd39722b-c4f9-4c97-8f8c-fb05939a0152</a></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-02 19:08 UTC</div><p>Here's the first test of the newly revised CrossFire_Channel indy. I've attached code, tick, trade, signal, and debug files.</p>
+<p>Look at the image and tell me why 1 trade never happened (4th bar from left) and 2 others were late.</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-02 19:09 UTC</div><p>I'll analyze the chart, code, and logs to figure out why those signals were missed or late.</p>
+<p>The CSV's last signal is 2026.04.30 23:05. The chart spans roughly <strong>2026.04.30 23:50 → 2026.05.01 01:46</strong>. So the entire chart window is <em>after</em> the last logged signal, with one short signal at 23:05 still being the active position when the chart begins. Now let's examine the debug log for that window — that's where the gate state is.</p>
+<p>Wait - I need to stop and reconcile something important. The DLOG records are showing <code>bar 456704, time 2026.04.20 01:01:00</code> but the chart's x-axis goes from 30 Apr 23:50 to 1 May 01:46. The signal CSV's last signal is at 2026.04.30 23:05. <strong>I'm looking at the wrong window.</strong></p>
+<p>The DLOG bars 456704+ are dated 2026.04.20, which is <em>replay</em> of historical bars during full-pass. The chart annotations are about <strong>today's bars (2026.05.01 00:00 - 01:46)</strong>. Let me re-search by chart's time window.</p>
+<p>OK — server_time at 00:00:00 is the OnInit/full-pass processing of historical data. Real-time bars start at 01:01:00. The chart shows <strong>30 Apr 23:50 → 1 May 01:46</strong>. The bars before 01:01 (00:00-01:00) are processed during the full pass. Let me check what was happening for the chart's actual time window — I need to identify the chart bars.</p></div><div class="msg h"><div class="who"><b>MILLARD</b>2026-05-02 19:09 UTC</div><p>I gave you FOUR fucking CSVs. Which one are you talking about, dammit</p></div><div class="msg"><div class="who"><b>CLAUDE</b>2026-05-02 19:11 UTC</div><p>You're right, I muddled it. Let me be explicit.</p>
+<p>The chart's NET P/L of 45.10 starts 2026.04.20 — so the four files cover the entire run from 2026.04.20 through 2026.05.01 ~01:46.</p>
+<p>The four CSVs:</p>
+<ol>
+<li><strong><code>...DLOG_...csv</code></strong> — debug log of every gate decision per bar. server_time field 2 is real wall-clock time when the record was written.</li>
+<li><strong><code>...Tick_Dump_...csv</code></strong> — every tick.</li>
+<li><strong><code>...signals_INDY_LIVE_...csv</code></strong> — fired signals only. Last entry: 2026.04.30 23:05.</li>
+<li><strong><code>..._trades.csv</code></strong> — completed trades.</li>
+</ol>
+<p>My earlier confusion: I filtered DLOG by <code>server_time</code> thinking that was the bar being processed, but the records I pulled had server_time = 2026.05.01 00:00:00, which means <strong>all those decisions were made during the full-pass on init</strong>, replaying history. The DLOG's <code>time</code> field (inside the variable-position payload) is the bar being decided on.</p>
+<p><strong>The chart window is 2026.04.30 23:50 → 2026.05.01 01:46.</strong> That's the slice I need to look at. The signals CSV ends at 23:05 on 30 Apr, which already tells me <strong>zero signals fired in the chart window</strong> — no entries in the signals CSV after 23:05, and no trades opened in that window either. So I need to dig into DLOG records whose <strong>bar <code>time</code> field</strong> falls in 2026.04.30 23:50 → 2026.05.01 01:46 to see why each candidate bar was rejected.</p>
+<p>Before I keep going — give me 30 seconds to grep the right slice and I'll come back with the actual reason for each of the 3 marked bars. Continuing now.</p>
+<p>Now I have the real picture. Three signals fired in the chart window:</p>
+<table>
+<thead>
+<tr>
+<th>Bar</th>
+<th>Time</th>
+<th>Dir</th>
+<th>Source</th>
+<th>current_trade_dir before</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>469115</td>
+<td>01:14:00</td>
+<td><strong>short</strong></td>
+<td>cocked</td>
+<td>0 (flat)</td>
+</tr>
+<tr>
+<td>469130</td>
+<td>01:29:00</td>
+<td><strong>long</strong></td>
+<td>cocked</td>
+<td>-1 (short open)</td>
+</tr>
+<tr>
+<td>469134</td>
+<td>01:33:00</td>
+<td><strong>short</strong></td>
+<td>line_event_exit_reentry</td>
+<td>1 (long open)</td>
+</tr>
+</tbody>
+</table>
+<p>Plus blocked candidates at 01:26 (same_direction short while already short), 01:42, 01:46.</p>
+<p>So mapping to your three annotations on the chart:</p>
+<ol>
+<li><strong>"OK" (green up arrow ~01:14):</strong> that's the short marker at 01:14 — but you wrote "OK" with a green up arrow, which suggests you actually expected that to be the <em>long</em>. It's the 01:14 signal in the log; <strong>direction = -1 (short)</strong>, not long. Need to confirm with you whether the green arrow at "OK" is your annotation marker or the indicator's marker.</li>
+<li><strong>"Should have been a long here" (~01:16):</strong> no decision around 01:16 — flat (no candidate). The actual long fires 13 minutes later at <strong>01:29</strong>.</li>
+<li><strong>"Short should have been here" (~01:19-01:21):</strong> no decision in that range — already short from 01:14, then flips long at 01:29.</li>
+</ol>
+<p>And <strong>"WHY NO LONG SIGNAL AFTER EARLY EXIT ON FIRST BAR":</strong> between <strong>01:01 and 01:13</strong> (13 bars) all show <code>dir=0, src=, ckd=0, current_trade_dir=0</code> — flat, <strong>no candidate at all</strong>. The cocking machinery never produced one until 01:14. That's the central question: why no cocked candidate during that 13-bar climb?</p>
+<p><strong>Found it.</strong> Now I have the smoking gun. Look at the COCKED_CANDIDATE_DECISION records for bars 469103-469114 (01:02 through 01:13). Three things stand out, and the first one is the actual bug:</p>
+<p><strong>1. The cocked candidate direction is wrong (this is THE bug).</strong></p>
+<p>At 01:02:00 (bar 469103), the system goes "cocked" with <strong><code>cocked_dir=-1</code> (short)</strong>. That's the COCKING_DECISION line right at the start of the day. Then for the next 12 bars (01:02 → 01:13), every COCKED_CANDIDATE_DECISION evaluates with <code>direction,-1</code> — i.e., it's checking gates for a <em>short</em> candidate while price is rocketing upward from 4621 to 4631.</p>
+<p>Look at <code>gate_threshold</code> and the sign of <code>gate_threshold_depth</code>:<br />
+- 01:02: threshold=4621.80, depth=<strong>-6.31</strong> (negative = price is well above the short threshold = correctly fails)<br />
+- 01:09: threshold=4627.18, depth=<strong>-4.11</strong><br />
+- 01:13: threshold=4631.45, depth=+0.23 → finally passes → fires short at 01:14</p>
+<p>So the gate is doing exactly what it should — <strong>rejecting a short candidate during a strong rally</strong>. The reason no long was ever even <em>evaluated</em> is that the cocking mechanism latched <code>cocked_dir=-1</code> at 01:02 and the system is structurally one-direction-at-a-time. Until that short cocking either fires or gets cleared, no long candidate can exist.</p>
+<p>Why did it cock short at 01:02 in the first place? Look at COCKING_DECISION 01:02: <code>is_cocked,true, cocked_dir,-1, cock_level,4628.14, PM_dir,1, T_dir,0</code>. PM_dir is +1 (long) but it cocked SHORT. That's incoherent on its face — unless your cocking logic intentionally cocks against the prior trade direction (the early-exit was on a long, so it preps a short reversal). I need to read the code to confirm which.</p>
+<p><strong>2. The <code>T_dir</code> field is 0 throughout 01:01-01:13.</strong></p>
+<p>T_dir = TEMA-cross direction, presumably. It's 0 (no recent cross) for the whole climb. Then at 01:14 <code>T_dir,-1</code> appears and the short fires. So whatever event flipped the gate to "all_pass" at 01:14 wasn't about price or MA slope — it was a TEMA-related event.</p>
+<p><strong>3. <code>gate_travel_since_cross</code> is NEGATIVE the entire time</strong> (-9.91, -7.57, -10.65, …, -13.02).</p>
+<p>That's nonsensical for a travel-distance metric and tells me the cross reference being used by the short candidate is the <em>prior session's long cross</em>, not a fresh short cross. More confirmation that the cocked direction is stuck on the wrong side of the market.</p>
+<p>Let me verify the cocking logic against the code before I lock in the diagnosis:</p></div><div class="nav"><span><a href="2026-05-02_signal-and-trade-csv-logging-for-live-bars_20232078.html">← Previous</a></span><span class="c"><a href="../index.html">All chats</a></span><span class="r"><a href="2026-05-01_improving-mql5-trading-strategy-without-lookahead-bias_82ca1f9c.html">Next →</a></span></div></div></body></html>

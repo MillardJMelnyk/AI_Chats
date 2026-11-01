@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Debugging incorrect local time display</title><style>
+:root{--bg:#f7f6f3;--card:#fff;--ink:#1f1f1f;--muted:#6b6b6b;--line:#e3e1dc;--me:#eef3fb;--accent:#8a4b2a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Georgia,'Times New Roman',serif}
+.wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+header.top{border-bottom:1px solid var(--line);margin-bottom:24px;padding-bottom:12px}
+h1{font-size:28px;line-height:1.25;margin:0 0 8px}
+.meta{color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+.meta a{color:var(--muted)}
+nav.pager{display:flex;justify-content:space-between;gap:12px;font:14px system-ui,sans-serif;margin:16px 0}
+nav.pager a{color:var(--accent);text-decoration:none}
+.msg{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:14px 0}
+.msg.human{background:var(--me)}
+.who{font:600 13px system-ui,sans-serif;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.who span{font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.human .body{white-space:pre-wrap}
+.body p{margin:.6em 0}
+.body pre{background:#f1efea;padding:12px;border-radius:6px;overflow:auto;font-size:14px}
+.body code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+.body table{border-collapse:collapse;margin:.8em 0}
+.body th,.body td{border:1px solid var(--line);padding:4px 8px}
+.body blockquote{border-left:3px solid var(--line);margin:.6em 0;padding-left:12px;color:#444}
+details{margin-top:10px;font:14px system-ui,sans-serif}
+details pre{white-space:pre-wrap;font:14px/1.5 Georgia,serif;background:#faf9f6;border:1px solid var(--line);padding:12px;border-radius:6px}
+.note{color:var(--muted);font:italic 14px system-ui,sans-serif}
+ol.list{padding-left:0;list-style:none}
+ol.list li{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:8px 0;display:flex;justify-content:space-between;gap:12px}
+ol.list a{color:var(--ink);text-decoration:none;font-size:17px}
+ol.list a:hover{color:var(--accent)}
+ol.list .meta{white-space:nowrap}
+</style></head><body><div class="wrap"><nav class="pager"><a href="686-2026-03-15-forex-trading-analysis-strategy-opinion.html">&larr; Forex trading analysis strategy opinion</a><a href="../index.html">All chats</a><a href="688-2026-03-18-mql5-script-for-multi-indicator-csv-export.html">MQL5 script for multi-indicator CSV export &rarr;</a></nav>
+<header class="top">
+<h1>Debugging incorrect local time display</h1>
+<div class="meta">Created 2026-03-17 17:22 UTC &middot; Last updated 2026-03-17 18:11 UTC &middot; 8 messages<br>Original: <a href="https://claude.ai/chat/da1db866-e453-443d-8c5c-7f0ba5a0772b">claude.ai/chat/da1db866-e453-443d-8c5c-7f0ba5a0772b</a></div>
+</header>
+<div class="msg human"><div class="who">Millard<span>2026-03-17 17:22 UTC</span></div><div class="body">Examine the image and the code. The &quot;Serve time&quot; is correct, but &quot;Local time&quot; is wrong. Find the bug. I&#x27;m in UTC -6. Server is in eastern Europe or western Russia.<p class="note">[File attached: BarID MJM.mq5 &mdash; contents not included in export]</p><p class="note">[File attached: 1773768143173_image.png &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-17 17:23 UTC</span></div><div class="body"><p>Tuesday, March 17, 2026, 14:05 CST (UTC-6)</p>
+<hr />
+<p>The bug is not in <code>BarID_MJM.mq5</code> itself. Line 217 just calls:</p>
+<pre><code>ConvertTimeServerVSLocal(time[ix], &quot;local&quot;)
+</code></pre>
+<p>That function lives in <code>Tiddlies_MJM.mqh</code>, which wasn't uploaded.</p>
+<p><strong>What the symptom tells us:</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Server time</td>
+<td>2026-03-17 20:19 (UTC+3 → 17:19 UTC)</td>
+</tr>
+<tr>
+<td>Local shown</td>
+<td>2026-03-18 03:01</td>
+</tr>
+<tr>
+<td>Delta</td>
+<td><strong>+6h42m forward</strong> from server</td>
+</tr>
+<tr>
+<td>Expected</td>
+<td><strong>−9h behind</strong> server (UTC-6 vs UTC+3)</td>
+</tr>
+</tbody>
+</table>
+<p>The result is not just wrong direction — the magnitude (6h42m) doesn't correspond to any clean timezone arithmetic. That rules out a simple sign flip on a correct offset.</p>
+<p>Most probable causes inside <code>ConvertTimeServerVSLocal</code>:</p>
+<ol>
+<li><strong>Direction string logic is inverted</strong> — <code>&quot;local&quot;</code> is being treated as &quot;convert FROM local TO server&quot; rather than &quot;TO local.&quot;</li>
+<li><strong>Offset source is wrong</strong> — it may be calling <code>TimeLocal() - TimeCurrent()</code> at compute time and storing that delta (a snapshot of <em>current</em> wall-clock difference) rather than applying a fixed UTC offset to each bar timestamp.</li>
+<li><strong>Windows timezone bias is being applied with wrong sign or in wrong units.</strong></li>
+</ol>
+<p>I need <code>Tiddlies_MJM.mqh</code> — specifically <code>ConvertTimeServerVSLocal</code> — to identify the exact line.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-17 17:24 UTC</span></div><div class="body">you probably need this code too<p class="note">[File attached: Tiddlies_MJM.mqh &mdash; contents not included in export]</p></div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-17 17:30 UTC</span></div><div class="body"><p>Found it. The bug is in <code>ConvertTimeServerVSLocal</code>, lines 209–213.</p>
+<pre><code class="language-cpp">static int offsetSec = INT_MAX;
+
+if(offsetSec == INT_MAX)
+    offsetSec = (int)(TimeLocal() - TimeCurrent());
+</code></pre>
+<p><strong>The bug: <code>static</code> — the offset is computed exactly once, at the first call, and never again.</strong></p>
+<p>The first call to this function happens during the initial full-chart pass through <code>OnCalculate</code> (when <code>prev_calculated == 0</code>). At that exact moment, <code>TimeCurrent()</code> may not reflect a live tick — it returns the last known server time for any Market Watch symbol, which could be stale if the indicator was just loaded, recompiled, or attached before ticks were flowing.</p>
+<p><strong>What happened:</strong> At initialization, <code>TimeCurrent()</code> was stale — behind the actual server time by enough to flip <code>TimeLocal() - TimeCurrent()</code> from the expected <strong>−32,400</strong> (−9h) to a <strong>positive</strong> value. Since it's <code>static</code>, this wrong positive offset is permanently cached for the entire lifetime of the indicator instance.</p>
+<p>You can confirm: restart the indicator during active tick flow and the local time will immediately correct itself — because the static reinitializes to a fresh <code>TimeCurrent()</code>.</p>
+<p><strong>The fix:</strong> Remove <code>static</code>. The computation is two function calls and a subtraction — the performance cost is zero:</p>
+<pre><code class="language-cpp">datetime ConvertTimeServerVSLocal(datetime givenTime = 0, string requested = &quot;local&quot;)
+{
+    int offsetSec = (int)(TimeLocal() - TimeCurrent());
+    ...
+</code></pre>
+<p>If you want to keep lazy-init for performance reasons, at minimum add a staleness guard — don't accept the cached value if <code>TimeCurrent()</code> was zero or suspiciously far from <code>TimeLocal()</code> at the time of capture.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-17 17:50 UTC</span></div><div class="body">LMFAO! The only problem was with
+
+   int offsetSec = (int)(TimeLocal() - TimeCurrent());
+
+I just needed to cast TimeCurrent() as an int.
+
+   int offsetSec = (int)(TimeLocal() - (int)TimeCurrent());</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-17 17:51 UTC</span></div><div class="body"><p>Fair enough. My <code>static</code> analysis was a real latent bug but not the cause of what you were seeing.</p>
+<p>The arithmetic issue: <code>TimeLocal()</code> and <code>TimeCurrent()</code> both return <code>datetime</code>, which in MQL5 is <code>ulong</code> (unsigned 64-bit). When local &lt; server (UTC-6 vs UTC+3), <code>TimeLocal() - TimeCurrent()</code> underflows as unsigned arithmetic, producing a huge positive value. Casting the entire result to <code>int</code> with <code>(int)(TimeLocal() - TimeCurrent())</code> was truncating that wrapped value unpredictably.</p>
+<p>Casting <code>TimeCurrent()</code> to <code>int</code> first forces the subtraction into signed integer arithmetic, where a negative offset is representable correctly.</p>
+<p>That said — the <code>static</code> is still a live bug. A stale <code>TimeCurrent()</code> at init will permanently poison the cached offset for that indicator instance. It just wasn't the bug you were chasing right now.</p>
+</div></div>
+<div class="msg human"><div class="who">Millard<span>2026-03-17 18:08 UTC</span></div><div class="body">I already fixed that and, of course, it didn&#x27;t fix the problem I asked about</div></div>
+<div class="msg claude"><div class="who">Claude<span>2026-03-17 18:11 UTC</span></div><div class="body"><p>I need to back up. The code analysis path hits a wall without knowing what <code>TimeLocal()</code> and <code>TimeCurrent()</code> are actually returning at runtime.</p>
+<p>The observed result (+6h42m from server) doesn't correspond to any arithmetic error I can derive from the code as written — neither a sign flip, nor a truncation artifact. It corresponds exactly to <code>offsetSec</code> being <strong>+24120</strong>, which means at the moment of capture, <code>TimeLocal()</code> was reading 6h42m <strong>ahead</strong> of <code>TimeCurrent()</code>.</p>
+<p>That implicates the OS clock or Windows timezone setting, not the MQL5 logic. <code>TimeLocal()</code> reads the Windows system clock directly.</p>
+<p>Before going further: can you add a temporary <code>Print</code> to confirm actual runtime values?</p>
+<pre><code class="language-cpp">Print(&quot;TimeLocal=&quot;, TimeToString(TimeLocal()), &quot;  TimeCurrent=&quot;, TimeToString(TimeCurrent()), &quot;  offsetSec=&quot;, (int)(TimeLocal() - TimeCurrent()));
+</code></pre>
+<p>That will tell us whether the problem is in the data going into the function or in the function logic itself.</p>
+</div></div>
+<nav class="pager"><a href="686-2026-03-15-forex-trading-analysis-strategy-opinion.html">&larr; Forex trading analysis strategy opinion</a><a href="../index.html">All chats</a><a href="688-2026-03-18-mql5-script-for-multi-indicator-csv-export.html">MQL5 script for multi-indicator CSV export &rarr;</a></nav></div></body></html>
